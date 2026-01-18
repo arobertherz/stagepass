@@ -1,0 +1,11 @@
+node_modules
+.DS_Store
+.env
+coverage
+.stagepass
+# Grundsätzlich alle dist/ Ordner ignorieren (Standard)
+dist/
+**/dist/
+
+# AUSNAHME: Der Loader Build MUSS committed werden für CDN
+!packages/loader/dist/
