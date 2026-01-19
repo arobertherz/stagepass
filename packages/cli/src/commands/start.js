@@ -59,7 +59,7 @@ export async function start(options = {}) {
 
   console.log(chalk.bold('\n🚀 Starting Stagepass...'));
 
-  // 1. Sudo Warm-Up (Interaktiv, bevor Spinner startet)
+  // 1. Sudo warm-up (interactive, before spinner starts)
   try {
     await execa('sudo', ['-v'], { stdio: 'inherit' });
   } catch (e) {
@@ -67,7 +67,7 @@ export async function start(options = {}) {
     return;
   }
 
-  // 2. Port Check (Interaktiv)
+  // 2. Port check (interactive)
   const conflict = await checkPort443();
   if (conflict) {
     console.log(chalk.yellow(`\n⚠️  Port 443 is blocked by: ${chalk.bold(conflict.name)}`));
@@ -91,10 +91,10 @@ export async function start(options = {}) {
     }
   }
 
-  // 3. Boot Services
+  // 3. Boot services
   const spinner = ora('Booting background services...').start();
   
-  // Prepare Logging (Standard Mode)
+  // Prepare logging (standard mode)
   let stdioMode = 'ignore';
   if (options.verbose) {
     spinner.stop();

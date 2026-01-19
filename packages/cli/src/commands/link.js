@@ -8,20 +8,20 @@ import ora from 'ora';
 export async function link(domain, options = {}) {
   const currentDir = process.cwd();
 
-  // Domain Logic
+  // Domain logic
   let targetDomain = domain;
   if (!targetDomain) {
     targetDomain = path.basename(currentDir);
   }
   targetDomain = targetDomain.replace(/\.sp$/, '') + '.sp';
 
-  // Config Paths
+  // Config paths
   const caddyDir = path.join(os.homedir(), '.stagepass');
   const caddyFilePath = path.join(caddyDir, 'Caddyfile');
 
   const spinner = ora(`Linking ${chalk.bold(targetDomain)}...`).start();
 
-  // 1. Write Config
+  // 1. Write config
   try {
       await fs.ensureDir(caddyDir);
       
@@ -61,7 +61,7 @@ ${blockEnd}`;
 
   // 2. Reload Caddy
   try {
-    // Wenn verbose AN ist, zeigen wir den Output. Wenn AUS, ignorieren wir ihn (pipe).
+    // If verbose is ON, show output. If OFF, ignore it (pipe).
     const stdioMode = options.verbose ? 'inherit' : 'ignore';
     
     await execa('caddy', ['reload', '--config', caddyFilePath], { stdio: stdioMode });

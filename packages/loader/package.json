@@ -1,12 +1,29 @@
 {
   "name": "@stagepass/loader",
   "version": "1.0.0",
+  "description": "Universal loader for Stagepass - injects local files into Webflow projects",
   "main": "dist/loader.js",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup", 
+    "build": "tsup",
     "dev": "tsup --watch"
   },
+  "keywords": [
+    "webflow",
+    "loader",
+    "stagepass",
+    "development",
+    "injection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arobertherz/stagepass.git",
+    "directory": "packages/loader"
+  },
+  "license": "MIT",
   "devDependencies": {
     "tsup": "^8.0.1",
     "typescript": "^5.3.3"

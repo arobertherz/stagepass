@@ -1,21 +1,44 @@
 {
-    "name": "stagepass",
-    "version": "1.0.0",
-    "description": "Local Development Orchestrator for Webflow",
-    "type": "module",
-    "bin": {
-      "stagepass": "./bin/index.js"
-    },
-    "scripts": {
-      "start": "node bin/index.js"
-    },
-    "dependencies": {
-      "chalk": "^5.3.0",
-      "commander": "^11.1.0",
-      "execa": "^8.0.0",
-      "fs-extra": "^11.2.0",
-      "inquirer": "^9.2.0",
-      "ora": "^7.0.1",
-      "sudo-prompt": "^9.2.1"
-    }
+  "name": "@stagepass/cli",
+  "version": "1.0.0",
+  "description": "Local Development Orchestrator for Webflow",
+  "type": "module",
+  "main": "bin/index.js",
+  "bin": {
+    "stagepass": "./bin/index.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "start": "node bin/index.js"
+  },
+  "keywords": [
+    "webflow",
+    "development",
+    "local",
+    "proxy",
+    "ssl",
+    "caddy",
+    "hot-reload"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arobertherz/stagepass.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "execa": "^8.0.0",
+    "fs-extra": "^11.2.0",
+    "inquirer": "^9.2.0",
+    "ora": "^7.0.1",
+    "sudo-prompt": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
+}

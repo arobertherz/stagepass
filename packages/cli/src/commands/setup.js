@@ -3,6 +3,7 @@ import ora from 'ora';
 import chalk from 'chalk';
 import fs from 'fs-extra';
 import path from 'path';
+import os from 'os';
 import sudo from 'sudo-prompt';
 
 const sudoExec = (command) => {
@@ -46,7 +47,7 @@ export async function setup(options = {}) {
     const brewPrefix = brewPrefixRaw.trim();
     const mainConfFile = path.join(brewPrefix, 'etc', 'dnsmasq.conf');
 
-    // Sicherstellen, dass Config existiert
+    // Ensure config exists
     if (!await fs.pathExists(mainConfFile)) {
         await fs.writeFile(mainConfFile, '# Stagepass Config\n');
     }
@@ -54,7 +55,7 @@ export async function setup(options = {}) {
     let content = await fs.readFile(mainConfFile, 'utf-8');
     const rule = 'address=/.sp/127.0.0.1';
 
-    // Prüfen, ob Regel schon da ist
+    // Check if rule already exists
     if (!content.includes(rule)) {
         await fs.appendFile(mainConfFile, `\n\n# Stagepass Rule\n${rule}\n`);
     }

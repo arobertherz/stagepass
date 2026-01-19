@@ -18,14 +18,14 @@ export async function stop(options = {}) {
     try {
       await execa('caddy', ['stop'], { stdio: stdioMode });
     } catch (e) {
-      // Ignorieren, wenn schon gestoppt
+      // Ignore if already stopped
     }
 
-    // 2. Stop PHP (Optional, aber sauberer)
+    // 2. Stop PHP (optional, but cleaner)
     try {
       await execa('brew', ['services', 'stop', 'php'], { stdio: stdioMode });
     } catch (e) {
-        // Ignorieren
+        // Ignore
     }
 
     if (!options.verbose) {
