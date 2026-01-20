@@ -36,7 +36,7 @@ npm install -g @stagepass/cli
 ```
 
 ### System Requirements
-* macOS (Windows/Linux support coming soon)
+* macOS (Windows/Linux support maybe coming soon)
 * Node.js 18+
 * Homebrew (for dependency management)
 
@@ -62,10 +62,16 @@ stagepass link my-project
 *Your local folder is now served at `https://my-project.sp` with valid SSL.*
 
 ### 3. Integrate with Webflow
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). This script is lightweight (<1KB) and safe for production.
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). This script is lightweight (<5KB) and safe for production.
 
+**Option 1 - jsDelivr (Recommended):**
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js"></script>
+```
+
+**Option 2 - unpkg:**
+```html
+<script src="https://unpkg.com/@stagepass/loader@1/dist/loader.min.js"></script>
 ```
 
 ### 4. Tag Your Scripts & Stylesheets
@@ -151,6 +157,8 @@ We welcome contributions! This project is a monorepo managed with npm workspaces
 1.  Clone the repo: `git clone https://github.com/arobertherz/stagepass.git`
 2.  Install dependencies: `npm install`
 3.  Build packages: `npm run build`
+
+**For detailed local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).**
 
 ## 📄 License
 
