@@ -2,10 +2,16 @@
   const K = 'stagepass_domain';
   const P = 'stagepass';
   
+  function isValidDomain(d: string): boolean {
+    return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
+  }
+  
   // Suppress console logging when Stagepass is not active
   const p = new URLSearchParams(window.location.search);
   const svCheck = localStorage.getItem(K);
-  if (!svCheck && !p.has(P)) {
+  const hasValidSession = svCheck && isValidDomain(svCheck);
+  const hasParam = p.has(P);
+  if (!hasValidSession && !hasParam) {
     const noop = () => {};
     console.log = noop;
     console.warn = noop;
@@ -50,10 +56,6 @@
     return d ? d.replace(/^https?:\/\//, '').replace(/\/$/, '') : null;
   }
 
-  function isValidDomain(d: string): boolean {
-    return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
-  }
-
   let paramProcessed = false;
   if (p.has(P)) {
     const v = p.get(P);
@@ -89,6 +91,7 @@
   const dev = !!sv;
   const swap = !!sv && sv !== 'debug';
   const dom = swap ? clean(sv) : null;
+  const cacheBust = swap ? Date.now() : 0;
 
   function swapEl(sel: string, pathAttr: string, srcAttr: string, type: 'script' | 'link', skipAttrs: string[]) {
     const els = document.querySelectorAll(`${sel}:not([data-stagepass-processed])`);
@@ -112,7 +115,7 @@
       let url = '';
       if (swap && lp && dom) {
         const cp = lp.startsWith('/') ? lp.substring(1) : lp;
-        url = `https://${dom}/${cp}`;
+        url = `https://${dom}/${cp}?_cb=${cacheBust}`;
       } else if (ps) {
         url = ps;
       }

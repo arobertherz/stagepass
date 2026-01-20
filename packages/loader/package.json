@@ -1,6 +1,6 @@
 {
   "name": "@stagepass/loader",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Universal loader for Stagepass - injects local files into Webflow projects",
   "main": "dist/loader.min.js",
   "type": "module",
