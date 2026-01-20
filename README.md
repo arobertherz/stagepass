@@ -1,7 +1,8 @@
 # Stagepass
 
 ![License](https://img.shields.io/npm/l/@stagepass%2Fcli)
-![Version](https://img.shields.io/npm/v/@stagepass/cli)
+![CLI Version](https://img.shields.io/npm/v/@stagepass/cli)
+![Loader Version](https://img.shields.io/npm/v/@stagepass/loader)
 ![Tests](https://img.shields.io/github/actions/workflow/status/arobertherz/stagepass/test.yml)
 
 **Develop locally. Preview globally. Keep Webflow happy.**
@@ -9,6 +10,55 @@
 Stagepass is a developer toolchain that bridges the gap between your local IDE and live Webflow projects. It replaces the tedious "Edit -> Publish -> Refresh" loop with instant local code injection via secure SSL proxies.
 
 **Forget manual code drops.** Write TypeScript, SCSS, or PHP locally and see changes instantly on your production URL.
+
+---
+
+## 🎯 The Problem
+
+When developing custom code for Webflow projects, you face a frustrating workflow:
+
+1. **Write code locally** in your IDE (TypeScript, SCSS, PHP, etc.)
+2. **Build/compile** your code to production-ready files
+3. **Upload to Webflow** via manual code drops or exports
+4. **Publish the site** to see changes
+5. **Refresh the browser** to test
+6. **Repeat** for every small change
+
+This creates a slow, error-prone development cycle. You can't use modern development tools like hot-reload, and testing requires constant publishing to Webflow.
+
+## ✨ The Solution
+
+Stagepass enables **instant local development** on live Webflow sites without touching Webflow's publishing system.
+
+**What Stagepass enables:**
+* Write and test code locally while viewing it on your production Webflow URL
+* See changes instantly without publishing to Webflow
+* Use modern development tools (TypeScript, SCSS, bundlers, hot-reload)
+* Test on the actual production site with real content and interactions
+* Keep your production site untouched - only you see the local changes
+
+**How it works:**
+1. **Local SSL Proxy:** Stagepass creates secure `.sp` domains (e.g., `my-project.sp`) that serve your local files with valid SSL certificates
+2. **Universal Loader:** A tiny script injected into your Webflow site detects when you're in "dev mode" and swaps production asset URLs with your local `.sp` domain URLs
+3. **Session Persistence:** Once activated via URL parameter (`?stagepass=my-project.sp`), the dev session persists across page reloads and navigation
+4. **Selective Injection:** Only files tagged with `data-stagepass` attributes are swapped - everything else loads normally from production
+
+**The magic:** Your production site stays live and unchanged. Only you (when dev mode is active) see your local code injected seamlessly into the live site.
+
+---
+
+## 📑 Table of Contents
+
+* [🎯 The Problem](#the-problem)
+* [✨ The Solution](#the-solution)
+* [⚡️ Features](#features)
+* [📦 Installation](#installation)
+* [🚀 Quick Start](#quick-start)
+* [🛠 CLI Reference](#cli-reference)
+* [🔒 Security Architecture](#security-architecture)
+* [🤝 Contributing](#contributing)
+* [📄 License](#license)
+* [🙏 Acknowledgments](#acknowledgments)
 
 ---
 
@@ -64,14 +114,21 @@ stagepass link my-project
 ### 3. Integrate with Webflow
 Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). This script is lightweight (<5KB) and safe for production.
 
-**Option 1 - jsDelivr (Recommended):**
+**Option 1 - CDN:**
 ```html
+<!-- jsDelivr -->
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js"></script>
+
+<!-- unpkg -->
+<script src="https://unpkg.com/@stagepass/loader@1"></script>
 ```
 
-**Option 2 - unpkg:**
+**Option 2 - Local** (to avoid cross-domain issues):
+Download `loader.min.js` from the npm package and upload it to your Webflow project assets:
 ```html
-<script src="https://unpkg.com/@stagepass/loader@1/dist/loader.min.js"></script>
+<script src="/loader.min.js"></script>
+<!-- or in subdirectory: -->
+<script src="/js/loader.min.js"></script>
 ```
 
 ### 4. Tag Your Scripts & Stylesheets
@@ -123,7 +180,7 @@ Go to your live Webflow URL and append the parameter:
 * `?stagepass=debug` - Activates debug mode (logging only, no URL swapping)
 * `?stagepass=off` - Deactivates Stagepass
 
-**Visual Indicator:** When Stagepass is active, a small badge appears in the top-right corner of the page. Click it to disconnect.
+**Visual Indicator:** When Stagepass is active, a small badge appears in the top-right corner of the page. Click it to disconnect and deactivate Stagepass (equivalent to `?stagepass=off`).
 
 ---
 

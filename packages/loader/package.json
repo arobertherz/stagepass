@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "webflow",
@@ -26,6 +28,9 @@
   "license": "MIT",
   "devDependencies": {
     "tsup": "^8.0.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.0",
+    "jsdom": "^24.0.0",
+    "@vitest/ui": "^2.1.0"
   }
 }
