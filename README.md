@@ -49,16 +49,16 @@ Stagepass enables **instant local development** on live Webflow sites without to
 
 ## 📑 Table of Contents
 
-* [🎯 The Problem](#the-problem)
-* [✨ The Solution](#the-solution)
-* [⚡️ Features](#features)
-* [📦 Installation](#installation)
-* [🚀 Quick Start](#quick-start)
-* [🛠 CLI Reference](#cli-reference)
-* [🔒 Security Architecture](#security-architecture)
-* [🤝 Contributing](#contributing)
-* [📄 License](#license)
-* [🙏 Acknowledgments](#acknowledgments)
+* [🎯 The Problem](#-the-problem)
+* [✨ The Solution](#-the-solution)
+* [⚡️ Features](#-features)
+* [📦 Installation](#-installation)
+* [🚀 Quick Start](#-quick-start)
+* [🛠 CLI Reference](#-cli-reference)
+* [🔒 Security Architecture](#-security-architecture)
+* [🤝 Contributing](#-contributing)
+* [📄 License](#-license)
+* [🙏 Acknowledgments](#-acknowledgments)
 
 ---
 
