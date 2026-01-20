@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "start": "node bin/index.js",
+    "build": "echo 'No build step required for CLI package'",
     "test": "vitest run",
     "test:watch": "vitest"
   },
