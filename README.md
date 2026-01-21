@@ -217,6 +217,48 @@ We welcome contributions! This project is a monorepo managed with npm workspaces
 
 **For detailed local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).**
 
+### Project Goals & Philosophy
+
+Stagepass is designed with a clear mission: **to lower the barrier for less technical Webflow developers** and enable professional development workflows without requiring deep technical expertise.
+
+**Our Core Principles:**
+- **Accessibility First:** All features are opt-in and can be used independently
+- **No Breaking Changes:** New features must maintain backward compatibility
+- **Developer Experience:** Focus on ease of use and intuitive workflows
+- **Professional Standards:** Enable best practices (TypeScript, SCSS, Git workflows) without complexity
+
+**Current Development Priorities:**
+
+1. **Variables API** (Issue #2) – ⭐ Lowest complexity, high value
+   - Quick to implement, immediately useful
+   - Low risk, high developer satisfaction
+
+2. **Code Injection** (Issue #1) – ⭐⭐ Medium complexity, high value
+   - Significantly extends functionality
+   - Requires careful security considerations
+
+3. **Git Simplification** (Issue #4) – ⭐⭐ Medium complexity, medium value
+   - Improves developer workflow
+   - Moderate implementation effort
+
+4. **New Project Scaffolding** (Issue #3) – ⭐⭐⭐ High complexity, high value
+   - Greatest impact on developer experience
+   - Requires significant development effort
+
+**Recommended Implementation Order:**
+1. Start with Variables (#2) – Quick win that provides immediate value
+2. Then Code Injection (#1) – Builds on variables, extends core functionality
+3. Follow with Git Simplification (#4) – Improves workflow without core changes
+4. Finally New Project (#3) – Comprehensive feature that ties everything together
+
+**Risk Considerations:**
+- ⚠️ **Security:** CSP/XSS concerns with Code Injection require careful implementation
+- ⚠️ **Compatibility:** Git commands may vary across Git versions and platforms
+- ⚠️ **Maintainability:** Additional features increase codebase complexity
+- ⚠️ **User Experience:** Need to balance simplicity with power and flexibility
+
+For detailed specifications of planned features, see [ISSUES.md](ISSUES.md).
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
