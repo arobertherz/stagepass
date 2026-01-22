@@ -112,6 +112,13 @@ var Stagepass = (() => {
       timestamp: sessionStartTime,
       version: "1.1.0"
     });
+    let readyResolve = null;
+    let readyReject = null;
+    const readyPromise = new Promise((resolve, reject) => {
+      readyResolve = resolve;
+      readyReject = reject;
+    });
+    stagepassObj.ready = readyPromise;
     window.stagepass = stagepassObj;
     globalThis.stagepass = stagepassObj;
     function swapEl(sel, pathAttr, srcAttr, type, skipAttrs) {
@@ -157,7 +164,12 @@ var Stagepass = (() => {
       });
     }
     function loadModules() {
-      if (modulesParam === null) return;
+      if (modulesParam === null) {
+        if (readyResolve) {
+          readyResolve();
+        }
+        return;
+      }
       const modulesToLoad = modulesParam === "" ? ["all"] : modulesParam.split(",").map((m) => m.trim()).filter(Boolean);
       if (modulesToLoad.length === 0) return;
       let baseUrl = window.location.origin;
@@ -171,16 +183,38 @@ var Stagepass = (() => {
           baseUrl = loaderScript.src.replace(/\/[^\/\?]+(\?.*)?$/, "");
         }
       }
-      modulesToLoad.forEach((moduleName) => {
+      let currentIndex = 0;
+      function loadNext() {
+        if (currentIndex >= modulesToLoad.length) {
+          if (env !== "production") {
+            splog("\u2705 All modules loaded");
+          }
+          if (readyResolve) {
+            readyResolve();
+          }
+          return;
+        }
+        const moduleName = modulesToLoad[currentIndex];
         const moduleUrl = `${baseUrl}/${moduleName}.min.js`;
         const script = document.createElement("script");
+        script.onload = () => {
+          if (env !== "production") {
+            splog(`\u{1F4E6} Module loaded: ${moduleName}`);
+          }
+          currentIndex++;
+          loadNext();
+        };
+        script.onerror = () => {
+          if (env !== "production") {
+            sperror(`Failed to load module: ${moduleName}`);
+          }
+          currentIndex++;
+          loadNext();
+        };
         script.src = moduleUrl;
-        script.async = true;
         document.head.appendChild(script);
-        if (env !== "production") {
-          splog(`\u{1F4E6} Loading module: ${moduleName}`);
-        }
-      });
+      }
+      loadNext();
     }
     const process = () => {
       swapEl("script[data-stagepass]", "data-stagepass-path", "data-src", "script", ["data-src", "data-stagepass", "data-stagepass-path"]);

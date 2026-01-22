@@ -122,6 +122,16 @@
     timestamp: sessionStartTime,
     version: '1.1.0'
   });
+  
+  // Create ready promise for modules loading
+  let readyResolve: (() => void) | null = null;
+  let readyReject: ((error: Error) => void) | null = null;
+  const readyPromise = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  stagepassObj.ready = readyPromise;
+  
   (window as any).stagepass = stagepassObj;
   // Also expose as global variable (without window prefix)
   (globalThis as any).stagepass = stagepassObj;
@@ -170,8 +180,13 @@
   }
 
   function loadModules() {
-    // If no modules parameter in script tag, don't load anything
-    if (modulesParam === null) return;
+    // If no modules parameter in script tag, resolve ready immediately
+    if (modulesParam === null) {
+      if (readyResolve) {
+        readyResolve();
+      }
+      return;
+    }
 
     // If modules param exists but is empty (just ?modules), load 'all'
     const modulesToLoad = modulesParam === ''
@@ -196,17 +211,48 @@
       }
     }
 
-    modulesToLoad.forEach(moduleName => {
+    // Load modules sequentially and wait for each to complete
+    // This ensures modules are available immediately after loading
+    let currentIndex = 0;
+    function loadNext() {
+      if (currentIndex >= modulesToLoad.length) {
+        if (env !== 'production') {
+          splog('✅ All modules loaded');
+        }
+        // Resolve ready promise when all modules are loaded
+        if (readyResolve) {
+          readyResolve();
+        }
+        return;
+      }
+
+      const moduleName = modulesToLoad[currentIndex];
       const moduleUrl = `${baseUrl}/${moduleName}.min.js`;
       const script = document.createElement('script');
-      script.src = moduleUrl;
-      script.async = true;
-      document.head.appendChild(script);
       
-      if (env !== 'production') {
-        splog(`📦 Loading module: ${moduleName}`);
-      }
-    });
+      script.onload = () => {
+        if (env !== 'production') {
+          splog(`📦 Module loaded: ${moduleName}`);
+        }
+        currentIndex++;
+        loadNext();
+      };
+      
+      script.onerror = () => {
+        if (env !== 'production') {
+          sperror(`Failed to load module: ${moduleName}`);
+        }
+        // Continue loading other modules even if one fails
+        currentIndex++;
+        loadNext();
+      };
+      
+      script.src = moduleUrl;
+      // No async attribute - load synchronously in sequence
+      document.head.appendChild(script);
+    }
+
+    loadNext();
   }
 
   const process = () => {
