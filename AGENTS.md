@@ -21,6 +21,15 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   **Package Name:** `@stagepass/loader`
 -   **Key Trait:** **Standalone.** This package must have NO dependencies on the CLI. It is built to be hosted on a CDN (e.g., jsDelivr, unpkg) and works as long as *any* local server is running (created by Stagepass CLI or otherwise).
 
+### 3. `packages/modules` (Browser Environment)
+-   **Purpose:** Modular feature extensions (Injector, etc.) that extend the core loader functionality.
+-   **Tech:** TypeScript, tsup (bundled to IIFE, code-split by module).
+-   **Package Name:** `@stagepass/modules`
+-   **Key Trait:** **Loadable via URL parameter OR manually.** Modules can be loaded:
+    - Automatically via `?modules=inject` parameter (loaded by core loader)
+    - Manually as separate script tags after `loader.min.js` (e.g., `<script src="inject.min.js"></script>`)
+-   **Requirement:** Core loader (`loader.min.js`) must be loaded first, as modules depend on `stagepass.vars` (or `window.stagepass.vars`).
+
 ## Tech Stack & Conventions
 -   **Package Manager:** NPM Workspaces.
 -   **Linting:** ESLint with appropriate environments (Node for CLI, Browser for Loader).
@@ -51,11 +60,15 @@ We use a monorepo workspace structure to manage these distinct packages:
 **Rationale:** Ensures all assets from the same page load have consistent cache state. On reload, a new timestamp forces fresh loading of all assets (desired behavior for development).  
 **Implementation:** `const cacheBust = swap ? Date.now() : 0;` (only when swap is active)
 
-### Console Suppression: Only When Inactive
-**Decision:** Suppress console logs only when NO valid session exists AND no `stagepass` parameter is in URL.  
-**Rationale:** Production sites should remain clean (no console noise), but dev mode needs logs for debugging. Domain validation happens BEFORE suppression check to prevent false suppression.  
-**Pattern:** `if (!hasValidSession && !hasParam) { suppress console }`  
-**Note:** `splog`, `spwarn`, `sperror` are global functions available on `window` for structured logging.
+### Console Suppression: Environment-Based with Silent Mode
+**Decision:** Suppress console logs based on environment and `?silent` parameter:
+- **Production:** Always suppressed when no session/parameter
+- **Staging:** Only suppressed when `?silent` parameter is present (allows console for free Webflow.io sites)
+- **Local:** Never suppressed (always available for debugging)
+**Rationale:** Production sites should remain clean, staging sites may need console for debugging, but some staging sites (free cases) should also be clean. The `?silent` parameter gives control.  
+**Pattern:** `if (shouldSuppress && (env === 'production' || (env === 'staging' && silentParam !== null))) { suppress console }`  
+**Note:** `splog`, `spwarn`, `sperror` are global functions available on `window` for structured logging.  
+**Important:** The `?silent` parameter is read from the loader script tag's `src` attribute (e.g., `loader.min.js?silent`), not from the page URL.
 
 ### Script Loading: defer as Default
 **Decision:** If neither `async` nor `defer` is set on original script, add `defer` to injected script.  
@@ -110,6 +123,15 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `?stagepass=off` / `?stagepass=0` / `?stagepass=false` - Deactivates session
 -   Parameters are removed from URL after processing via `window.history.replaceState()`
 
+### Loader: Script Tag Parameters
+The `modules` and `silent` parameters are passed via the loader script tag itself (not as page URL parameters):
+-   `loader.min.js` - Loads only the core loader
+-   `loader.min.js?modules` - Loads core loader + all modules (`all.min.js`)
+-   `loader.min.js?modules=inject` - Loads core loader + only Injector module
+-   `loader.min.js?modules=inject,cookies` - Loads core loader + specific modules
+-   `loader.min.js?silent` - Suppresses console logs even in staging environment (useful for free Webflow.io sites)
+-   `loader.min.js?modules=inject&silent` - Can be combined with other parameters
+
 ### Loader: localStorage Keys
 -   `stagepass_domain` - Stores active domain (`localStorage.getItem('stagepass_domain')`)
 
@@ -117,6 +139,18 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `window.splog(...args)` - Structured logging (only when session active)
 -   `window.spwarn(...args)` - Warning logs
 -   `window.sperror(...args)` - Error logs
+
+### Modules: Loading Methods
+-   **Automatic (via script tag parameter):** Add `?modules` or `?modules=inject` to the loader script src - Core loader loads modules dynamically
+-   **Manual (via script tags):** Load modules as separate scripts after `loader.min.js`:
+    ```html
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1/dist/inject.min.js"></script>
+    ```
+-   **Important:** Core loader must be loaded first, as modules require `stagepass.vars` (or `window.stagepass.vars`)
+-   **Module Registration:** Modules automatically register themselves on `stagepass` (e.g., `stagepass.inject` or `window.stagepass.inject`)
+-   **Global Variable:** `stagepass` is available as a global variable (without `window.` prefix) for convenience, but `window.stagepass` also works
+-   **Parameter Source:** The `modules` parameter is read from the loader script tag's `src` attribute, not from the page URL
 
 ### CLI: Commands
 -   `stagepass setup` - Install dependencies and configure .sp domain

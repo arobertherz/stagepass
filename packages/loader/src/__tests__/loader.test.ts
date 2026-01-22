@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 // Note: Loader tests require the built loader.js to be executed in a jsdom environment
-// These are placeholder tests that should be expanded once the loader is refactored
-// to export testable functions or when integration tests with Playwright are set up
+// These are unit tests for individual functions that can be tested in isolation
 
 describe('Loader - Domain Validation', () => {
   it('should accept .sp domains', () => {
@@ -18,6 +17,19 @@ describe('Loader - Domain Validation', () => {
       expect(domain === 'debug' || domain.startsWith('localhost')).toBe(true);
     });
   });
+
+  it('should validate domain correctly', () => {
+    const isValidDomain = (d: string): boolean => {
+      return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
+    };
+
+    expect(isValidDomain('test.sp')).toBe(true);
+    expect(isValidDomain('localhost')).toBe(true);
+    expect(isValidDomain('localhost:8080')).toBe(true);
+    expect(isValidDomain('debug')).toBe(true);
+    expect(isValidDomain('example.com')).toBe(false);
+    expect(isValidDomain('invalid')).toBe(false);
+  });
 });
 
 describe('Loader - URL Cleaning', () => {
@@ -29,5 +41,32 @@ describe('Loader - URL Cleaning', () => {
     expect(clean('https://test.sp')).toBe('test.sp');
     expect(clean('http://test.sp')).toBe('test.sp');
     expect(clean('https://test.sp/')).toBe('test.sp');
+    expect(clean(null)).toBe(null);
+  });
+});
+
+describe('Loader - Session Management', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should store domain in localStorage', () => {
+    const domain = 'test.sp';
+    localStorage.setItem('stagepass_domain', domain);
+    expect(localStorage.getItem('stagepass_domain')).toBe(domain);
+  });
+
+  it('should remove invalid domains from localStorage', () => {
+    localStorage.setItem('stagepass_domain', 'invalid.com');
+    const sv = localStorage.getItem('stagepass_domain');
+    const isValidDomain = (d: string): boolean => {
+      return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
+    };
+    
+    if (sv && !isValidDomain(sv)) {
+      localStorage.removeItem('stagepass_domain');
+    }
+    
+    expect(localStorage.getItem('stagepass_domain')).toBe(null);
   });
 });

@@ -9,3 +9,4 @@ dist/
 
 # AUSNAHME: Der Loader Build MUSS committed werden für CDN
 !packages/loader/dist/
+ISSUES.md
