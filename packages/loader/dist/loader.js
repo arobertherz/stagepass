@@ -5,43 +5,30 @@ var Stagepass = (() => {
     const P = "stagepass";
     const isValidDomain = (d) => d === "debug" || d.endsWith(".sp") || d === "localhost" || d.startsWith("localhost:");
     const p = new URLSearchParams(window.location.search);
-    const loaderScript = document.querySelector('script[src*="loader"]');
-    let modulesParam = null;
-    let silentParam = null;
-    if (loaderScript && loaderScript.src) {
+    function getCallerLocation() {
+      var _a;
       try {
-        const scriptUrl = new URL(loaderScript.src);
-        modulesParam = scriptUrl.searchParams.get("modules");
-        silentParam = scriptUrl.searchParams.get("silent");
-      } catch (e) {
-        const modulesMatch = loaderScript.src.match(/[?&]modules(=([^&]*))?/);
-        if (modulesMatch) {
-          modulesParam = modulesMatch[2] !== void 0 ? modulesMatch[2] : "";
+        const stack = (_a = new Error().stack) == null ? void 0 : _a.split("\n");
+        if (!stack) return "";
+        const loaderPattern = /loader(?:\.min)?\.js/i;
+        for (let i = 3; i < stack.length; i++) {
+          const line = stack[i];
+          const match = line.match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
+          if (match) {
+            const file = match[1];
+            if (!loaderPattern.test(file)) return ` ${file}:${match[2]}`;
+          }
         }
-        const silentMatch = loaderScript.src.match(/[?&]silent/);
-        if (silentMatch) {
-          silentParam = "";
-        }
+      } catch (_) {
       }
+      return "";
     }
     function log(level, ...args) {
-      var _a;
       const v = localStorage.getItem(K);
       if (!v) return;
       const t = (/* @__PURE__ */ new Date()).toTimeString().split(" ")[0];
-      let c = "";
-      try {
-        const s = (_a = new Error().stack) == null ? void 0 : _a.split("\n");
-        if (s) {
-          const l = s.find((x, i) => i > 2 && !x.includes("log"));
-          if (l) {
-            const m = l.match(/:([0-9]+):/);
-            if (m) c = `:${m[1]}`;
-          }
-        }
-      } catch (e) {
-      }
-      const pre = `[\u{1F3AB} ${t}${c ? " \u{1F4CD}" + c : ""}]`;
+      const loc = getCallerLocation();
+      const pre = `[\u{1F3AB} ${t}${loc ? " |" + loc : ""}]`;
       if (level === "error") {
         console.log(`%c${pre}`, "color: red; font-weight: bold;", ...args);
       } else if (console[level]) {
@@ -56,6 +43,16 @@ var Stagepass = (() => {
     window.splog = splog;
     window.spwarn = spwarn;
     window.sperror = sperror;
+    function spLog(...args) {
+      let level = "log";
+      if (args.length > 0 && (args[0] === "warn" || args[0] === "error")) {
+        level = args[0];
+        args = args.slice(1);
+      }
+      log(level, ...args);
+    }
+    const spWarn = (...args) => log("warn", ...args);
+    const spError = (...args) => log("error", ...args);
     const clean = (d) => d ? d.replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
     let paramProcessed = false;
     let sv = localStorage.getItem(K);
@@ -99,7 +96,7 @@ var Stagepass = (() => {
     const env = isLocal ? "local" : hostname.endsWith(".webflow.io") ? "staging" : "production";
     const hasValidSession = sv && isValidDomain(sv);
     const shouldSuppress = !hasValidSession && !p.has(P);
-    if (shouldSuppress && (env === "production" || env === "staging" && silentParam !== null)) {
+    if (shouldSuppress && env === "production") {
       const noop = () => {
       };
       console.log = console.warn = console.error = console.info = console.debug = noop;
@@ -110,17 +107,21 @@ var Stagepass = (() => {
       env,
       domain: dom || hostname,
       timestamp: sessionStartTime,
-      version: "1.1.0"
+      version: "1.1.4"
     });
-    let readyResolve = null;
-    let readyReject = null;
-    const readyPromise = new Promise((resolve, reject) => {
-      readyResolve = resolve;
-      readyReject = reject;
-    });
-    stagepassObj.ready = readyPromise;
+    stagepassObj.log = spLog;
+    stagepassObj.warn = spWarn;
+    stagepassObj.error = spError;
+    stagepassObj.resolveLocalUrl = (relativePath) => {
+      const v = stagepassObj.vars;
+      if (!v.isLocal || !v.domain) return "";
+      const clean2 = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+      return clean2 ? `https://${v.domain}/${clean2}?_cb=${v.timestamp}` : "";
+    };
     window.stagepass = stagepassObj;
     globalThis.stagepass = stagepassObj;
+    window.sp = stagepassObj;
+    globalThis.sp = stagepassObj;
     function swapEl(sel, pathAttr, srcAttr, type, skipAttrs) {
       document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
         el.setAttribute("data-stagepass-processed", "true");
@@ -137,7 +138,14 @@ var Stagepass = (() => {
             if (match) lp = match[1];
           }
         }
-        const url = swap && lp && dom ? `https://${dom}/${lp.startsWith("/") ? lp.substring(1) : lp}?_cb=${cacheBust}` : ps;
+        let url;
+        if (swap && lp && dom) {
+          url = `https://${dom}/${lp.startsWith("/") ? lp.substring(1) : lp}?_cb=${cacheBust}`;
+        } else if (el.getAttribute("data-stagepass-cachebust") === "true") {
+          url = ps + (ps.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+        } else {
+          url = ps;
+        }
         if (!url) return;
         const n = document.createElement(type);
         if (type === "script") {
@@ -163,64 +171,10 @@ var Stagepass = (() => {
         }
       });
     }
-    function loadModules() {
-      if (modulesParam === null) {
-        if (readyResolve) {
-          readyResolve();
-        }
-        return;
-      }
-      const modulesToLoad = modulesParam === "" ? ["all"] : modulesParam.split(",").map((m) => m.trim()).filter(Boolean);
-      if (modulesToLoad.length === 0) return;
-      let baseUrl = window.location.origin;
-      if (loaderScript && loaderScript.src) {
-        try {
-          const scriptUrl = new URL(loaderScript.src);
-          const pathParts = scriptUrl.pathname.split("/");
-          pathParts.pop();
-          baseUrl = `${scriptUrl.origin}${pathParts.join("/")}`;
-        } catch (e) {
-          baseUrl = loaderScript.src.replace(/\/[^\/\?]+(\?.*)?$/, "");
-        }
-      }
-      let currentIndex = 0;
-      function loadNext() {
-        if (currentIndex >= modulesToLoad.length) {
-          if (env !== "production") {
-            splog("\u2705 All modules loaded");
-          }
-          if (readyResolve) {
-            readyResolve();
-          }
-          return;
-        }
-        const moduleName = modulesToLoad[currentIndex];
-        const moduleUrl = `${baseUrl}/${moduleName}.min.js`;
-        const script = document.createElement("script");
-        script.onload = () => {
-          if (env !== "production") {
-            splog(`\u{1F4E6} Module loaded: ${moduleName}`);
-          }
-          currentIndex++;
-          loadNext();
-        };
-        script.onerror = () => {
-          if (env !== "production") {
-            sperror(`Failed to load module: ${moduleName}`);
-          }
-          currentIndex++;
-          loadNext();
-        };
-        script.src = moduleUrl;
-        document.head.appendChild(script);
-      }
-      loadNext();
-    }
     const process = () => {
-      swapEl("script[data-stagepass]", "data-stagepass-path", "data-src", "script", ["data-src", "data-stagepass", "data-stagepass-path"]);
-      swapEl('link[rel="stylesheet"][data-stagepass]', "data-stagepass-path", "data-href", "link", ["href", "data-href", "data-stagepass", "data-stagepass-path"]);
+      swapEl("script[data-stagepass]", "data-stagepass-path", "data-src", "script", ["data-src", "data-stagepass", "data-stagepass-path", "data-stagepass-cachebust"]);
+      swapEl('link[rel="stylesheet"][data-stagepass]', "data-stagepass-path", "data-href", "link", ["href", "data-href", "data-stagepass", "data-stagepass-path", "data-stagepass-cachebust"]);
     };
-    loadModules();
     process();
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", process);

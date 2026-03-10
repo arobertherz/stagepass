@@ -111,6 +111,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `data-src` - For scripts (instead of `src` attribute)
 -   `data-href` - For stylesheets (instead of `href` attribute)
 -   `data-stagepass-path` - Optional local path (if omitted, filename is extracted from production URL)
+-   `data-stagepass-cachebust="true"` - Optional; in production, append ?_cb=timestamp to the asset URL for cache busting
 -   `data-stagepass-processed` - Internal flag set after processing (prevents double-processing)
 
 ### Loader: CSS Selectors
@@ -139,6 +140,11 @@ The `modules` and `silent` parameters are passed via the loader script tag itsel
 -   `window.splog(...args)` - Structured logging (only when session active)
 -   `window.spwarn(...args)` - Warning logs
 -   `window.sperror(...args)` - Error logs
+
+### Loader: Runtime API (stagepass / sp)
+-   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version`
+-   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (preferred over splog/spwarn/sperror)
+-   `stagepass.resolveLocalUrl(relativePath)` - Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
 
 ### Modules: Loading Methods
 -   **Automatic (via script tag parameter):** Add `?modules` or `?modules=inject` to the loader script src - Core loader loads modules dynamically

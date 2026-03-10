@@ -11,17 +11,25 @@
     type?: 'script' | 'style';
     stagepass?: boolean;
     localPath?: string;
+    path?: string; // Alias for localPath
     id?: string;
     async?: boolean;
     defer?: boolean;
+    /** In production, append ?_cb=timestamp to force fresh load */
+    cacheBust?: boolean;
     attributes?: Record<string, string>;
     position?: InjectPosition;
   }
 
+  interface InjectBatchOptions {
+    scripts?: InjectOptions[];
+    styles?: InjectOptions[];
+  }
+
   // Get Stagepass vars (must be available from core loader)
   function getVars() {
-    // Support both window.stagepass and stagepass (global variable)
-    const sp = (window as any).stagepass || (globalThis as any).stagepass;
+    // Support window.stagepass, global stagepass, and sp alias
+    const sp = (window as any).stagepass || (globalThis as any).stagepass || (window as any).sp || (globalThis as any).sp;
     if (!sp || !sp.vars) {
       throw new Error('Stagepass core loader must be loaded before modules');
     }
@@ -37,38 +45,70 @@
   }
 
   // Extract filename from URL
-  function extractFilename(url: string): string {
+  function extractFilename(url: string | undefined): string {
+    if (!url || typeof url !== 'string') return 'file';
     try {
       const urlObj = new URL(url);
-      const pathParts = urlObj.pathname.split('/');
+      // pathname is always a string (empty string if no path)
+      const pathname = urlObj.pathname || '';
+      if (!pathname || pathname.length === 0) {
+        // Fallback to regex extraction if pathname is empty
+        const match = url.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+        return match ? match[1] : 'file';
+      }
+      const pathParts = pathname.split('/');
       return pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || 'file';
     } catch (e) {
-      const match = url.match(/\/([^\/\?#]+)(?:\?|#|$)/);
-      return match ? match[1] : 'file';
+      // If URL parsing fails, try regex fallback
+      try {
+        const match = url.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+        return match ? match[1] : 'file';
+      } catch (e2) {
+        return 'file';
+      }
     }
   }
 
   // Auto-detect type from extension
-  function detectType(src: string, explicitType?: 'script' | 'style'): 'script' | 'style' {
+  function detectType(src: string | undefined, explicitType?: 'script' | 'style'): 'script' | 'style' {
     if (explicitType) return explicitType;
-    const ext = src.split('.').pop()?.toLowerCase();
-    if (ext === 'css') return 'style';
+    if (!src || typeof src !== 'string') return 'script'; // Default if src is missing or invalid
+    try {
+      const ext = src.split('.').pop()?.toLowerCase();
+      if (ext === 'css') return 'style';
+    } catch (e) {
+      // If split fails, default to script
+    }
     return 'script'; // Default to script
   }
 
   // Resolve source URL (local vs production)
   function resolveSource(options: InjectOptions): string {
     const vars = getVars();
-    const { src, stagepass, localPath } = options;
+    const { src, stagepass, localPath, path, cacheBust } = options;
 
-    // If stagepass is enabled and we're in local mode
+    // Ensure src is valid
+    if (!src || typeof src !== 'string') {
+      throw new Error('Invalid src: must be a non-empty string');
+    }
+
+    // If stagepass is enabled and we're in local mode, use loader's resolver when available
     if (stagepass !== false && vars.isLocal) {
-      const filename = localPath || extractFilename(src);
+      const filename = localPath || path || extractFilename(src);
+      if (!filename || typeof filename !== 'string') return src;
       const cleanPath = filename.startsWith('/') ? filename.substring(1) : filename;
+      const sp = (window as any).stagepass || (globalThis as any).stagepass || (window as any).sp || (globalThis as any).sp;
+      if (sp && typeof sp.resolveLocalUrl === 'function') {
+        const localUrl = sp.resolveLocalUrl(cleanPath);
+        if (localUrl) return localUrl;
+      }
       return `https://${vars.domain}/${cleanPath}?_cb=${vars.timestamp}`;
     }
 
-    // Production URL
+    // Production: optional cache busting
+    if (cacheBust) {
+      return src + (src.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+    }
     return src;
   }
 
@@ -130,6 +170,17 @@
   // Inject a single resource
   function injectSingle(options: InjectOptions): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Validate required fields
+      if (!options.src) {
+        const vars = getVars();
+        const error = new Error('InjectOptions must have a "src" property');
+        if (vars.env !== 'production') {
+          console.error('[Stagepass]', error);
+        }
+        reject(error);
+        return;
+      }
+      
       const vars = getVars();
       const detectedType = detectType(options.src, options.type);
       const resolvedSrc = resolveSource(options);
@@ -242,9 +293,40 @@
     });
   }
 
-  // Main inject function (handles single or array)
-  async function inject(options: InjectOptions | InjectOptions[]): Promise<void> {
-    const items = Array.isArray(options) ? options : [options];
+  // Main inject function (handles single, array, or batch object)
+  async function inject(options: InjectOptions | InjectOptions[] | InjectBatchOptions): Promise<void> {
+    let items: InjectOptions[] = [];
+    
+    // Handle batch object: { scripts: [...], styles: [...] }
+    if (!Array.isArray(options) && typeof options === 'object' && ('scripts' in options || 'styles' in options)) {
+      const batch = options as InjectBatchOptions;
+      if (batch.scripts) {
+        // Filter out invalid items (must have src as non-empty string)
+        items.push(...batch.scripts
+          .filter((item): item is InjectOptions => {
+            return item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0;
+          })
+          .map(item => ({ ...item, type: 'script' as const })));
+      }
+      if (batch.styles) {
+        // Filter out invalid items (must have src as non-empty string)
+        items.push(...batch.styles
+          .filter((item): item is InjectOptions => {
+            return item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0;
+          })
+          .map(item => ({ ...item, type: 'style' as const })));
+      }
+    } else {
+      // Handle single object or array
+      // Type guard: ensure options is InjectOptions (not InjectBatchOptions)
+      if (Array.isArray(options)) {
+        items = options.filter((item): item is InjectOptions => 
+          item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0
+        );
+      } else if (options && typeof options === 'object' && 'src' in options && typeof (options as any).src === 'string' && (options as any).src.trim().length > 0) {
+        items = [options as InjectOptions];
+      }
+    }
     
     for (const item of items) {
       try {
@@ -264,4 +346,6 @@
   sp.inject = inject;
   // Also expose as global variable (without window prefix)
   (globalThis as any).stagepass = sp;
+  (window as any).sp = sp;
+  (globalThis as any).sp = sp;
 })();

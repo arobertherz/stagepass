@@ -36,11 +36,22 @@ export async function link(domain, options = {}) {
       const newBlock = `
 ${blockStart}
 ${targetDomain} {
+    @options method OPTIONS
+    handle @options {
+        header Access-Control-Allow-Origin *
+        header Access-Control-Allow-Methods *
+        header Access-Control-Allow-Headers *
+        header Access-Control-Max-Age 86400
+        respond 204
+    }
+
     root * "${currentDir}"
     php_fastcgi 127.0.0.1:9000
     file_server
     tls internal
     header Access-Control-Allow-Origin *
+    header Access-Control-Allow-Methods *
+    header Access-Control-Allow-Headers *
 }
 ${blockEnd}`;
 

@@ -55,7 +55,8 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * [📦 Installation](#-installation)
 * [🚀 Quick Start](#-quick-start)
 * [🛠 CLI Reference](#-cli-reference)
-* [🧩 Modules & API](#-modules--api)
+* [🎛 Loader Runtime API](#-loader-runtime-api)
+* [🧩 Modules](#-modules)
 * [🔒 Security Architecture](#-security-architecture)
 * [🤝 Contributing](#-contributing)
 * [📄 License](#-license)
@@ -73,7 +74,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Debug Mode:** Enable logging without URL swapping for troubleshooting.
 * **Console Suppression:** Automatically suppresses console logs in production mode (configurable for staging).
 * **Modular Architecture:** Core loader (<3KB) with optional modules loaded on-demand.
-* **Programmatic API:** Access environment variables and inject assets programmatically via `stagepass` (or `window.stagepass`).
+* **Programmatic API:** Access environment variables and inject assets programmatically via `sp` (preferred) or `stagepass` / `window.stagepass`.
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
 * **Security First:** Strict origin whitelisting ensures only *your* local machine can inject code.
@@ -127,7 +128,17 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
 ```
 
 **Option 2 - Local** (to avoid cross-domain issues):
-Download `loader.min.js` from the npm package and upload it to your Webflow project assets, then reference it locally:
+
+You can either download the built files manually or install them via npm inside your project:
+
+```bash
+# Add loader (and optional modules) to your project
+npm install @stagepass/loader @stagepass/modules --save-dev
+```
+
+- The compiled files live in `node_modules/@stagepass/loader/dist/loader.min.js`
+  (and `node_modules/@stagepass/modules/dist/inject.min.js` for the Injector).
+- Copy them into your project’s asset folder (or let your bundler do it), then reference them locally:
 ```html
 <script src="/loader.min.js"></script>
 <!-- Or if hosted in a subdirectory: -->
@@ -135,7 +146,7 @@ Download `loader.min.js` from the npm package and upload it to your Webflow proj
 ```
 
 **Optional - Load Modules:**
-Modules extend the core loader with additional features (e.g., programmatic injection). Load them automatically via script tag parameter or manually:
+Modules extend the core loader with additional features (e.g., programmatic injection). **Modules depend on the Loader:** the loader script must always be included first; when using npm, `@stagepass/modules` declares `@stagepass/loader` as a peer dependency (install both, e.g. `npm install @stagepass/loader @stagepass/modules`). Load modules via script tag parameter or manually:
 
 **Automatic (via script tag parameter):**
 ```html
@@ -189,6 +200,7 @@ In the Webflow Designer, instead of hardcoding your script `src` or stylesheet `
 * `data-src` / `data-href`: The production URL (loaded by default for all users).
 * `data-stagepass-path`: The relative path to the file on your local machine (optional - if omitted, filename is extracted from production URL and used as root path).
 * `data-stagepass="true"`: Enables Stagepass for this element.
+* `data-stagepass-cachebust="true"`: In production, appends `?_cb=timestamp` to the asset URL so the browser loads a fresh copy each page load (optional).
 
 ### 5. Activate Dev Mode
 Go to your live Webflow URL and append the parameter:
@@ -209,36 +221,6 @@ Go to your live Webflow URL and append the parameter:
 **Note:** The `modules` and `silent` parameters are passed via the loader script tag (e.g., `loader.min.js?modules=inject&silent`), not as page URL parameters.
 
 **Visual Indicator:** When Stagepass is active, a small badge appears in the top-right corner of the page. Click it to disconnect and deactivate Stagepass (equivalent to `?stagepass=off`).
-
-### 6. Use Programmatic API (Optional)
-If you've loaded the Injector module, you can programmatically inject assets from your JavaScript code:
-
-```javascript
-// Access environment variables
-console.log(stagepass.vars.isLocal);  // true/false
-console.log(stagepass.vars.env);      // 'local' | 'staging' | 'production'
-console.log(stagepass.vars.domain);   // Current domain
-console.log(stagepass.vars.timestamp); // Session start time
-
-// Inject assets programmatically
-window.stagepass.inject({
-  src: 'https://cdn.example.com/lib.js',
-  stagepass: true,        // Enable local swapping
-  localPath: 'lib.js',     // Optional: local file path
-  id: 'my-library',        // For deduplication
-  position: 'head',        // 'head' | 'body-start' | 'body-end' | { target: '#id', action: 'before' }
-  async: false,
-  defer: true
-});
-
-// Inject multiple assets
-window.stagepass.inject([
-  { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js' },
-  { src: 'https://cdn.example.com/lib2.js', stagepass: true, localPath: 'lib2.js' }
-]);
-```
-
----
 
 ## 🛠 CLI Reference
 
@@ -264,7 +246,56 @@ Stagepass does not allow arbitrary code injection. The loader implements strict 
 
 ---
 
-## 🧩 Modules & API
+## 🎛 Loader Runtime API
+
+### Global Variables (`sp.vars`)
+
+Access runtime information via `sp.vars` (preferred), or `stagepass.vars` / `window.stagepass.vars`:
+
+```javascript
+sp.vars.isLocal     // boolean - true if Stagepass active or localhost
+sp.vars.env         // 'local' | 'staging' | 'production'
+sp.vars.domain      // string - Current domain (local or production)
+sp.vars.timestamp   // number - Session start time (for cache-busting)
+sp.vars.version     // string - Loader version
+```
+
+### Local URL helper (`sp.resolveLocalUrl`)
+
+The loader exposes a single place to build local asset URLs (used by modules and by custom code):
+
+```javascript
+// Returns local URL when a Stagepass session is active, otherwise ''
+sp.resolveLocalUrl('js/app.js');   // e.g. 'https://my-project.sp/js/app.js?_cb=1234567890'
+sp.resolveLocalUrl('/lib.js');     // leading slash is normalized
+```
+
+### Logging API
+
+Stagepass provides a structured logging API that wraps the browser console when a Stagepass session is active:
+
+```javascript
+// Preferred API
+sp.log('Hello from Stagepass');          // info / log
+sp.log('warn', 'Something looks off');   // warn level
+sp.log('error', 'Something went wrong'); // error level
+
+sp.warn('This is a warning');
+sp.error('This is an error');
+
+// Legacy aliases (deprecated but still supported)
+splog('message');   // use sp.log instead
+spwarn('warning');  // use sp.warn instead
+sperror('error');   // use sp.error instead
+```
+
+`sp.log` automatically prefixes messages with a timestamp and (if available) the calling file and line, e.g. `[🎫 11:58:02 | app.js:830]`. Logging is only active when a Stagepass session is enabled; otherwise the helper functions are effectively no-ops.
+
+---
+
+## 🧩 Modules
+
+Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). The loader script must be loaded before any module script. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency—install the loader when you install modules.
 
 ### Available Modules
 
@@ -274,31 +305,20 @@ Stagepass does not allow arbitrary code injection. The loader implements strict 
 - Flexible positioning and deduplication
 - Load via `?modules=inject` or manually as script tag
 
-### Global Variables API
+### Injector: Programmatic Injection API
 
-Access runtime information via `stagepass.vars` (or `window.stagepass.vars`):
-
-```javascript
-stagepass.vars.isLocal    // boolean - true if Stagepass active or localhost
-stagepass.vars.env        // 'local' | 'staging' | 'production'
-stagepass.vars.domain     // string - Current domain (local or production)
-stagepass.vars.timestamp   // number - Session start time (for cache-busting)
-stagepass.vars.version     // string - Loader version
-```
-
-### Programmatic Injection API
-
-When the Injector module is loaded, use `stagepass.inject()` (or `window.stagepass.inject()`):
+When the Injector module is loaded, use `sp.inject()` (preferred). `stagepass.inject()` and `window.stagepass.inject()` remain available as aliases:
 
 ```javascript
 // Single injection
-await stagepass.inject({
+await sp.inject({
   src: 'https://cdn.example.com/lib.js',
   stagepass: true,        // Enable local swapping when active
   localPath: 'lib.js',     // Optional: local file path (defaults to filename from src)
   id: 'my-library',        // Optional: for deduplication
   position: 'head',        // 'head' | 'body-start' | 'body-end' | { target: '#id', action: 'before' | 'after' }
   type: 'script',          // Optional: 'script' | 'style' (auto-detected from extension)
+  cacheBust: true,        // Optional: in production, append ?_cb=timestamp to force fresh load
   async: false,            // Optional: default false
   defer: true,             // Optional: default true (unless async is true)
   attributes: {            // Optional: additional HTML attributes
@@ -307,7 +327,7 @@ await stagepass.inject({
 });
 
 // Batch injection
-await stagepass.inject([
+await sp.inject([
   { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js' },
   { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style' }
 ]);

@@ -6,45 +6,29 @@
   
   const p = new URLSearchParams(window.location.search);
   
-  // Get parameters from the loader script tag itself (not from page URL)
-  const loaderScript = document.querySelector('script[src*="loader"]') as HTMLScriptElement;
-  let modulesParam: string | null = null;
-  let silentParam: string | null = null;
-  
-  if (loaderScript && loaderScript.src) {
+  function getCallerLocation(): string {
     try {
-      const scriptUrl = new URL(loaderScript.src);
-      modulesParam = scriptUrl.searchParams.get('modules');
-      silentParam = scriptUrl.searchParams.get('silent');
-    } catch (e) {
-      // Fallback: try to extract from src string
-      const modulesMatch = loaderScript.src.match(/[?&]modules(=([^&]*))?/);
-      if (modulesMatch) {
-        modulesParam = modulesMatch[2] !== undefined ? modulesMatch[2] : '';
+      const stack = new Error().stack?.split('\n');
+      if (!stack) return '';
+      const loaderPattern = /loader(?:\.min)?\.js/i;
+      for (let i = 3; i < stack.length; i++) {
+        const line = stack[i];
+        const match = line.match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
+        if (match) {
+          const file = match[1];
+          if (!loaderPattern.test(file)) return ` ${file}:${match[2]}`;
+        }
       }
-      const silentMatch = loaderScript.src.match(/[?&]silent/);
-      if (silentMatch) {
-        silentParam = '';
-      }
-    }
+    } catch (_) {}
+    return '';
   }
-  
+
   function log(level: string, ...args: any[]) {
     const v = localStorage.getItem(K);
     if (!v) return;
     const t = new Date().toTimeString().split(' ')[0];
-    let c = '';
-    try {
-      const s = new Error().stack?.split('\n');
-      if (s) {
-        const l = s.find((x, i) => i > 2 && !x.includes('log'));
-        if (l) {
-          const m = l.match(/:([0-9]+):/);
-          if (m) c = `:${m[1]}`;
-        }
-      }
-    } catch (e) {}
-    const pre = `[🎫 ${t}${c ? ' 📍' + c : ''}]`;
+    const loc = getCallerLocation();
+    const pre = `[🎫 ${t}${loc ? ' |' + loc : ''}]`;
     if (level === 'error') {
       console.log(`%c${pre}`, 'color: red; font-weight: bold;', ...args);
     } else if (console[level as keyof Console]) {
@@ -54,12 +38,26 @@
     }
   }
 
+  /** @deprecated Use sp.log or stagepass.log instead */
   const splog = (...args: any[]) => log('log', ...args);
+  /** @deprecated Use sp.warn or stagepass.warn instead */
   const spwarn = (...args: any[]) => log('warn', ...args);
+  /** @deprecated Use sp.error or stagepass.error instead */
   const sperror = (...args: any[]) => log('error', ...args);
   (window as any).splog = splog;
   (window as any).spwarn = spwarn;
   (window as any).sperror = sperror;
+
+  function spLog(...args: any[]) {
+    let level: string = 'log';
+    if (args.length > 0 && (args[0] === 'warn' || args[0] === 'error')) {
+      level = args[0];
+      args = args.slice(1);
+    }
+    log(level, ...args);
+  }
+  const spWarn = (...args: any[]) => log('warn', ...args);
+  const spError = (...args: any[]) => log('error', ...args);
 
   const clean = (d: string | null): string | null => d ? d.replace(/^https?:\/\//, '').replace(/\/$/, '') : null;
 
@@ -109,7 +107,8 @@
 
   const hasValidSession = sv && isValidDomain(sv);
   const shouldSuppress = !hasValidSession && !p.has(P);
-  if (shouldSuppress && (env === 'production' || (env === 'staging' && silentParam !== null))) {
+  // Suppress console logs in production, allow in staging and local
+  if (shouldSuppress && env === 'production') {
     const noop = () => {};
     console.log = console.warn = console.error = console.info = console.debug = noop;
   }
@@ -120,21 +119,22 @@
     env,
     domain: dom || hostname,
     timestamp: sessionStartTime,
-    version: '1.1.0'
+    version: '1.1.4'
   });
-  
-  // Create ready promise for modules loading
-  let readyResolve: (() => void) | null = null;
-  let readyReject: ((error: Error) => void) | null = null;
-  const readyPromise = new Promise<void>((resolve, reject) => {
-    readyResolve = resolve;
-    readyReject = reject;
-  });
-  stagepassObj.ready = readyPromise;
-  
+  stagepassObj.log = spLog;
+  stagepassObj.warn = spWarn;
+  stagepassObj.error = spError;
+  stagepassObj.resolveLocalUrl = (relativePath: string): string => {
+    const v = stagepassObj.vars;
+    if (!v.isLocal || !v.domain) return '';
+    const clean = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    return clean ? `https://${v.domain}/${clean}?_cb=${v.timestamp}` : '';
+  };
   (window as any).stagepass = stagepassObj;
   // Also expose as global variable (without window prefix)
   (globalThis as any).stagepass = stagepassObj;
+  (window as any).sp = stagepassObj;
+  (globalThis as any).sp = stagepassObj;
 
   function swapEl(sel: string, pathAttr: string, srcAttr: string, type: 'script' | 'link', skipAttrs: string[]) {
     document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el: any) => {
@@ -152,7 +152,14 @@
           if (match) lp = match[1];
         }
       }
-      const url = swap && lp && dom ? `https://${dom}/${lp.startsWith('/') ? lp.substring(1) : lp}?_cb=${cacheBust}` : ps;
+      let url: string;
+      if (swap && lp && dom) {
+        url = `https://${dom}/${lp.startsWith('/') ? lp.substring(1) : lp}?_cb=${cacheBust}`;
+      } else if (el.getAttribute('data-stagepass-cachebust') === 'true') {
+        url = ps + (ps.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+      } else {
+        url = ps;
+      }
       if (!url) return;
       const n = document.createElement(type);
       if (type === 'script') {
@@ -179,88 +186,10 @@
     });
   }
 
-  function loadModules() {
-    // If no modules parameter in script tag, resolve ready immediately
-    if (modulesParam === null) {
-      if (readyResolve) {
-        readyResolve();
-      }
-      return;
-    }
-
-    // If modules param exists but is empty (just ?modules), load 'all'
-    const modulesToLoad = modulesParam === ''
-      ? ['all']
-      : modulesParam.split(',').map(m => m.trim()).filter(Boolean);
-    
-    if (modulesToLoad.length === 0) return;
-
-    // Determine base URL from loader script (CDN or local)
-    // Remove query string and filename to get base directory
-    let baseUrl = window.location.origin;
-    if (loaderScript && loaderScript.src) {
-      try {
-        const scriptUrl = new URL(loaderScript.src);
-        // Remove filename and query string to get base directory
-        const pathParts = scriptUrl.pathname.split('/');
-        pathParts.pop(); // Remove filename
-        baseUrl = `${scriptUrl.origin}${pathParts.join('/')}`;
-      } catch (e) {
-        // Fallback: simple string replacement
-        baseUrl = loaderScript.src.replace(/\/[^\/\?]+(\?.*)?$/, '');
-      }
-    }
-
-    // Load modules sequentially and wait for each to complete
-    // This ensures modules are available immediately after loading
-    let currentIndex = 0;
-    function loadNext() {
-      if (currentIndex >= modulesToLoad.length) {
-        if (env !== 'production') {
-          splog('✅ All modules loaded');
-        }
-        // Resolve ready promise when all modules are loaded
-        if (readyResolve) {
-          readyResolve();
-        }
-        return;
-      }
-
-      const moduleName = modulesToLoad[currentIndex];
-      const moduleUrl = `${baseUrl}/${moduleName}.min.js`;
-      const script = document.createElement('script');
-      
-      script.onload = () => {
-        if (env !== 'production') {
-          splog(`📦 Module loaded: ${moduleName}`);
-        }
-        currentIndex++;
-        loadNext();
-      };
-      
-      script.onerror = () => {
-        if (env !== 'production') {
-          sperror(`Failed to load module: ${moduleName}`);
-        }
-        // Continue loading other modules even if one fails
-        currentIndex++;
-        loadNext();
-      };
-      
-      script.src = moduleUrl;
-      // No async attribute - load synchronously in sequence
-      document.head.appendChild(script);
-    }
-
-    loadNext();
-  }
-
   const process = () => {
-    swapEl('script[data-stagepass]', 'data-stagepass-path', 'data-src', 'script', ['data-src', 'data-stagepass', 'data-stagepass-path']);
-    swapEl('link[rel="stylesheet"][data-stagepass]', 'data-stagepass-path', 'data-href', 'link', ['href', 'data-href', 'data-stagepass', 'data-stagepass-path']);
+    swapEl('script[data-stagepass]', 'data-stagepass-path', 'data-src', 'script', ['data-src', 'data-stagepass', 'data-stagepass-path', 'data-stagepass-cachebust']);
+    swapEl('link[rel="stylesheet"][data-stagepass]', 'data-stagepass-path', 'data-href', 'link', ['href', 'data-href', 'data-stagepass', 'data-stagepass-path', 'data-stagepass-cachebust']);
   };
-
-  loadModules();
   process();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', process);
