@@ -57,6 +57,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * [🛠 CLI Reference](#-cli-reference)
 * [🎛 Loader Runtime API](#-loader-runtime-api)
 * [🧩 Modules](#-modules)
+* [🤖 AGENTS.md Templates](#-agentsmd-templates)
 * [🔒 Security Architecture](#-security-architecture)
 * [🤝 Contributing](#-contributing)
 * [📄 License](#-license)
@@ -305,6 +306,11 @@ Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.var
 - Flexible positioning and deduplication
 - Load via `?modules=inject` or manually as script tag
 
+**Cookies Module** (`cookies.min.js`)
+- Lightweight cookie utility helpers (no consent manager)
+- Read, write, delete, existence checks, and list helpers
+- Available as `sp.cookies.*`
+
 ### Injector: Programmatic Injection API
 
 When the Injector module is loaded, use `sp.inject()` (preferred). `stagepass.inject()` and `window.stagepass.inject()` remain available as aliases:
@@ -332,6 +338,84 @@ await sp.inject([
   { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style' }
 ]);
 ```
+
+### Cookies: Utility API
+
+When the Cookies module is loaded, use `sp.cookies`:
+
+```javascript
+sp.cookies.bake('token', 'abc123', { days: 7, path: '/' });
+sp.cookies.eat('token'); // 'abc123'
+sp.cookies.has('token'); // true
+sp.cookies.list(); // { token: 'abc123', ... }
+sp.cookies.throw('token', { path: '/' });
+```
+
+API reference:
+- `sp.cookies.bake(name, value, options?)`  
+  Creates/updates a cookie.
+- `sp.cookies.eat(name, options?)`  
+  Reads a cookie value. Returns `null` when not found.
+- `sp.cookies.throw(name, options?)`  
+  Deletes a cookie (writes `Max-Age=0` + expired date).
+- `sp.cookies.has(name)`  
+  Boolean existence check.
+- `sp.cookies.list(options?)`  
+  Returns all visible cookies as an object map.
+
+`bake` options:
+- `days?: number` - Expiration in days.
+- `maxAge?: number` - Expiration in seconds (`Max-Age`).
+- `path?: string` - Cookie path (default: `/`).
+- `domain?: string` - Cookie domain.
+- `secure?: boolean` - Defaults to `true` on HTTPS pages.
+- `sameSite?: 'Lax' | 'Strict' | 'None'` - Default: `Lax`.
+- `encode?: boolean` - URL-encode key/value (default: `true`).
+- `json?: boolean` - Store value as JSON string.
+
+`eat` / `list` options:
+- `decode?: boolean` - URL-decode values (default: `true`).
+- `json?: boolean` - Attempt `JSON.parse` for values.
+
+`throw` options:
+- `path?: string` (default: `/`)
+- `domain?: string`
+- `secure?: boolean`
+- `sameSite?: 'Lax' | 'Strict' | 'None'`
+
+JSON example:
+
+```javascript
+sp.cookies.bake('profile', { id: 7, plan: 'pro' }, { json: true, days: 30 });
+sp.cookies.eat('profile', { json: true }); // { id: 7, plan: 'pro' }
+```
+
+Notes and limitations:
+- JavaScript cannot read or delete `HttpOnly` cookies.
+- To reliably delete a cookie, use the same `path`/`domain` you used when writing it.
+- If `sameSite: 'None'` is used, the module enforces `Secure=true` (browser requirement).
+- This module provides cookie storage helpers only (bake/eat/throw). It does **not** implement consent management.
+
+---
+
+## 🤖 AGENTS.md Templates
+
+Use one of the following canonical profiles in your project-level `AGENTS.md` so IDE agents (e.g., Cursor) know exactly which Stagepass runtime APIs are available.
+
+### Canonical profile files
+- Loader only: [`AGENTS.LOADER.md`](./AGENTS.LOADER.md)
+- Loader + Modules (Injector + Cookies): [`AGENTS.MODULES.md`](./AGENTS.MODULES.md)
+
+### How to use
+1. Copy the relevant file content into your project `AGENTS.md`.
+2. Keep only one active profile per project to avoid ambiguous API assumptions.
+3. If your tooling supports remote include/import in AGENTS files, you can reference the raw GitHub URL instead of copy-paste.
+
+Example raw URLs:
+- `https://raw.githubusercontent.com/arobertherz/stagepass/master/AGENTS.LOADER.md`
+- `https://raw.githubusercontent.com/arobertherz/stagepass/master/AGENTS.MODULES.md`
+
+If your tooling does **not** support remote include/import, use copy-paste from the files above.
 
 ---
 

@@ -152,9 +152,10 @@ The `modules` and `silent` parameters are passed via the loader script tag itsel
     ```html
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1/dist/inject.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1/dist/cookies.min.js"></script>
     ```
 -   **Important:** Core loader must be loaded first, as modules require `stagepass.vars` (or `window.stagepass.vars`)
--   **Module Registration:** Modules automatically register themselves on `stagepass` (e.g., `stagepass.inject` or `window.stagepass.inject`)
+-   **Module Registration:** Modules automatically register themselves on `stagepass` (e.g., `stagepass.inject`, `stagepass.cookies`, or `window.stagepass.*`)
 -   **Global Variable:** `stagepass` is available as a global variable (without `window.` prefix) for convenience, but `window.stagepass` also works
 -   **Parameter Source:** The `modules` parameter is read from the loader script tag's `src` attribute, not from the page URL
 
