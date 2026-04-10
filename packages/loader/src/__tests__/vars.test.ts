@@ -129,7 +129,16 @@ describe('Stagepass Variables', () => {
         env: 'local' as const,
         domain: 'test.sp',
         timestamp: 1234567890,
-        version: '1.0.3'
+        version: '1.2.0',
+        client: {
+          theme: { preferred: 'dark', current: 'dark' },
+          browser: { family: 'chrome', major: 123, userAgent: 'ua' },
+          os: { family: 'macos' },
+          device: { type: 'desktop', touch: false },
+          viewport: { width: 1440, height: 900, dpr: 2 },
+          locale: { language: 'en-US', timezone: 'Europe/Berlin' },
+          capabilities: { cookiesEnabled: true, localStorage: true, sessionStorage: true }
+        }
       };
       
       expect(vars).toHaveProperty('isLocal');
@@ -137,6 +146,10 @@ describe('Stagepass Variables', () => {
       expect(vars).toHaveProperty('domain');
       expect(vars).toHaveProperty('timestamp');
       expect(vars).toHaveProperty('version');
+      expect(vars).toHaveProperty('client');
+      expect(vars.client).toHaveProperty('theme');
+      expect(vars.client).toHaveProperty('browser');
+      expect(vars.client).toHaveProperty('viewport');
     });
 
     it('should have correct types', () => {
@@ -145,7 +158,16 @@ describe('Stagepass Variables', () => {
         env: 'local' as const,
         domain: 'test.sp',
         timestamp: 1234567890,
-        version: '1.0.3'
+        version: '1.2.0',
+        client: {
+          theme: { preferred: 'dark', current: 'dark' },
+          browser: { family: 'chrome', major: 123, userAgent: 'ua' },
+          os: { family: 'macos' },
+          device: { type: 'desktop', touch: false },
+          viewport: { width: 1440, height: 900, dpr: 2 },
+          locale: { language: 'en-US', timezone: 'Europe/Berlin' },
+          capabilities: { cookiesEnabled: true, localStorage: true, sessionStorage: true }
+        }
       };
       
       expect(typeof vars.isLocal).toBe('boolean');
@@ -153,6 +175,8 @@ describe('Stagepass Variables', () => {
       expect(typeof vars.domain).toBe('string');
       expect(typeof vars.timestamp).toBe('number');
       expect(typeof vars.version).toBe('string');
+      expect(typeof vars.client.viewport.width).toBe('number');
+      expect(typeof vars.client.browser.family).toBe('string');
     });
   });
 });

@@ -101,13 +101,110 @@ var Stagepass = (() => {
       };
       console.log = console.warn = console.error = console.info = console.debug = noop;
     }
+    function getBrowserInfo(ua) {
+      let family = "unknown";
+      let major = null;
+      let m = null;
+      if (/Edg\/(\d+)/.test(ua)) {
+        family = "edge";
+        m = ua.match(/Edg\/(\d+)/);
+      } else if (/OPR\/(\d+)/.test(ua)) {
+        family = "opera";
+        m = ua.match(/OPR\/(\d+)/);
+      } else if (/Firefox\/(\d+)/.test(ua)) {
+        family = "firefox";
+        m = ua.match(/Firefox\/(\d+)/);
+      } else if (/Chrome\/(\d+)/.test(ua)) {
+        family = "chrome";
+        m = ua.match(/Chrome\/(\d+)/);
+      } else if (/Version\/(\d+).+Safari\//.test(ua)) {
+        family = "safari";
+        m = ua.match(/Version\/(\d+)/);
+      }
+      if (m && m[1]) major = Number(m[1]);
+      return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+    }
+    function getOsInfo(ua) {
+      if (/Android/i.test(ua)) return { family: "android" };
+      if (/iPhone|iPad|iPod/i.test(ua)) return { family: "ios" };
+      if (/Mac OS X|Macintosh/i.test(ua)) return { family: "macos" };
+      if (/Windows NT/i.test(ua)) return { family: "windows" };
+      if (/Linux/i.test(ua)) return { family: "linux" };
+      return { family: "unknown" };
+    }
+    function getDeviceInfo(ua) {
+      const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
+      let type = "desktop";
+      if (/iPad|Tablet/i.test(ua)) type = "tablet";
+      else if (/Mobi|Android.+Mobile|iPhone/i.test(ua)) type = "mobile";
+      else if (/Android/i.test(ua) && touch) type = "tablet";
+      return { type, touch };
+    }
+    function getThemeInfo() {
+      let preferred = "no-preference";
+      let current = "unknown";
+      try {
+        if (window.matchMedia) {
+          if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            preferred = "dark";
+            current = "dark";
+          } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+            preferred = "light";
+            current = "light";
+          }
+        }
+      } catch (_) {
+      }
+      return { preferred, current };
+    }
+    function hasStorage(type) {
+      try {
+        const storage = window[type];
+        const key = "__stagepass_test__";
+        storage.setItem(key, "1");
+        storage.removeItem(key);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    function getClientInfo() {
+      const ua = navigator.userAgent || "";
+      let timezone = null;
+      try {
+        timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      } catch (_) {
+      }
+      return {
+        theme: getThemeInfo(),
+        browser: getBrowserInfo(ua),
+        os: getOsInfo(ua),
+        device: getDeviceInfo(ua),
+        viewport: {
+          width: window.innerWidth || 0,
+          height: window.innerHeight || 0,
+          dpr: window.devicePixelRatio || 1
+        },
+        locale: {
+          language: navigator.language || "unknown",
+          timezone
+        },
+        capabilities: {
+          cookiesEnabled: navigator.cookieEnabled === true,
+          localStorage: hasStorage("localStorage"),
+          sessionStorage: hasStorage("sessionStorage")
+        }
+      };
+    }
     const stagepassObj = window.stagepass || {};
+    const clientInfo = getClientInfo();
     stagepassObj.vars = Object.freeze({
       isLocal,
       env,
       domain: dom || hostname,
       timestamp: sessionStartTime,
-      version: "1.1.4"
+      version: "1.2.0",
+      client: clientInfo
     });
     stagepassObj.log = spLog;
     stagepassObj.warn = spWarn;
@@ -122,6 +219,42 @@ var Stagepass = (() => {
     globalThis.stagepass = stagepassObj;
     window.sp = stagepassObj;
     globalThis.sp = stagepassObj;
+    try {
+      if (window.matchMedia) {
+        const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+        const lightMq = window.matchMedia("(prefers-color-scheme: light)");
+        const updateTheme = () => {
+          var _a, _b;
+          if (!((_b = (_a = stagepassObj.vars) == null ? void 0 : _a.client) == null ? void 0 : _b.theme)) return;
+          if (darkMq.matches) {
+            stagepassObj.vars.client.theme.current = "dark";
+            stagepassObj.vars.client.theme.preferred = "dark";
+          } else if (lightMq.matches) {
+            stagepassObj.vars.client.theme.current = "light";
+            stagepassObj.vars.client.theme.preferred = "light";
+          } else {
+            stagepassObj.vars.client.theme.current = "unknown";
+            stagepassObj.vars.client.theme.preferred = "no-preference";
+          }
+        };
+        if (typeof darkMq.addEventListener === "function") {
+          darkMq.addEventListener("change", updateTheme);
+          lightMq.addEventListener("change", updateTheme);
+        } else if (typeof darkMq.addListener === "function") {
+          darkMq.addListener(updateTheme);
+          lightMq.addListener(updateTheme);
+        }
+      }
+    } catch (_) {
+    }
+    const updateViewport = () => {
+      var _a, _b;
+      if (!((_b = (_a = stagepassObj.vars) == null ? void 0 : _a.client) == null ? void 0 : _b.viewport)) return;
+      stagepassObj.vars.client.viewport.width = window.innerWidth || 0;
+      stagepassObj.vars.client.viewport.height = window.innerHeight || 0;
+      stagepassObj.vars.client.viewport.dpr = window.devicePixelRatio || 1;
+    };
+    window.addEventListener("resize", updateViewport);
     function swapEl(sel, pathAttr, srcAttr, type, skipAttrs) {
       document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
         el.setAttribute("data-stagepass-processed", "true");

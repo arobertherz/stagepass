@@ -143,6 +143,7 @@ The `modules` and `silent` parameters are passed via the loader script tag itsel
 
 ### Loader: Runtime API (stagepass / sp)
 -   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version`
+-   `stagepass.vars.client` - Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
 -   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (preferred over splog/spwarn/sperror)
 -   `stagepass.resolveLocalUrl(relativePath)` - Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
 

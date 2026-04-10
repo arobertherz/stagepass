@@ -259,7 +259,35 @@ sp.vars.env         // 'local' | 'staging' | 'production'
 sp.vars.domain      // string - Current domain (local or production)
 sp.vars.timestamp   // number - Session start time (for cache-busting)
 sp.vars.version     // string - Loader version
+sp.vars.client      // object - Client runtime info (theme/browser/os/device/viewport/locale/capabilities)
 ```
+
+### Client Runtime Info (`sp.vars.client`)
+
+The loader exposes technical client/runtime data:
+
+```javascript
+sp.vars.client.theme.preferred   // 'light' | 'dark' | 'no-preference'
+sp.vars.client.theme.current     // 'light' | 'dark' | 'unknown' (auto-updated)
+sp.vars.client.browser.family    // 'chrome' | 'safari' | 'firefox' | 'edge' | 'opera' | 'unknown'
+sp.vars.client.browser.major     // number | null
+sp.vars.client.os.family         // 'macos' | 'windows' | 'ios' | 'android' | 'linux' | 'unknown'
+sp.vars.client.device.type       // 'mobile' | 'tablet' | 'desktop' | 'unknown'
+sp.vars.client.device.touch      // boolean
+sp.vars.client.viewport.width    // number (auto-updated on resize)
+sp.vars.client.viewport.height   // number (auto-updated on resize)
+sp.vars.client.viewport.dpr      // number (auto-updated on resize)
+sp.vars.client.locale.language   // string (e.g. 'de-DE')
+sp.vars.client.locale.timezone   // string | null
+sp.vars.client.capabilities.cookiesEnabled // boolean
+sp.vars.client.capabilities.localStorage   // boolean
+sp.vars.client.capabilities.sessionStorage // boolean
+```
+
+Notes:
+- Browser/OS/device detection is heuristic (best effort).
+- `client` values are runtime data, not analytics consent/tracking signals.
+- `theme.current` and `viewport.*` are refreshed while the page is running.
 
 ### Local URL helper (`sp.resolveLocalUrl`)
 
