@@ -12,8 +12,10 @@ npm install @stagepass/loader
 
 ## CDN Usage
 
+Pin an exact version in production (avoid floating `@1`, which tracks the newest `1.x`):
+
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
 ```
 
 ## What it does

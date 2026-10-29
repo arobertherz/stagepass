@@ -2,9 +2,18 @@
 
 Profile-Version: 1.1  
 Compatible with: `@stagepass/loader >= 1.2.0`  
-Last updated: 2026-03-10
+Last updated: 2026-10-29
 
 This profile is for projects that use Stagepass Loader only (no `@stagepass/modules`).
+
+## CDN (version pinning)
+Prefer exact versions in production script tags (avoid floating `@1`):
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
+```
+
+`@1` resolves to the newest `1.x` publish and can change behaviour on live sites without an intentional update.
 
 ## Capability Profile
 - Profile: `loader-only`

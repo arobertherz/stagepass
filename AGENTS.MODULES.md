@@ -2,10 +2,21 @@
 
 Profile-Version: 1.1  
 Compatible with: `@stagepass/loader >= 1.2.0`, `@stagepass/modules >= 1.1.0`  
-Last updated: 2026-03-10
+Last updated: 2026-10-29
 
 This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies).  
-Loader must be loaded before modules.
+Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters).
+
+## CDN (version pinning)
+Prefer exact versions in production (avoid floating `@1`):
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
+```
+
+`@1` resolves to the newest `1.x` publish and can change behaviour on live sites without an intentional update.
 
 ## Capability Profile
 - Profile: `loader+modules`
