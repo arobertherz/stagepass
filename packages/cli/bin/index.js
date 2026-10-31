@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'module';
 import { program } from 'commander';
 import chalk from 'chalk';
 import { setup } from '../src/commands/setup.js';
@@ -9,10 +10,17 @@ import { start } from '../src/commands/start.js';
 import { stop } from '../src/commands/stop.js';
 import { reload } from '../src/commands/reload.js';
 
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json');
+
+function collectOrigin(value, previous) {
+  return previous.concat([value]);
+}
+
 program
   .name('stagepass')
   .description('The missing link between Webflow and local dev.')
-  .version('1.0.0');
+  .version(version);
 
 // Command: SETUP
 program
@@ -35,6 +43,16 @@ program
   .description('Link current directory to a .sp domain')
   .argument('[domain]', 'Domain name (optional)')
   .option('-v, --verbose', 'Show Caddy reload output')
+  .option(
+    '--origin <host>',
+    'Allow CORS from this live hostname (repeatable; e.g. example.com or *.example.com)',
+    collectOrigin,
+    []
+  )
+  .option(
+    '--allow-all-origins',
+    'Allow CORS from any Origin (Access-Control-Allow-Origin: *). Insecure; prefer --origin. Use --no-allow-all-origins to disable.'
+  )
   .action(async (domain, options) => {
     await link(domain, options);
   });
