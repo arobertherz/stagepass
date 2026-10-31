@@ -5,24 +5,28 @@ import { execa } from 'execa';
 import os from 'os';
 import path from 'path';
 
-// Mock dependencies
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('ora', () => ({
   default: vi.fn(() => ({
-    start: vi.fn(() => ({
-      succeed: vi.fn(),
-      fail: vi.fn(),
-    })),
+    start: vi.fn(function start() {
+      return this;
+    }),
+    succeed: vi.fn(),
+    fail: vi.fn(),
+    warn: vi.fn(),
+    stop: vi.fn(),
   })),
 }));
 
 describe('reload command', () => {
-  const mockCaddyDir = path.join(os.homedir(), '.stagepass');
-  const mockCaddyFile = path.join(mockCaddyDir, 'Caddyfile');
+  const mockCaddyFile = path.join(os.homedir(), '.stagepass', 'Caddyfile');
 
   beforeEach(() => {
     vi.clearAllMocks();
+    fs.readFile.mockResolvedValue('# stagepass-block: v2\n');
+    fs.copy.mockResolvedValue();
+    fs.writeFile.mockResolvedValue();
   });
 
   it('should reload Caddy when Caddyfile exists', async () => {
@@ -52,7 +56,6 @@ describe('reload command', () => {
 
     await reload({});
 
-    // Should not attempt reload if version check fails
     expect(execa).toHaveBeenCalledTimes(1);
     expect(execa).toHaveBeenCalledWith('caddy', ['version'], expect.any(Object));
   });
