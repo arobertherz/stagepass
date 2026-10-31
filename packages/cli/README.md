@@ -42,6 +42,7 @@ All commands support `-v, --verbose`.
 ### `link` options
 
 - `--origin <host>` — allow CORS from a live hostname (repeatable). Accepts `example.com`, `www.example.com`, `*.example.com`, or `https://example.com`.
+- `--remove-origin <host>` — remove a previously stored CORS hostname (repeatable; same validation as `--origin`).
 - `--allow-all-origins` — restore permissive `Access-Control-Allow-Origin: *` (prints a security warning). Prefer `--origin` instead.
 - `--no-allow-all-origins` — turn off allow-all mode and use the origin allowlist.
 
@@ -49,11 +50,12 @@ Examples:
 
 ```bash
 stagepass link my-project --origin www.example.com --origin example.com
+stagepass link my-project --remove-origin old.example.com
 stagepass link my-project --no-allow-all-origins
 stagepass link my-project --allow-all-origins   # emergency / legacy compatibility only
 ```
 
-Re-running `stagepass link` keeps stored origins / allow-all setting unless you change them with flags.
+Re-running `stagepass link` keeps stored origins / allow-all setting unless you change them with flags. If `projects.json` is missing an entry but a v2 Caddyfile block exists, CORS options are restored from the `# stagepass-options:` marker instead of being reset.
 
 ## Security
 

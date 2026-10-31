@@ -23,6 +23,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 - Origin allowlist CORS with OPTIONS preflight (`204`), `Access-Control-Allow-Private-Network`, and configurable live domains (`--origin`, `~/.stagepass/projects.json`).
 - `--allow-all-origins` / `--no-allow-all-origins` opt-in for the previous permissive CORS mode (with warnings).
+- `--remove-origin <host>` (repeatable) to drop stored CORS hostnames.
 - Automatic legacy Caddyfile migration on `link` / `reload` / `start` (timestamped backup, version marker `# stagepass-block: v2`; migrated blocks keep `allowAllOrigins` enabled for compatibility).
 - Shared pure helpers under `src/lib/` (`caddyfile`, `domain`, `origins`, `paths`, `projects`, `migrate`) and expanded Vitest coverage; optional Docker/`caddy adapt` integration test (skipped when unavailable).
 
@@ -34,6 +35,8 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 #### Fixed
 
 - Invalid or injectable domain names are rejected before writing the Caddyfile; folder-derived domains are slugified when needed.
+- `--no-allow-all-origins` is a defined Commander option (three-state with `--allow-all-origins`; omitting both keeps stored settings).
+- Re-linking a v2 site when `projects.json` lacks the domain restores CORS options from the Caddyfile marker instead of silently resetting them.
 
 #### Notes
 

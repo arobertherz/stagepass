@@ -20,6 +20,7 @@ import { ensureCaddyfileMigrated } from '../lib/migrate.js';
  * @param {object} options
  * @param {boolean} [options.verbose]
  * @param {string[]} [options.origin]
+ * @param {string[]} [options.removeOrigin]
  * @param {boolean} [options.allowAllOrigins]
  */
 export async function link(domain, options = {}) {
@@ -44,6 +45,15 @@ export async function link(domain, options = {}) {
     const check = validateOriginList(originsFromFlags);
     if (!check.ok) {
       console.log(chalk.red(`❌ Invalid --origin: ${check.error}`));
+      return;
+    }
+  }
+
+  const originsToRemove = options.removeOrigin || [];
+  if (originsToRemove.length > 0) {
+    const check = validateOriginList(originsToRemove);
+    if (!check.ok) {
+      console.log(chalk.red(`❌ Invalid --remove-origin: ${check.error}`));
       return;
     }
   }
@@ -80,17 +90,30 @@ export async function link(domain, options = {}) {
     }
 
     const existingBlocks = parseBlocks(content);
-    const alreadyLinked = existingBlocks.some((b) => b.domain === targetDomain);
+    const existingBlock = existingBlocks.find((b) => b.domain === targetDomain);
+    const alreadyLinked = Boolean(existingBlock);
     const existingProject = await getProject(targetDomain, projectsPath);
     const isNew = !alreadyLinked && !existingProject;
+
+    // When projects.json is missing the domain but a v2 block exists, seed from
+    // the block marker so re-link does not silently reset CORS settings.
+    let seed = null;
+    if (!existingProject && existingBlock && !existingBlock.isLegacy) {
+      seed = {
+        origins: existingBlock.options.origins || [],
+        allowAllOrigins: existingBlock.options.allowAllOrigins === true,
+      };
+    }
 
     const project = await upsertProject(
       targetDomain,
       {
         root: rootCheck.path,
         originsFromFlags,
+        originsToRemove,
         allowAllOriginsFlag,
         isNew,
+        seed,
       },
       projectsPath
     );

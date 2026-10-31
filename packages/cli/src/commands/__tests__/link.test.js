@@ -143,4 +143,85 @@ test.sp {
     expect(caddyWrites.at(-1)[1]).toContain('allowAllOrigins=true');
     expect(caddyWrites.at(-1)[1]).toContain('Access-Control-Allow-Origin *');
   });
+
+  it('should remove stored origins with --remove-origin', async () => {
+    const projectsDoc = {
+      version: 1,
+      projects: {
+        'cors-app.sp': {
+          root: '/Users/dev/Sites/project',
+          origins: ['keep.com', 'drop.com'],
+          allowAllOrigins: false,
+        },
+      },
+    };
+    const existingContent = `
+# START: cors-app.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false origins=keep.com,drop.com
+cors-app.sp {
+    handle {
+        root * "/Users/dev/Sites/project"
+        php_fastcgi 127.0.0.1:9000
+        file_server
+        tls internal
+    }
+}
+# END: cors-app.sp
+`;
+
+    fs.pathExists.mockImplementation(
+      async (p) => p === mockCaddyFile || p === mockProjects
+    );
+    fs.readFile.mockImplementation(async (p) => {
+      if (p === mockCaddyFile) return existingContent;
+      if (p === mockProjects) return JSON.stringify(projectsDoc);
+      throw new Error('missing');
+    });
+
+    await link('cors-app', { removeOrigin: ['drop.com'] });
+
+    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const doc = JSON.parse(projectWrites.at(-1)[1]);
+    expect(doc.projects['cors-app.sp'].origins).toEqual(['keep.com']);
+
+    const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
+    expect(caddyWrites.at(-1)[1]).toContain('origins=keep.com');
+    expect(caddyWrites.at(-1)[1]).not.toContain('drop.com');
+  });
+
+  it('should seed CORS options from v2 Caddyfile marker when projects.json lacks the domain', async () => {
+    const existingContent = `
+# START: kept.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=true origins=live.example.com
+kept.sp {
+    handle {
+        root * "/Users/dev/Sites/old"
+        php_fastcgi 127.0.0.1:9000
+        file_server
+        tls internal
+    }
+}
+# END: kept.sp
+`;
+
+    fs.pathExists.mockImplementation(async (p) => p === mockCaddyFile);
+    fs.readFile.mockImplementation(async (p) => {
+      if (p === mockCaddyFile) return existingContent;
+      throw new Error('missing');
+    });
+
+    await link('kept', {});
+
+    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const doc = JSON.parse(projectWrites.at(-1)[1]);
+    expect(doc.projects['kept.sp'].allowAllOrigins).toBe(true);
+    expect(doc.projects['kept.sp'].origins).toEqual(['live.example.com']);
+
+    const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
+    expect(caddyWrites.at(-1)[1]).toContain('allowAllOrigins=true');
+    expect(caddyWrites.at(-1)[1]).toContain('origins=live.example.com');
+    expect(caddyWrites.at(-1)[1]).toContain('Access-Control-Allow-Origin *');
+  });
 });

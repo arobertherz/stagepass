@@ -71,20 +71,29 @@ export async function getProject(domain, filePath = getProjectsPath()) {
  *
  * Flag semantics for link:
  * - originsFromFlags: when non-empty, merge into existing (deduped)
- * - allowAllOriginsFlag: true | false | undefined (undefined = keep existing / default)
+ * - originsToRemove: when non-empty, remove matching stored origins (after merge)
+ * - allowAllOriginsFlag: true | false | undefined (undefined = keep existing / seed / default)
+ * - seed: when no projects.json entry exists, start from these values (e.g. Caddyfile marker)
+ * - isNew: when true and allowAllOriginsFlag is undefined, default allowAllOrigins to false
+ * - forceAllowAllOrigins: migration helper; force true once
  *
  * @param {string} domain
  * @param {object} update
  * @param {string} update.root
  * @param {string[]} [update.originsFromFlags]
+ * @param {string[]} [update.originsToRemove]
  * @param {boolean|undefined} [update.allowAllOriginsFlag]
+ * @param {{ origins?: string[], allowAllOrigins?: boolean }|null} [update.seed]
  * @param {boolean} [update.isNew]
+ * @param {boolean} [update.forceAllowAllOrigins]
  */
 export async function upsertProject(domain, update, filePath = getProjectsPath()) {
   const doc = await loadProjects(filePath);
   const existing = doc.projects[domain]
     ? normalizeProjectEntry(doc.projects[domain])
-    : { origins: [], allowAllOrigins: false };
+    : update.seed
+      ? normalizeProjectEntry(update.seed)
+      : { origins: [], allowAllOrigins: false };
 
   let origins = existing.origins;
   if (Array.isArray(update.originsFromFlags) && update.originsFromFlags.length > 0) {
@@ -95,6 +104,15 @@ export async function upsertProject(domain, update, filePath = getProjectsPath()
     origins = merged.origins;
   }
 
+  if (Array.isArray(update.originsToRemove) && update.originsToRemove.length > 0) {
+    const toRemove = validateOriginList(update.originsToRemove);
+    if (!toRemove.ok) {
+      throw new Error(toRemove.error);
+    }
+    const removeSet = new Set(toRemove.origins);
+    origins = origins.filter((o) => !removeSet.has(o));
+  }
+
   let allowAllOrigins = existing.allowAllOrigins;
   if (update.isNew && update.allowAllOriginsFlag === undefined) {
     allowAllOrigins = false;
@@ -102,7 +120,6 @@ export async function upsertProject(domain, update, filePath = getProjectsPath()
   if (update.allowAllOriginsFlag === true) allowAllOrigins = true;
   if (update.allowAllOriginsFlag === false) allowAllOrigins = false;
 
-  // Migration helper: force allowAllOrigins
   if (update.forceAllowAllOrigins === true) {
     allowAllOrigins = true;
   }
@@ -118,15 +135,21 @@ export async function upsertProject(domain, update, filePath = getProjectsPath()
 }
 
 /**
- * Ensure a migrated legacy project exists with allowAllOrigins true.
+ * Ensure a projects.json entry exists after migrating a legacy Caddy block.
+ *
+ * Semantics:
+ * - Existing entry: leave unchanged (never drop stored origins; never force
+ *   allowAllOrigins — the user may already have tightened CORS).
+ * - New entry from legacy migration: allowAllOrigins=true for compatibility,
+ *   origins=[] until the user adds --origin.
+ *
+ * A migrated legacy project therefore keeps allowAllOrigins=true until the user
+ * turns it off; existing stored origins are never dropped by migration.
  */
 export async function ensureMigratedProject(domain, root, filePath = getProjectsPath()) {
   const doc = await loadProjects(filePath);
   const existing = doc.projects[domain];
   if (existing) {
-    // Keep stored origins; ensure allowAllOrigins stays true for migration pass only if not set?
-    // Migration should set allowAllOrigins true once; if user already configured, don't overwrite
-    // except when creating from legacy Caddyfile with no projects.json entry.
     return normalizeProjectEntry(existing);
   }
   doc.projects[domain] = {
