@@ -129,7 +129,7 @@ describe('upsertBlock / removeBlock', () => {
     expect(content).toContain('x.sp');
 
     const updated = renderSiteBlock('x.sp', '/Users/dev/Sites/x2', {
-      origins: ['a.com'],
+      origins: ['a.example.com'],
     });
     content = upsertBlock(content, 'x.sp', updated);
     expect(content).toContain('/Users/dev/Sites/x2');

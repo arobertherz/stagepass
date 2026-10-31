@@ -50,7 +50,7 @@ describe('projects', () => {
       'app.sp',
       {
         root: '/Users/dev/Sites/app',
-        originsFromFlags: ['a.com', 'b.com', '*.c.com'],
+        originsFromFlags: ['a.example.com', 'b.example.com', '*.c.example.com'],
       },
       projectsPath
     );
@@ -59,22 +59,22 @@ describe('projects', () => {
       'app.sp',
       {
         root: '/Users/dev/Sites/app',
-        originsToRemove: ['b.com', '*.c.com'],
+        originsToRemove: ['b.example.com', '*.c.example.com'],
       },
       projectsPath
     );
-    expect(afterRemove.origins).toEqual(['a.com']);
+    expect(afterRemove.origins).toEqual(['a.example.com']);
 
     const afterAdd = await upsertProject(
       'app.sp',
       {
         root: '/Users/dev/Sites/app',
-        originsFromFlags: ['b.com'],
-        originsToRemove: ['a.com'],
+        originsFromFlags: ['b.example.com'],
+        originsToRemove: ['a.example.com'],
       },
       projectsPath
     );
-    expect(afterAdd.origins).toEqual(['b.com']);
+    expect(afterAdd.origins).toEqual(['b.example.com']);
   });
 
   it('rejects invalid --remove-origin values', async () => {
@@ -83,7 +83,7 @@ describe('projects', () => {
         'app.sp',
         {
           root: '/Users/dev/Sites/app',
-          originsToRemove: ['http://evil.com'],
+          originsToRemove: ['http://attacker.example'],
         },
         projectsPath
       )
@@ -121,7 +121,7 @@ describe('projects', () => {
       'legacy.sp',
       {
         root: '/Users/dev/Sites/legacy',
-        originsFromFlags: ['client.com'],
+        originsFromFlags: ['example.com'],
         allowAllOriginsFlag: false,
       },
       projectsPath
@@ -133,10 +133,10 @@ describe('projects', () => {
       projectsPath
     );
     expect(again.allowAllOrigins).toBe(false);
-    expect(again.origins).toEqual(['client.com']);
+    expect(again.origins).toEqual(['example.com']);
     expect(again.root).toBe('/Users/dev/Sites/legacy');
 
     const doc = await loadProjects(projectsPath);
-    expect(doc.projects['legacy.sp'].origins).toEqual(['client.com']);
+    expect(doc.projects['legacy.sp'].origins).toEqual(['example.com']);
   });
 });

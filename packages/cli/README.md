@@ -75,7 +75,7 @@ Stagepass reflects `Access-Control-Allow-Origin` for **allowed** browser `Origin
 
 **Default allowlist (always on):**
 
-- `https://*.webflow.io` and `https://*.webflow.com` (any subdomain depth; lookalikes like `evil-webflow.io` / `webflow.io.evil.com` do **not** match)
+- `https://*.webflow.io` and `https://*.webflow.com` (any subdomain depth; lookalikes like `evilwebflow.example` / `webflow.io.attacker.example` do **not** match)
 - `https://*.sp`
 - `http(s)://localhost[:port]` and `http(s)://127.0.0.1[:port]`
 - Per-project live domains from `--origin` / `~/.stagepass/projects.json`
@@ -118,7 +118,7 @@ On `stagepass link`, `reload`, and `start`, legacy Caddyfile blocks (no `# stage
 Recommended after migration:
 
 ```bash
-stagepass link --origin your-live-domain.com
+stagepass link --origin www.example.com
 stagepass link --no-allow-all-origins
 ```
 

@@ -150,7 +150,7 @@ test.sp {
       projects: {
         'cors-app.sp': {
           root: '/Users/dev/Sites/project',
-          origins: ['keep.com', 'drop.com'],
+          origins: ['keep.example.com', 'drop.example.com'],
           allowAllOrigins: false,
         },
       },
@@ -158,7 +158,7 @@ test.sp {
     const existingContent = `
 # START: cors-app.sp
 # stagepass-block: v2
-# stagepass-options: allowAllOrigins=false origins=keep.com,drop.com
+# stagepass-options: allowAllOrigins=false origins=keep.example.com,drop.example.com
 cors-app.sp {
     handle {
         root * "/Users/dev/Sites/project"
@@ -179,15 +179,15 @@ cors-app.sp {
       throw new Error('missing');
     });
 
-    await link('cors-app', { removeOrigin: ['drop.com'] });
+    await link('cors-app', { removeOrigin: ['drop.example.com'] });
 
     const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
     const doc = JSON.parse(projectWrites.at(-1)[1]);
-    expect(doc.projects['cors-app.sp'].origins).toEqual(['keep.com']);
+    expect(doc.projects['cors-app.sp'].origins).toEqual(['keep.example.com']);
 
     const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
-    expect(caddyWrites.at(-1)[1]).toContain('origins=keep.com');
-    expect(caddyWrites.at(-1)[1]).not.toContain('drop.com');
+    expect(caddyWrites.at(-1)[1]).toContain('origins=keep.example.com');
+    expect(caddyWrites.at(-1)[1]).not.toContain('drop.example.com');
   });
 
   it('should seed CORS options from v2 Caddyfile marker when projects.json lacks the domain', async () => {

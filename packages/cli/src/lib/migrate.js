@@ -63,7 +63,7 @@ export async function ensureCaddyfileMigrated(options = {}) {
     }
     console.log(
       chalk.yellow(
-        '   Tip: add your live domain with `stagepass link --origin your-domain.com`, then `stagepass link --no-allow-all-origins`.'
+        '   Tip: add your live domain with `stagepass link --origin example.com`, then `stagepass link --no-allow-all-origins`.'
       )
     );
   }

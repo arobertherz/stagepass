@@ -47,21 +47,21 @@ describe('origin allowlist matching', () => {
   });
 
   it('rejects lookalike and unrelated origins', () => {
-    expect(originMatchesAllowlist('https://evil.com')).toBe(false);
-    expect(originMatchesAllowlist('https://evilwebflow.io')).toBe(false);
-    expect(originMatchesAllowlist('https://evil-webflow.io')).toBe(false);
-    expect(originMatchesAllowlist('https://webflow.io.evil.com')).toBe(false);
+    expect(originMatchesAllowlist('https://attacker.example')).toBe(false);
+    expect(originMatchesAllowlist('https://evilwebflow.example')).toBe(false);
+    expect(originMatchesAllowlist('https://evil-webflow.example')).toBe(false);
+    expect(originMatchesAllowlist('https://webflow.io.attacker.example')).toBe(false);
   });
 
   it('allows configured live domains', () => {
     expect(
-      originMatchesAllowlist('https://www.client.com', ['www.client.com'])
+      originMatchesAllowlist('https://www.example.com', ['www.example.com'])
     ).toBe(true);
     expect(
-      originMatchesAllowlist('https://shop.client.com', ['*.client.com'])
+      originMatchesAllowlist('https://shop.example.com', ['*.example.com'])
     ).toBe(true);
     expect(
-      originMatchesAllowlist('https://other.com', ['www.client.com'])
+      originMatchesAllowlist('https://other.example.com', ['www.example.com'])
     ).toBe(false);
   });
 

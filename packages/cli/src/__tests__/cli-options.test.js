@@ -46,22 +46,22 @@ describe('createProgram link options (commander)', () => {
   it('collects repeatable --remove-origin values', () => {
     const { options } = parseLinkArgv([
       '--remove-origin',
-      'old.com',
+      'old.example.com',
       '--remove-origin',
-      '*.gone.com',
+      '*.gone.example.com',
     ]);
-    expect(options.removeOrigin).toEqual(['old.com', '*.gone.com']);
+    expect(options.removeOrigin).toEqual(['old.example.com', '*.gone.example.com']);
   });
 
   it('accepts domain argument with flags together', () => {
     const { domain, options } = parseLinkArgv([
       'my-app',
       '--origin',
-      'live.com',
+      'live.example.com',
       '--no-allow-all-origins',
     ]);
     expect(domain).toBe('my-app');
-    expect(options.origin).toEqual(['live.com']);
+    expect(options.origin).toEqual(['live.example.com']);
     expect(options.allowAllOrigins).toBe(false);
   });
 });
