@@ -119,5 +119,5 @@ if (!enabled) sp.cookies.throw('feature_flag', { path: '/' });
 ```
 
 ## Removed / changed in v2
-- `splog(...)`, `spwarn(...)`, `sperror(...)` — use `sp.log` / `sp.warn` / `sp.error`
+- `splog(...)`, `spwarn(...)`, `sperror(...)`: use `sp.log` / `sp.warn` / `sp.error`
 - Inject `cacheBust: true` no longer appends per-view timestamps; use `version: '…'`

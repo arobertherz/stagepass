@@ -134,10 +134,10 @@ Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 ```
 
 Why pin exact versions:
-* **Reproducible behaviour** – every visitor gets the same loader/modules build you tested.
-* **No silent upgrades** – `@1` / `@2` float to the newest publish on that major; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
-* **CDN caching** – exact versions cache stably; floating tags can surprise you after a publish.
-* **Deliberate updates** – bump the version in the script URL, test, then roll out.
+* **Reproducible behaviour**: every visitor gets the same loader/modules build you tested.
+* **No silent upgrades**: `@1` / `@2` float to the newest publish on that major; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
+* **CDN caching**: exact versions cache stably; floating tags can surprise you after a publish.
+* **Deliberate updates**: bump the version in the script URL, test, then roll out.
 
 ---
 
@@ -250,7 +250,7 @@ In the Webflow Designer, instead of hardcoding your script `src` or stylesheet `
 
 **Attribute Reference:**
 * `data-src` / `data-href`: The production URL (loaded by default for all users).
-* `data-stagepass-path`: The relative path to the file on your local machine (optional — if omitted while swapping, the filename is extracted from the production URL).
+* `data-stagepass-path`: The relative path to the file on your local machine (optional; if omitted while swapping, the filename is extracted from the production URL).
 * `data-stagepass`: Marks the element for processing (presence is enough; `"true"` is conventional).
 * `data-stagepass-version` (loader tag) / `data-stagepass-v` (per asset): In production, appends `?v=<version>` for cache busting. `data-stagepass-cachebust` no longer timestamps every production page view.
 * `data-stagepass-session-hours` (loader tag): Optional session lifetime in hours (default `12`).
@@ -264,9 +264,9 @@ Go to your live Webflow URL and append the parameter:
 **That's it.** The loader will persist this state in `localStorage`. You can now reload the page, browse sub-pages, and Stagepass will inject your local code automatically.
 
 **Available Modes:**
-* `?stagepass=my-project.sp` — activate local swapping (session stored in `localStorage` as JSON `{ domain, expires }`, default **12 h**)
-* `?stagepass=debug` — logging only, no URL swapping
-* `?stagepass=off` / `?stagepass=0` / `?stagepass=false` — clear the session
+* `?stagepass=my-project.sp`: activate local swapping (session stored in `localStorage` as JSON `{ domain, expires }`, default **12 h**)
+* `?stagepass=debug`: logging only, no URL swapping
+* `?stagepass=off` / `?stagepass=0` / `?stagepass=false`: clear the session
 
 The `?stagepass=` parameter is removed from the address bar via `history.replaceState` after processing.
 
@@ -311,7 +311,7 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 
 Omitting both allow-all flags keeps the stored / seeded setting. New links default to allowlist mode (`allowAllOrigins: false`).
 
-**Default CORS allowlist (always):** `https://*.sp`, `http(s)://localhost[:port]`, `http(s)://127.0.0.1[:port]`, plus any `--origin` / `~/.stagepass/projects.json` entries. **`*.webflow.io` is not a default** — add e.g. `--origin my-project.webflow.io`. Explicit `--origin *.webflow.io` is allowed but warns.
+**Default CORS allowlist (always):** `https://*.sp`, `http(s)://localhost[:port]`, `http(s)://127.0.0.1[:port]`, plus any `--origin` / `~/.stagepass/projects.json` entries. **`*.webflow.io` is not a default**; add e.g. `--origin my-project.webflow.io`. Explicit `--origin *.webflow.io` is allowed but warns.
 
 Dotfiles / `node_modules` / sensitive extensions always return **404** on linked sites. Full security notes: [Security Architecture](#-security-architecture) and [`packages/cli/README.md`](packages/cli/README.md).
 
@@ -401,7 +401,7 @@ sp.error('This is an error');
 
 ## 🧩 Modules
 
-Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). The loader script must be loaded before any module script. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency—install the loader when you install modules.
+Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). The loader script must be loaded before any module script. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
 
 ### Available Modules
 

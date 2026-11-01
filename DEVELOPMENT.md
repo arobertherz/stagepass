@@ -6,7 +6,7 @@ This guide explains how to set up Stagepass for local development.
 
 - Node.js 18+
 - npm (comes with Node.js)
-- macOS (Windows/Linux support coming soon)
+- macOS only
 - Homebrew (for dependency management)
 
 ## Local Development Setup
@@ -91,7 +91,7 @@ docker run --rm -v "$PWD":/w \
   -w /w node:22-bookworm-slim bash -lc 'npm ci && npm run build && npm test --workspaces --if-present'
 ```
 
-Also verify on Node 20 (`node:20-bookworm-slim`) to match CI. See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute — see `MIGRATION.md`.
+Also verify on Node 20 (`node:20-bookworm-slim`) to match CI. See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute. See `MIGRATION.md`.
 
 ### CLI Changes
 

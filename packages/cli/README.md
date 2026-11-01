@@ -161,8 +161,8 @@ Hand-written content outside `# START:` / `# END:` markers is left untouched. Un
 
 ## Related Packages
 
-- `@stagepass/loader` — browser runtime for swapping production assets.
-- `@stagepass/modules` — optional runtime modules (`inject`, `cookies`).
+- `@stagepass/loader`: browser runtime for swapping production assets.
+- `@stagepass/modules`: optional runtime modules (`inject`, `cookies`).
 
 ## Repository
 

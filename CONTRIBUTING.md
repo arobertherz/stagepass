@@ -41,7 +41,7 @@ Also verify on Node 20 (`node:20-bookworm-slim`). If you change `package-lock.js
 
 ## Security
 
-Report vulnerabilities privately — see [SECURITY.md](SECURITY.md). Do not discuss undisclosed issues in public PRs or issues.
+Report vulnerabilities privately. See [SECURITY.md](SECURITY.md). Do not discuss undisclosed issues in public PRs or issues.
 
 ## AI-assisted contributions
 

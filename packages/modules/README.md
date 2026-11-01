@@ -86,7 +86,7 @@ Deduplication: skips when `id` already exists or a matching `script[src]` / `lin
 
 ### Cookies (`cookies.min.js`)
 
-Registers `sp.cookies` (also `stagepass.cookies`). Cookie helpers only — **not** a consent manager.
+Registers `sp.cookies` (also `stagepass.cookies`). Cookie helpers only, **not** a consent manager.
 
 ```js
 sp.cookies.bake('token', 'abc123', { days: 7, path: '/' });

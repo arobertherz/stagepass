@@ -62,9 +62,9 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
 ## URL Modes
 
-- `?stagepass=my-project.sp` — activate local swapping (expires; default 12 h).
-- `?stagepass=debug` — logging only (no asset swap).
-- `?stagepass=off` / `0` / `false` — clear the session.
+- `?stagepass=my-project.sp`: activate local swapping (expires; default 12 h).
+- `?stagepass=debug`: logging only (no asset swap).
+- `?stagepass=off` / `0` / `false`: clear the session.
 
 Allowed session values: `*.sp`, `localhost`, `localhost:<port>`, `debug`. Invalid values are rejected/cleared.
 
@@ -88,7 +88,7 @@ Shown only while a session is active (including debug). Click clears the session
 Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Types ship in `global.d.ts`. There are **no** custom DOM events.
 
 ```js
-sp.vars.isLocal     // boolean — session swap active or page on localhost
+sp.vars.isLocal     // boolean: session swap active or page on localhost
 sp.vars.env         // 'local' | 'staging' | 'production'
 sp.vars.domain      // active .sp domain, or page hostname when no swap
 sp.vars.timestamp   // session start ms while swapping; otherwise 0
@@ -105,8 +105,8 @@ Logging helpers only print while a Stagepass session is active. Deprecated globa
 
 ## Related Packages
 
-- `@stagepass/cli` — creates and manages `.sp` infrastructure.
-- `@stagepass/modules` — optional modules that extend the loader (`inject`, `cookies`).
+- `@stagepass/cli`: creates and manages `.sp` infrastructure.
+- `@stagepass/modules`: optional modules that extend the loader (`inject`, `cookies`).
 
 ## Repository
 
