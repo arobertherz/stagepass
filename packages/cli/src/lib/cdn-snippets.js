@@ -7,7 +7,7 @@ export const RECOMMENDED_CDN_SNIPPETS = Object.freeze([
   'https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js',
   'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js',
   'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js',
-  'https://unpkg.com/@stagepass/loader@2/dist/loader.min.js',
+  'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js',
 ]);
 
 const UNPINNED_RE = /@(?:latest)(?=[/"'?]|$)/i;
