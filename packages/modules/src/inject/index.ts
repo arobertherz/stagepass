@@ -15,8 +15,13 @@
     id?: string;
     async?: boolean;
     defer?: boolean;
-    /** In production, append ?_cb=timestamp to force fresh load */
+    /**
+     * @deprecated In v2 production no longer appends a per-view timestamp.
+     * Prefer `version` (appends `?v=<version>`). Ignored for timestamp behaviour.
+     */
     cacheBust?: boolean;
+    /** Production version token appended as `?v=` (URL-encoded). */
+    version?: string;
     attributes?: Record<string, string>;
     position?: InjectPosition;
   }
@@ -82,10 +87,28 @@
     return 'script'; // Default to script
   }
 
-  // Resolve source URL (local vs production)
+  /**
+   * Append a query parameter, preserving existing query and hash.
+   * @param url - Source URL
+   * @param key - Query key
+   * @param value - Query value
+   */
+  function appendQueryParam(url: string, key: string, value: string): string {
+    const encoded = encodeURIComponent(value);
+    const hashIdx = url.indexOf('#');
+    const hash = hashIdx >= 0 ? url.slice(hashIdx) : '';
+    const base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}${encodeURIComponent(key)}=${encoded}${hash}`;
+  }
+
+  /**
+   * Resolve source URL (local vs production).
+   * @param options - Inject options
+   */
   function resolveSource(options: InjectOptions): string {
     const vars = getVars();
-    const { src, stagepass, localPath, path, cacheBust } = options;
+    const { src, stagepass, localPath, path, version } = options;
 
     // Ensure src is valid
     if (!src || typeof src !== 'string') {
@@ -105,9 +128,9 @@
       return `https://${vars.domain}/${cleanPath}?_cb=${vars.timestamp}`;
     }
 
-    // Production: optional cache busting
-    if (cacheBust) {
-      return src + (src.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+    // Production: version-based cache busting only (no per-view Date.now())
+    if (version) {
+      return appendQueryParam(src, 'v', version);
     }
     return src;
   }
@@ -199,12 +222,15 @@
       if (detectedType === 'script') {
         const script = element as HTMLScriptElement;
         script.src = resolvedSrc;
-        
-        // Set async/defer
+
+        // Dynamically created scripts default to async=true; force order unless async requested
         if (options.async) {
           script.async = true;
-        } else if (options.defer !== false) {
-          script.defer = true; // Default to defer
+        } else {
+          script.async = false;
+          if (options.defer !== false) {
+            script.defer = true;
+          }
         }
 
         // Set ID if provided
@@ -293,7 +319,12 @@
     });
   }
 
-  // Main inject function (handles single, array, or batch object)
+  /**
+   * Inject one or more scripts/styles into the document.
+   * Scripts keep insertion order (`async = false`) unless `async: true`.
+   *
+   * @param options - Single item, array, or `{ scripts, styles }` batch
+   */
   async function inject(options: InjectOptions | InjectOptions[] | InjectBatchOptions): Promise<void> {
     let items: InjectOptions[] = [];
     

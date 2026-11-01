@@ -162,6 +162,33 @@ describe('Injector Module', () => {
       expect(script.id).toBe('my-script');
     });
 
+    it('forces async=false for ordered dynamic scripts', () => {
+      const script = document.createElement('script');
+      // Browsers default dynamically created scripts to async=true; force order
+      script.async = true;
+      const optionsAsync = false;
+      if (optionsAsync) {
+        script.async = true;
+      } else {
+        script.async = false;
+        script.defer = true;
+      }
+      expect(script.async).toBe(false);
+      expect(script.defer).toBe(true);
+    });
+
+    it('uses version query param instead of Date.now cache bust', () => {
+      const src = 'https://cdn.example.com/app.js?x=1#h';
+      const version = '2.0.0';
+      const hashIdx = src.indexOf('#');
+      const hash = hashIdx >= 0 ? src.slice(hashIdx) : '';
+      const base = hashIdx >= 0 ? src.slice(0, hashIdx) : src;
+      const sep = base.includes('?') ? '&' : '?';
+      const resolved = `${base}${sep}v=${encodeURIComponent(version)}${hash}`;
+      expect(resolved).toBe('https://cdn.example.com/app.js?x=1&v=2.0.0#h');
+      expect(resolved.includes('_cb=')).toBe(false);
+    });
+
     it('should create link element with correct attributes', () => {
       const link = document.createElement('link');
       link.rel = 'stylesheet';

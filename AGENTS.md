@@ -39,37 +39,32 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Standalone Architecture
 **Decision:** The Loader must have zero dependencies on the CLI package.  
-**Rationale:** The Loader is hosted on CDNs (jsDelivr, unpkg) and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~7.4 KB minified / ~3.1 KB gzipped for `loader.min.js`).  
+**Rationale:** The Loader is hosted on CDNs (jsDelivr, unpkg) and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~9.7 KB minified / ~4.0 KB gzipped for `loader.min.js`).  
 **Constraint:** No Node.js dependencies, browser APIs only.
 
-### Session Persistence: localStorage vs sessionStorage
-**Decision:** Use `localStorage` instead of `sessionStorage` for dev session persistence.  
-**Rationale:** Dev sessions should persist across browser tabs/windows and page reloads. Using `sessionStorage` would require reactivating dev mode in every new tab, which is impractical for development workflows.  
-**Trade-off:** Sessions persist even after browser restart (acceptable for a dev tool).  
-**Key:** `localStorage.getItem('stagepass_domain')` stores the active domain.
+### Session Persistence: localStorage with expiry
+**Decision:** Use `localStorage` (not `sessionStorage`) with a JSON `{ domain, expires }` record (default **12 h**, configurable via `data-stagepass-session-hours`).  
+**Rationale:** Dev sessions should persist across tabs/reloads, but not forever. Legacy plain-string values are cleared.  
+**Key:** `localStorage.getItem('stagepass_domain')` stores the serialized session object.
 
 ### Asset Injection: Remove Original Tags
 **Decision:** Original `<script>` and `<link>` tags are removed (`el.remove()`) after new elements are injected.  
 **Rationale:** Prevents double-loading (both production and local versions). The new element is inserted before the original, then the original is removed. This ensures clean DOM state and prevents conflicts.  
 **Pattern:** `parentNode.insertBefore(newElement, originalElement)` → `originalElement.remove()`
 
-### Cache Busting: Single Timestamp per Page Load
-**Decision:** Generate `Date.now()` once per page load, not per asset. All assets get the same `?_cb=<timestamp>` parameter.  
-**Rationale:** Ensures all assets from the same page load have consistent cache state. On reload, a new timestamp forces fresh loading of all assets (desired behavior for development).  
-**Implementation:** `const cacheBust = swap ? Date.now() : 0;` (only when swap is active)
+### Cache Busting: Timestamp in session, version in production
+**Decision:** While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`.  
+**Rationale:** Per-view `Date.now()` busting on every production page load defeats CDN caching.  
+**Note:** `data-stagepass-cachebust="true"` no longer appends a timestamp on every production view.
 
-### Console Suppression: Production Only
-**Decision:** Suppress browser console methods in production when no Stagepass session is active:
-- **Production:** Suppressed when there is no valid session
-- **Staging / Local:** Not suppressed
-**Rationale:** Production sites should remain clean; staging (e.g. `*.webflow.io`) and local environments keep console output for debugging.  
-**Pattern:** `if (shouldSuppress && env === 'production') { /* noop console */ }`  
-**Note:** `splog`, `spwarn`, `sperror` are global functions available on `window` for structured logging (deprecated aliases of `sp.log` / `sp.warn` / `sp.error`).
+### Console: Stagepass logs only (opt-in global mute)
+**Decision:** Do **not** mute the global console by default. Only Stagepass `sp.log` / `sp.warn` / `sp.error` are silent without a session.  
+**Opt-in:** `data-stagepass-mute-console="true"` on the loader tag restores the legacy 1.x global mute in production when no session is active.  
+**Note:** Deprecated globals `splog` / `spwarn` / `sperror` are **removed** in v2.
 
-### Script Loading: defer as Default
-**Decision:** If neither `async` nor `defer` is set on original script, add `defer` to injected script.  
-**Rationale:** Ensures proper script execution order (e.g., jQuery loads before dependent scripts). Scripts execute after DOM parsing but maintain order.  
-**Pattern:** Existing `async`/`defer` attributes are preserved; only add `defer` if neither exists.
+### Script Loading: async=false + defer as Default
+**Decision:** Dynamically created scripts default to `async=true` in browsers; Stagepass forces `script.async = false` (unless the original had `async`) and adds `defer` when neither async nor defer was set.  
+**Rationale:** Keeps classic script execution order. Same fix in `@stagepass/modules` inject.
 
 ### URL Parameter: Remove After Processing
 **Decision:** Remove `?stagepass=domain.sp` from URL after storing in localStorage.  
@@ -107,7 +102,11 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `data-src` - For scripts (instead of `src` attribute)
 -   `data-href` - For stylesheets (instead of `href` attribute)
 -   `data-stagepass-path` - Optional local path (if omitted, filename is extracted from production URL)
--   `data-stagepass-cachebust="true"` - Optional; in production, append ?_cb=timestamp to the asset URL for cache busting
+-   `data-stagepass-version` - Optional on the loader tag; production appends `?v=<version>` to assets without a per-asset override
+-   `data-stagepass-v` - Optional per asset; production appends `?v=<version>`
+-   `data-stagepass-session-hours` - Optional on the loader tag; session lifetime in hours (default 12)
+-   `data-stagepass-mute-console="true"` - Optional; legacy global console mute in production without a session
+-   `data-stagepass-cachebust="true"` - Legacy; no longer timestamps every production page view
 -   `data-stagepass-processed` - Internal flag set after processing (prevents double-processing)
 
 ### Loader: CSS Selectors
@@ -121,30 +120,26 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   Parameters are removed from URL after processing via `window.history.replaceState()`
 
 ### Loader: localStorage Keys
--   `stagepass_domain` - Stores active domain (`localStorage.getItem('stagepass_domain')`)
-
-### Loader: Global Functions
--   `window.splog(...args)` - Structured logging (only when session active); deprecated alias of `sp.log`
--   `window.spwarn(...args)` - Warning logs; deprecated alias of `sp.warn`
--   `window.sperror(...args)` - Error logs; deprecated alias of `sp.error`
+-   `stagepass_domain` - JSON session `{ domain, expires }` (legacy plain strings are cleared)
 
 ### Loader: Runtime API (stagepass / sp)
--   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version`
+-   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version` (build-time from package.json)
 -   `stagepass.vars.client` - Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
--   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (preferred over splog/spwarn/sperror)
+-   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (only when session active)
 -   `stagepass.resolveLocalUrl(relativePath)` - Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
+-   Types: `@stagepass/loader` ships `global.d.ts` (`types` field); modules extend via declaration merging.
 
 ### Modules: Loading Methods
 -   **Separate script tags only:** Load modules as separate scripts after `loader.min.js` in `<head>`:
     ```html
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
     ```
 -   **Important:** Core loader must be loaded first, as modules require `stagepass.vars` (or `window.stagepass.vars`)
 -   **Module Registration:** Modules automatically register themselves on `stagepass` / `sp` (e.g., `sp.inject`, `sp.cookies`)
 -   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available
--   **Version pinning:** Prefer exact CDN versions in production (e.g. `@1.2.0` / `@1.1.0`), not floating `@1`. See README "Version pinning".
+-   **Version pinning:** Prefer exact CDN versions in production (e.g. `@2.0.0`), not floating `@1` / `@2`. See README "Version pinning".
 
 ### CLI: Commands
 -   `stagepass setup` - Install dependencies and configure .sp domain
@@ -167,4 +162,5 @@ We use a monorepo workspace structure to manage these distinct packages:
 4.  **Code Language:** All code and comments must be in English (ignore `/dist` folder for loader).
 5.  **Specific Files:**
     -   Global Config: `~/.stagepass/`
-    -   Loader CDN (pin exact version in production): `https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js` or `https://unpkg.com/@stagepass/loader@1.2.0`
+    -   Loader CDN 2.x: `https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js`
+    -   Loader CDN 1.x (legacy pins): `https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js`

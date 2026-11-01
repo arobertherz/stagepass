@@ -1,32 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-
-// Note: Loader tests require the built loader.js to be executed in a jsdom environment
-// These are unit tests for individual functions that can be tested in isolation
+import { describe, it, expect } from 'vitest';
+import { isValidDomain, cleanDomain } from '../domain.js';
+import { parseSession, serializeSession, createSession } from '../session.js';
 
 describe('Loader - Domain Validation', () => {
   it('should accept .sp domains', () => {
-    const validDomains = ['test.sp', 'my-project.sp', 'sub.domain.sp'];
-    validDomains.forEach(domain => {
-      expect(domain.endsWith('.sp')).toBe(true);
-    });
+    for (const domain of ['test.sp', 'my-project.sp', 'sub.domain.sp']) {
+      expect(isValidDomain(domain)).toBe(true);
+    }
   });
 
   it('should accept localhost and debug', () => {
-    const validSpecial = ['localhost', 'debug', 'localhost:8080'];
-    validSpecial.forEach(domain => {
-      expect(domain === 'debug' || domain.startsWith('localhost')).toBe(true);
-    });
+    expect(isValidDomain('localhost')).toBe(true);
+    expect(isValidDomain('debug')).toBe(true);
+    expect(isValidDomain('localhost:8080')).toBe(true);
   });
 
-  it('should validate domain correctly', () => {
-    const isValidDomain = (d: string): boolean => {
-      return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
-    };
-
-    expect(isValidDomain('test.sp')).toBe(true);
-    expect(isValidDomain('localhost')).toBe(true);
-    expect(isValidDomain('localhost:8080')).toBe(true);
-    expect(isValidDomain('debug')).toBe(true);
+  it('should reject external hosts', () => {
     expect(isValidDomain('example.com')).toBe(false);
     expect(isValidDomain('invalid')).toBe(false);
   });
@@ -34,39 +23,38 @@ describe('Loader - Domain Validation', () => {
 
 describe('Loader - URL Cleaning', () => {
   it('should remove https:// prefix', () => {
-    const clean = (d: string | null): string | null => {
-      return d ? d.replace(/^https?:\/\//, '').replace(/\/$/, '') : null;
-    };
-
-    expect(clean('https://test.sp')).toBe('test.sp');
-    expect(clean('http://test.sp')).toBe('test.sp');
-    expect(clean('https://test.sp/')).toBe('test.sp');
-    expect(clean(null)).toBe(null);
+    expect(cleanDomain('https://test.sp')).toBe('test.sp');
+    expect(cleanDomain('http://test.sp')).toBe('test.sp');
+    expect(cleanDomain('https://test.sp/')).toBe('test.sp');
+    expect(cleanDomain(null)).toBe(null);
   });
 });
 
 describe('Loader - Session Management', () => {
-  beforeEach(() => {
-    localStorage.clear();
+  it('stores JSON sessions with expiry', () => {
+    const now = Date.now();
+    const record = createSession('test.sp', 12, now);
+    const raw = serializeSession(record);
+    expect(parseSession(raw, now)?.domain).toBe('test.sp');
   });
 
-  it('should store domain in localStorage', () => {
-    const domain = 'test.sp';
-    localStorage.setItem('stagepass_domain', domain);
-    expect(localStorage.getItem('stagepass_domain')).toBe(domain);
+  it('clears legacy plain-string sessions', () => {
+    expect(parseSession('invalid.com')).toBe(null);
+    expect(parseSession('test.sp')).toBe(null);
   });
+});
 
-  it('should remove invalid domains from localStorage', () => {
-    localStorage.setItem('stagepass_domain', 'invalid.com');
-    const sv = localStorage.getItem('stagepass_domain');
-    const isValidDomain = (d: string): boolean => {
-      return d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
-    };
-    
-    if (sv && !isValidDomain(sv)) {
-      localStorage.removeItem('stagepass_domain');
-    }
-    
-    expect(localStorage.getItem('stagepass_domain')).toBe(null);
+describe('Loader - removed deprecated globals', () => {
+  it('source no longer assigns splog/spwarn/sperror', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+    const src = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../index.ts'),
+      'utf-8'
+    );
+    expect(src).not.toMatch(/window\.splog\s*=/);
+    expect(src).not.toMatch(/window\.spwarn\s*=/);
+    expect(src).not.toMatch(/window\.sperror\s*=/);
   });
 });

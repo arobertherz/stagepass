@@ -1,10 +1,19 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
 import path from 'path';
-import os from 'os';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import ora from 'ora';
+import {
+  getCaddyfilePath,
+  getServerLogPath,
+  getStagepassDir,
+  getProjectsPath,
+} from '../lib/paths.js';
+import {
+  ensureCaddyfileMigrated,
+  warnIfAllowAllOriginsActive,
+} from '../lib/migrate.js';
 
 // --- HELPERS ---
 
@@ -53,9 +62,10 @@ async function killProcess(proc) {
 // --- MAIN COMMAND ---
 
 export async function start(options = {}) {
-  const caddyDir = path.join(os.homedir(), '.stagepass');
-  const caddyFile = path.join(caddyDir, 'Caddyfile');
-  const logFile = path.join(caddyDir, 'server.log');
+  const caddyDir = getStagepassDir();
+  const caddyFile = getCaddyfilePath();
+  const logFile = getServerLogPath();
+  const projectsPath = getProjectsPath();
 
   console.log(chalk.bold('\n🚀 Starting Stagepass...'));
 
@@ -89,6 +99,13 @@ export async function start(options = {}) {
     } else {
       return;
     }
+  }
+
+  // 2b. Migrate legacy Caddyfile blocks before boot
+  await fs.ensureDir(caddyDir);
+  if (await fs.pathExists(caddyFile)) {
+    await ensureCaddyfileMigrated({ caddyfilePath: caddyFile, projectsPath });
+    await warnIfAllowAllOriginsActive({ caddyfilePath: caddyFile });
   }
 
   // 3. Boot services

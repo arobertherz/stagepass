@@ -1,22 +1,25 @@
 # Stagepass Runtime (Loader + Modules)
 
-Profile-Version: 1.1  
-Compatible with: `@stagepass/loader >= 1.2.0`, `@stagepass/modules >= 1.1.0`  
-Last updated: 2026-10-29
+Profile-Version: 2.0  
+Compatible with: `@stagepass/loader@2.0.0`, `@stagepass/modules@2.0.0`  
+Last updated: 2026-11-01
 
 This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies).  
 Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters).
 
 ## CDN (version pinning)
-Prefer exact versions in production (avoid floating `@1`):
+Prefer exact versions in production (avoid floating `@1` / `@2`):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
+></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
 ```
 
-`@1` resolves to the newest `1.x` publish and can change behaviour on live sites without an intentional update.
+Floating majors can change behaviour on live sites without an intentional update.
 
 ## Capability Profile
 - Profile: `loader+modules`
@@ -58,7 +61,7 @@ This profile is a **superset** and already includes the full Loader contract.
 
 ### Loader: helper/runtime functions
 - `sp.resolveLocalUrl(relativePath: string): string`  
-  Returns local Stagepass URL with cache-busting when session is active, otherwise `''`.
+  Returns local Stagepass URL with `?_cb=<timestamp>` when a session is active, otherwise `''`.
 - `sp.log(...args)` and `sp.log('warn' | 'error', ...args)`
 - `sp.warn(...args)`
 - `sp.error(...args)`
@@ -84,7 +87,7 @@ This profile is a **superset** and already includes the full Loader contract.
 ## Decision Rules (for AI agents)
 - Prefer `sp` over `stagepass` for new code.
 - Use `sp.inject` for runtime/script-style injection needs; use static tags otherwise.
-- Use `cacheBust: true` only when explicitly required for production freshness.
+- Prefer `version: '…'` for production cache freshness (appends `?v=`). Do not rely on `cacheBust` for timestamps (deprecated / no-op for that behaviour in v2).
 - Use `sp.cookies.*` for browser-readable cookies; do not propose it for HttpOnly/session server cookies.
 - Use `sp.vars.client.*` for runtime adaptation (theme/device/viewport checks).
 
@@ -92,19 +95,21 @@ This profile is a **superset** and already includes the full Loader contract.
 - `src` (required)
 - `stagepass?: boolean` (default enabled)
 - `localPath?` / `path?`
-- `cacheBust?: boolean` (production cache-bust)
+- `version?: string` (production: appends `?v=<version>`)
+- `cacheBust?: boolean` (deprecated; no longer appends per-view timestamps)
 - `type?: 'script' | 'style'`
 - `position?: 'head' | 'body-start' | 'body-end' | { target, action }`
-- `id?`, `async?`, `defer?`, `attributes?`
+- `id?`, `async?` (default `false`), `defer?`, `attributes?`
+- Scripts keep insertion order unless `async: true`
 
 ## Canonical Examples
 ```js
-// Runtime injection with production cache busting
+// Runtime injection with production version cache busting
 await sp.inject({
   src: 'https://cdn.example.com/widget.js',
   stagepass: true,
   localPath: 'widget.js',
-  cacheBust: true,
+  version: '2.0.0',
 });
 
 // Cookie utility usage
@@ -113,5 +118,6 @@ const enabled = sp.cookies.eat('feature_flag') === 'on';
 if (!enabled) sp.cookies.throw('feature_flag', { path: '/' });
 ```
 
-## Deprecated aliases (still available)
-- `splog(...)`, `spwarn(...)`, `sperror(...)`
+## Removed / changed in v2
+- `splog(...)`, `spwarn(...)`, `sperror(...)`: use `sp.log` / `sp.warn` / `sp.error`
+- Inject `cacheBust: true` no longer appends per-view timestamps; use `version: '…'`

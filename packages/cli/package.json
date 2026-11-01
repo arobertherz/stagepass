@@ -1,6 +1,6 @@
 {
   "name": "@stagepass/cli",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "Local Development Orchestrator for Webflow",
   "type": "module",
   "main": "bin/index.js",
@@ -9,7 +9,11 @@
   },
   "files": [
     "bin",
-    "src"
+    "src/cli.js",
+    "src/commands/*.js",
+    "src/lib/*.js",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "start": "node bin/index.js",
@@ -42,7 +46,7 @@
     "sudo-prompt": "^9.2.1"
   },
   "devDependencies": {
-    "vitest": "^2.1.0"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=18.0.0"

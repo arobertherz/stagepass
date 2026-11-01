@@ -55,6 +55,12 @@
     }
   }
 
+  /**
+   * Write a cookie (`document.cookie`).
+   * @param name - Cookie name
+   * @param value - Value (stringified; optional JSON)
+   * @param options - Path, expiry, SameSite, etc.
+   */
   function bake(name: string, value: any, options: CookieWriteOptions = {}): void {
     const sp = getStagepassObject();
     if (!name || typeof name !== 'string' || name.includes(';')) {
@@ -92,6 +98,11 @@
     document.cookie = parts.join('; ');
   }
 
+  /**
+   * Read a cookie by name.
+   * @param name - Cookie name
+   * @param options - Decode / JSON parse options
+   */
   function eat(name: string, options: CookieReadOptions = {}): any | null {
     if (!name || typeof name !== 'string') return null;
     const target = options.decode === false ? name : safeDecode(name);
@@ -110,10 +121,18 @@
     return null;
   }
 
+  /**
+   * @param name - Cookie name
+   * @returns Whether the cookie exists
+   */
   function has(name: string): boolean {
     return eat(name) !== null;
   }
 
+  /**
+   * List all cookies as a name → value map.
+   * @param options - Decode / JSON parse options
+   */
   function list(options: CookieReadOptions = {}): Record<string, any> {
     const cookies = document.cookie ? document.cookie.split('; ') : [];
     const out: Record<string, any> = {};
@@ -128,6 +147,11 @@
     return out;
   }
 
+  /**
+   * Delete a cookie by writing an expired value.
+   * @param name - Cookie name
+   * @param options - Path / domain must match the original cookie
+   */
   function throwCookie(name: string, options: CookieDeleteOptions = {}): void {
     bake(name, '', {
       days: -1,

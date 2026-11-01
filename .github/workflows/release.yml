@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  stage:
+    # Only publish from the canonical public repo
+    if: github.repository == 'arobertherz/stagepass'
+    runs-on: [self-hosted, cerebro]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Ensure npm >= 11.15.0
+        run: |
+          npm install -g 'npm@^11.15.0'
+          npm --version
+          node -e "const [maj,min,pat]=process.versions.node.split('.').map(Number); if (maj<22 || (maj===22 && min<14)) { console.error('Need Node >= 22.14.0'); process.exit(1); }"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Run CLI tests
+        run: npm test --workspace=packages/cli
+
+      - name: Run Loader tests
+        run: npm test --workspace=packages/loader
+
+      - name: Run Modules tests
+        run: npm test --workspace=packages/modules
+
+      - name: Verify tag matches package versions
+        run: node scripts/check-release-version.mjs "${GITHUB_REF_NAME}"
+
+      - name: Determine dist-tag
+        id: disttag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Staging with dist-tag: $( [[ "$VERSION" == *-* ]] && echo next || echo latest )"
+
+      # npm provenance (--provenance) requires a supported cloud CI OIDC
+      # environment. Self-hosted runners are not supported, so we omit it.
+      - name: Stage @stagepass/modules
+        working-directory: packages/modules
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+
+      - name: Stage @stagepass/loader
+        working-directory: packages/loader
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+
+      - name: Stage @stagepass/cli
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+
+      - name: List staged packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          (cd packages/modules && npm stage list)
+          (cd packages/loader && npm stage list)
+          (cd packages/cli && npm stage list)

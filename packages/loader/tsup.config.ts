@@ -1,4 +1,12 @@
 import { defineConfig } from 'tsup';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version } = require('./package.json');
+
+const define = {
+  __STAGEPASS_VERSION__: JSON.stringify(version),
+};
 
 export default defineConfig([
   // 1. Readable version (loader.js)
@@ -6,8 +14,9 @@ export default defineConfig([
     entry: { loader: 'src/index.ts' },
     format: ['iife'],
     globalName: 'Stagepass',
-    clean: true, // Cleans dist folder before build
+    clean: true,
     minify: false,
+    define,
     outExtension() {
       return { js: '.js' };
     },
@@ -17,8 +26,9 @@ export default defineConfig([
     entry: { loader: 'src/index.ts' },
     format: ['iife'],
     globalName: 'Stagepass',
-    clean: false, // IMPORTANT: Don't clean here, otherwise loader.js is gone
+    clean: false,
     minify: true,
+    define,
     outExtension() {
       return { js: '.min.js' };
     },
