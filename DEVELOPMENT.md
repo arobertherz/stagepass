@@ -4,9 +4,9 @@ This guide explains how to set up Stagepass for local development.
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js **22 or 24** for development and CI (Vitest 5 and related tooling need Node `>=22.12`). The published CLI still declares `engines.node`: `>=18.0.0` for consumers; do not bump that field casually.
 - npm (comes with Node.js)
-- macOS only
+- macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`). Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
 - Homebrew (for dependency management)
 
 ## Local Development Setup
@@ -91,7 +91,7 @@ docker run --rm -v "$PWD":/w \
   -w /w node:22-bookworm-slim bash -lc 'npm ci && npm run build && npm test --workspaces --if-present'
 ```
 
-Also verify on Node 20 (`node:20-bookworm-slim`) to match CI. See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute. See `MIGRATION.md`.
+Also verify on Node 24 (`node:24-bookworm-slim`) to match CI (matrix: 22.x and 24.x). See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute. See `MIGRATION.md`.
 
 ### CLI Changes
 

@@ -98,8 +98,8 @@ npx @stagepass/cli@2 setup
 ```
 
 ### System Requirements
-* macOS
-* Node.js 18+
+* **macOS only** (Homebrew-based setup). System commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`) refuse to run on other platforms with a clear error. This is not a breaking change: those commands never worked off macOS. `stagepass --version` and `--help` still work everywhere.
+* Node.js 18+ at runtime for the published CLI (`engines.node`). Development and CI use Node 22 or 24 (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 * Homebrew (for Caddy, PHP, Dnsmasq)
 
 ---
@@ -296,6 +296,8 @@ The `?stagepass=` parameter is removed from the address bar via `history.replace
 When LNA help is needed, the badge `title` and a console warning use the same hint text from the loader.
 
 ## 🛠 CLI Reference
+
+**Requirements:** macOS (system commands exit with code 1 on other platforms; `--version` / `--help` remain available). Published CLI `engines.node` stays `>=18.0.0`; contributors develop and test on Node 22 or 24.
 
 Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop` as needed). All commands support `-v, --verbose`.
 
