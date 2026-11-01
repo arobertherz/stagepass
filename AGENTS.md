@@ -132,14 +132,14 @@ We use a monorepo workspace structure to manage these distinct packages:
 ### Modules: Loading Methods
 -   **Separate script tags only:** Load modules as separate scripts after `loader.min.js` in `<head>`:
     ```html
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
     ```
 -   **Important:** Core loader must be loaded first, as modules require `stagepass.vars` (or `window.stagepass.vars`)
 -   **Module Registration:** Modules automatically register themselves on `stagepass` / `sp` (e.g., `sp.inject`, `sp.cookies`)
 -   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available
--   **Version pinning:** Prefer exact CDN versions in production (e.g. `@2.0.0`), not floating `@1` / `@2`. See README "Version pinning".
+-   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.0.0`) is optional for maximum control. See README "Version pinning".
 
 ### CLI: Commands
 -   `stagepass setup` - Install dependencies and configure .sp domain
@@ -162,5 +162,5 @@ We use a monorepo workspace structure to manage these distinct packages:
 4.  **Code Language:** All code and comments must be in English (ignore `/dist` folder for loader).
 5.  **Specific Files:**
     -   Global Config: `~/.stagepass/`
-    -   Loader CDN 2.x: `https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js`
+    -   Loader CDN 2.x: `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`
     -   Loader CDN 1.x (legacy pins): `https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js`

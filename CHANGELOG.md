@@ -9,6 +9,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ---
 
+## Unreleased
+
+### Docs
+
+- Default CDN / install recommendation is major pin `@2` (exact pin optional for maximum control). Documented prerelease → `next`, then stable → `latest` release flow in `RELEASING.md`.
+
+---
+
 ## `@stagepass/cli`
 
 ### [2.0.0] - 2026-11-01

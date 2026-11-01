@@ -7,22 +7,26 @@ The loader reads Stagepass session state and swaps tagged production assets with
 ## Install
 
 ```bash
-npm install @stagepass/loader@2.0.0
+npm install @stagepass/loader@2
 ```
 
 ## CDN Usage
 
-Pin exact versions in production (jsDelivr preferred; unpkg alternative):
+Prefer the major pin `@2` in production (jsDelivr preferred; unpkg alternative). Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control.
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
 ```
 
 ```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<!-- unpkg short form (package `main`) -->
+<script src="https://unpkg.com/@stagepass/loader@2"></script>
+
+<!-- unpkg full path -->
+<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
 ```
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.

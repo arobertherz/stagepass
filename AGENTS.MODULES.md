@@ -1,25 +1,23 @@
 # Stagepass Runtime (Loader + Modules)
 
 Profile-Version: 2.0  
-Compatible with: `@stagepass/loader@2.0.0`, `@stagepass/modules@2.0.0`  
+Compatible with: `@stagepass/loader@2`, `@stagepass/modules@2`  
 Last updated: 2026-11-01
 
 This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies).  
 Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters).
 
 ## CDN (version pinning)
-Prefer exact versions in production (avoid floating `@1` / `@2`):
+Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
 ```
-
-Floating majors can change behaviour on live sites without an intentional update.
 
 ## Capability Profile
 - Profile: `loader+modules`

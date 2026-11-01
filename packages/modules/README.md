@@ -7,7 +7,7 @@ This package provides optional browser modules that extend `@stagepass/loader`.
 ## Install
 
 ```bash
-npm install @stagepass/loader@2.0.0 @stagepass/modules@2.0.0
+npm install @stagepass/loader@2 @stagepass/modules@2
 ```
 
 `@stagepass/loader` must be loaded first.  
@@ -15,22 +15,22 @@ npm install @stagepass/loader@2.0.0 @stagepass/modules@2.0.0
 
 ## CDN Usage
 
-Pin exact versions in production (jsDelivr preferred; unpkg works the same path layout):
+Prefer the major pin `@2` in production (jsDelivr preferred; unpkg works the same path layout). Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control.
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
 ```
 
 Or load all modules:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js"></script>
 ```
 
 Published files: `dist/inject.min.js`, `dist/cookies.min.js`, `dist/all.min.js`.
