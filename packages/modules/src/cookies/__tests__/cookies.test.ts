@@ -45,8 +45,8 @@ describe('Cookies Module', () => {
 
   it('supports JSON cookies', () => {
     const cookies = (window as any).stagepass.cookies;
-    cookies.bake('profile', { plan: 'pro', id: 7 }, { json: true, path: '/' });
-    expect(cookies.eat('profile', { json: true })).toEqual({ plan: 'pro', id: 7 });
+    cookies.bake('profile', { role: 'editor', id: 7 }, { json: true, path: '/' });
+    expect(cookies.eat('profile', { json: true })).toEqual({ role: 'editor', id: 7 });
   });
 
   it('has() reports cookie existence', () => {
@@ -108,10 +108,27 @@ describe('Cookies Module', () => {
     sp.consent.update();
     expect(cookies.eat('m')).toBe('queued');
   });
+
+  it('rejects path/domain values that contain semicolons', () => {
+    const cookies = (window as any).stagepass.cookies;
+    expect(() => cookies.bake('x', '1', { path: '/; Domain=evil.com' })).toThrow(
+      /Invalid cookie path/
+    );
+    expect(() => cookies.bake('x', '1', { domain: 'evil.com; Secure' })).toThrow(
+      /Invalid cookie domain/
+    );
+  });
+
+  it('rejects unencoded values that contain semicolons', () => {
+    const cookies = (window as any).stagepass.cookies;
+    expect(() => cookies.bake('x', 'a;b', { encode: false, path: '/' })).toThrow(
+      /Invalid cookie value/
+    );
+  });
 });
 
 describe('Cookies Module without loader', () => {
-  it('warns instead of throwing when loader is absent', async () => {
+  it('warns and still attaches cookies API (2.0.0 compatible)', async () => {
     vi.resetModules();
     delete (window as any).stagepass;
     delete (globalThis as any).stagepass;
@@ -120,6 +137,8 @@ describe('Cookies Module without loader', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await import('../index.ts');
     expect(warn).toHaveBeenCalled();
+    expect(typeof (window as any).stagepass.cookies.bake).toBe('function');
+    expect((window as any).stagepass.cookie).toBe((window as any).stagepass.cookies);
     warn.mockRestore();
   });
 });

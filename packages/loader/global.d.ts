@@ -52,7 +52,7 @@ export interface StagepassVars {
   timestamp: number;
   /** Package version injected at build time. */
   version: string;
-  /** Lazy: computed on first access. */
+  /** Client runtime info (theme listeners and viewport updates from boot). */
   client: StagepassClientInfo;
 }
 

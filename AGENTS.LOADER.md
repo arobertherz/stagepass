@@ -39,7 +39,7 @@ Optional loader attributes:
 - `sp.vars.domain` (`string`)
 - `sp.vars.timestamp` (`number`)
 - `sp.vars.version` (`string`)
-- `sp.vars.client` (`object`, lazy on first access) with:
+- `sp.vars.client` (`object`) with:
   - `theme` (`preferred`, `current`)
   - `browser` (`family`, `major`, `userAgent`)
   - `os` (`family`)

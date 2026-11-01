@@ -5,7 +5,7 @@ Compatible with: `@stagepass/loader@2`, `@stagepass/modules@2`
 Last updated: 2026-11-01
 
 This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies + Maintenance).  
-Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters). Without the loader, modules log a console warning and skip registration (they do not throw).
+Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters). Without the loader, `inject`/`cookies` still attach APIs and warn; `maintenance` skips registration.
 
 ## CDN (version pinning)
 Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control. Legacy `@1` sites are unaffected.

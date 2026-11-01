@@ -58,4 +58,34 @@ describe('Inject options (integrity, nonce, allowlist)', () => {
     expect(document.querySelector('script[src="https://evil.example/x.js"]')).toBeNull();
     expect(sp.warn).toHaveBeenCalled();
   });
+
+  it('does not let attributes override src after allowlist check', () => {
+    const inject = (window as any).stagepass.inject;
+    void inject({
+      src: 'https://cdn.example.com/lib.js',
+      allowedHosts: ['cdn.example.com'],
+      attributes: { src: 'https://evil.example/x.js' },
+      position: 'head',
+    });
+    expect(document.querySelector('script[src="https://evil.example/x.js"]')).toBeNull();
+    const el = document.querySelector(
+      'script[src="https://cdn.example.com/lib.js"]'
+    ) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+  });
+});
+
+describe('Inject without loader', () => {
+  it('warns and still attaches inject API (2.0.0 compatible)', async () => {
+    vi.resetModules();
+    delete (window as any).stagepass;
+    delete (globalThis as any).stagepass;
+    delete (window as any).sp;
+    delete (globalThis as any).sp;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await import('../index.ts');
+    expect(warn).toHaveBeenCalled();
+    expect(typeof (window as any).stagepass.inject).toBe('function');
+    warn.mockRestore();
+  });
 });

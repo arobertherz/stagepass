@@ -350,7 +350,7 @@ sp.vars.env         // 'local' | 'staging' | 'production'
 sp.vars.domain      // string - Current domain (local or production)
 sp.vars.timestamp   // number - Session start time (for cache-busting)
 sp.vars.version     // string - Loader version
-sp.vars.client      // object - Client runtime info (lazy on first access)
+sp.vars.client      // object - Client runtime info (theme/browser/os/device/viewport/locale/capabilities)
 ```
 
 Optional loader attributes: `data-stagepass-staging-hosts`, `data-stagepass-alias` (custom global when free).
@@ -371,7 +371,7 @@ sp.use('my-module', '2.0.0', (api) => { /* register */ })
 
 ### Client Runtime Info (`sp.vars.client`)
 
-The loader exposes technical client/runtime data (computed on first access):
+The loader exposes technical client/runtime data:
 
 ```javascript
 sp.vars.client.theme.preferred   // 'light' | 'dark' | 'no-preference'
@@ -428,7 +428,7 @@ With an active session or debug mode, the loader warns when two tagged assets re
 
 ## 🧩 Modules
 
-Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). Load the loader script before any module script. Without the loader, modules log a console warning and skip registration (they do not throw). For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
+Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). Load the loader script before any module script. `inject` and `cookies` still attach their APIs without the loader (and warn); `maintenance` skips registration without the loader. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
 
 ### Available Modules
 

@@ -45,15 +45,16 @@
       (globalThis as any).stagepass ||
       (window as any).sp ||
       (globalThis as any).sp;
-    if (!sp || !sp.vars) {
-      try {
-        console.warn(
-          '[Stagepass] Core loader must be loaded before the inject module. Skipping registration.'
-        );
-      } catch (_) {}
-      return null;
-    }
+    if (!sp) return null;
     return sp;
+  }
+
+  function warnMissingLoader(): void {
+    try {
+      console.warn(
+        '[Stagepass] Core loader should be loaded before the inject module.'
+      );
+    } catch (_) {}
   }
 
   // Get Stagepass vars (must be available from core loader)
@@ -64,6 +65,16 @@
     }
     return sp.vars;
   }
+
+  /** Attribute names that must not be overridden via `attributes` (allowlist / SRI safety). */
+  const RESERVED_ATTRS = new Set([
+    'src',
+    'href',
+    'rel',
+    'integrity',
+    'crossorigin',
+    'nonce',
+  ]);
 
   // Logging helper
   function log(message: string) {
@@ -178,15 +189,23 @@
       }
     }
 
-    const selector =
-      detectedType === 'script'
-        ? `script[src="${resolvedSrc}"]`
-        : `link[href="${resolvedSrc}"]`;
-
-    const existing = document.querySelector(selector);
-    if (existing) {
-      log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
-      return true;
+    // Compare via DOM properties (avoid CSS selector injection from src)
+    if (detectedType === 'script') {
+      const scripts = document.getElementsByTagName('script');
+      for (let i = 0; i < scripts.length; i++) {
+        if (scripts[i].getAttribute('src') === resolvedSrc) {
+          log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
+          return true;
+        }
+      }
+    } else {
+      const links = document.getElementsByTagName('link');
+      for (let i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('href') === resolvedSrc) {
+          log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
+          return true;
+        }
+      }
     }
 
     return false;
@@ -268,7 +287,6 @@
 
       if (detectedType === 'script') {
         const script = element as HTMLScriptElement;
-        script.src = resolvedSrc;
 
         if (options.async) {
           script.async = true;
@@ -283,13 +301,16 @@
           script.id = options.id;
         }
 
-        applyPassThrough(script, options);
-
         if (options.attributes) {
           Object.entries(options.attributes).forEach(([key, value]) => {
+            if (RESERVED_ATTRS.has(String(key).toLowerCase())) return;
             script.setAttribute(key, value);
           });
         }
+
+        // Controlled props win over attributes (allowlist / SRI)
+        script.src = resolvedSrc;
+        applyPassThrough(script, options);
 
         script.onload = () => {
           log(`Injected: ${resolvedSrc}`);
@@ -304,20 +325,21 @@
         };
       } else {
         const link = element as HTMLLinkElement;
-        link.rel = 'stylesheet';
-        link.href = resolvedSrc;
 
         if (options.id) {
           link.id = options.id;
         }
 
-        applyPassThrough(link, options);
-
         if (options.attributes) {
           Object.entries(options.attributes).forEach(([key, value]) => {
+            if (RESERVED_ATTRS.has(String(key).toLowerCase())) return;
             link.setAttribute(key, value);
           });
         }
+
+        link.rel = 'stylesheet';
+        link.href = resolvedSrc;
+        applyPassThrough(link, options);
 
         const checkLoad = setInterval(() => {
           const sheet = link.sheet || (link as any).styleSheet;
@@ -441,20 +463,24 @@
     }
   }
 
-  function register(sp: any) {
-    sp.inject = inject;
+  function register(api: any) {
+    api.inject = inject;
   }
 
-  const sp = getStagepassObject();
-  if (!sp) return;
+  // 2.0.0 behaviour: always attach inject (even without loader vars)
+  const sp = getStagepassObject() || {};
+  if (!sp.vars) {
+    warnMissingLoader();
+  }
 
   const MODULE_VERSION = '2.0.0';
-  if (typeof sp.use === 'function') {
+  if (sp.vars && typeof sp.use === 'function') {
     sp.use('inject', MODULE_VERSION, register);
   } else {
     register(sp);
   }
 
+  (window as any).stagepass = sp;
   (globalThis as any).stagepass = sp;
   (window as any).sp = sp;
   (globalThis as any).sp = sp;

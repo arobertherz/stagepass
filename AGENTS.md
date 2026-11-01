@@ -127,7 +127,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Runtime API (stagepass / sp)
 -   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version` (build-time from package.json)
--   `stagepass.vars.client` - Runtime client info (lazy on first access): `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
+-   `stagepass.vars.client` - Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
 -   `stagepass.env()` / `stagepass.is(name)` - Flat helpers (`local` = active `.sp` swap session; staging = `*.webflow.io` or `data-stagepass-staging-hosts`; else production). Independent of `vars.env` localhost semantics.
 -   `stagepass.can(capability)` - Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`)
 -   `stagepass.client(key?)` - Read `vars.client` key (or whole object)
@@ -145,7 +145,7 @@ We use a monorepo workspace structure to manage these distinct packages:
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
     ```
--   **Important:** Core loader should be loaded first. Without it, modules log a console warning and skip registration (they no longer throw).
+-   **Important:** Core loader should be loaded first. Without it, `inject`/`cookies` still attach APIs and warn; `maintenance` skips registration.
 -   **Module Registration:** Modules register via `stagepass.use(...)` when available (e.g. `sp.inject`, `sp.cookies` / `sp.cookie`, `sp.maintenance`)
 -   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available; optional `data-stagepass-alias`
 -   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.0.0`) is optional for maximum control. See README "Version pinning".

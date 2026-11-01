@@ -40,15 +40,24 @@
       (globalThis as any).stagepass ||
       (window as any).sp ||
       (globalThis as any).sp;
-    if (!sp || !sp.vars) {
-      try {
-        console.warn(
-          '[Stagepass] Core loader must be loaded before the cookies module. Skipping registration.'
-        );
-      } catch (_) {}
-      return null;
-    }
+    if (!sp) return null;
     return sp;
+  }
+
+  function warnMissingLoader(): void {
+    try {
+      console.warn(
+        '[Stagepass] Core loader should be loaded before the cookies module.'
+      );
+    } catch (_) {}
+  }
+
+  /** Reject cookie field values that would allow header injection. */
+  function assertCookieField(label: string, value: string | undefined): void {
+    if (value == null || value === '') return;
+    if (/[;\r\n]/.test(value)) {
+      throw new Error(`Invalid cookie ${label}`);
+    }
   }
 
   function isHttps(): boolean {
@@ -80,16 +89,23 @@
     let consentFn: ConsentFn = () => true;
 
     function writeCookie(name: string, value: any, options: CookieWriteOptions = {}): void {
-      if (!name || typeof name !== 'string' || name.includes(';')) {
+      if (!name || typeof name !== 'string' || name.includes(';') || /[\r\n]/.test(name)) {
         throw new Error('Invalid cookie name');
       }
 
       const encode = options.encode !== false;
       const sameSite: SameSite = options.sameSite || 'Lax';
+      assertCookieField('sameSite', sameSite);
       const secure = options.secure !== undefined ? options.secure : isHttps();
       const path = options.path || '/';
+      assertCookieField('path', path);
+      assertCookieField('domain', options.domain);
 
       let rawValue = options.json ? JSON.stringify(value) : String(value);
+      if (!encode) {
+        assertCookieField('value', rawValue);
+        assertCookieField('name', name);
+      }
       const cookieName = encode ? encodeURIComponent(name) : name;
       rawValue = encode ? encodeURIComponent(rawValue) : rawValue;
 
@@ -277,16 +293,20 @@
     sp.consent = consentApi;
   }
 
-  const sp = getStagepassObject();
-  if (!sp) return;
+  // 2.0.0 behaviour: always attach cookies (even without loader vars)
+  const sp = getStagepassObject() || {};
+  if (!sp.vars) {
+    warnMissingLoader();
+  }
 
   const MODULE_VERSION = '2.0.0';
-  if (typeof sp.use === 'function') {
+  if (sp.vars && typeof sp.use === 'function') {
     sp.use('cookies', MODULE_VERSION, register);
   } else {
     register(sp);
   }
 
+  (window as any).stagepass = sp;
   (globalThis as any).stagepass = sp;
   (window as any).sp = sp;
   (globalThis as any).sp = sp;

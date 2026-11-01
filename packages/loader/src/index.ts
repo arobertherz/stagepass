@@ -224,82 +224,62 @@ declare const __STAGEPASS_VERSION__: string;
     });
   }
 
-  // Lazy client detection
-  let clientInfo: StagepassClientInfo | null = null;
-  let clientComputed = false;
+  // Eager client detection (2.0.0 behaviour: available at boot with live theme/viewport)
+  let clientInfo: StagepassClientInfo = getClientInfo();
 
   function ensureClient(): StagepassClientInfo {
-    if (!clientComputed || !clientInfo) {
-      clientInfo = getClientInfo();
-      clientComputed = true;
-      bindThemeAndViewport();
-    }
     return clientInfo;
   }
 
-  let themeViewportBound = false;
-  function bindThemeAndViewport() {
-    if (themeViewportBound) return;
-    themeViewportBound = true;
-    try {
-      if (window.matchMedia) {
-        const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
-        const lightMq = window.matchMedia('(prefers-color-scheme: light)');
-        const updateTheme = () => {
-          const c = clientInfo;
-          if (!c?.theme) return;
-          if (darkMq.matches) {
-            c.theme.current = 'dark';
-            c.theme.preferred = 'dark';
-          } else if (lightMq.matches) {
-            c.theme.current = 'light';
-            c.theme.preferred = 'light';
-          } else {
-            c.theme.current = 'unknown';
-            c.theme.preferred = 'no-preference';
-          }
-          emit('theme', { ...c.theme });
-        };
-        if (typeof darkMq.addEventListener === 'function') {
-          darkMq.addEventListener('change', updateTheme);
-          lightMq.addEventListener('change', updateTheme);
-        } else if (typeof (darkMq as any).addListener === 'function') {
-          (darkMq as any).addListener(updateTheme);
-          (lightMq as any).addListener(updateTheme);
+  try {
+    if (window.matchMedia) {
+      const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+      const lightMq = window.matchMedia('(prefers-color-scheme: light)');
+      const updateTheme = () => {
+        const c = clientInfo;
+        if (!c?.theme) return;
+        if (darkMq.matches) {
+          c.theme.current = 'dark';
+          c.theme.preferred = 'dark';
+        } else if (lightMq.matches) {
+          c.theme.current = 'light';
+          c.theme.preferred = 'light';
+        } else {
+          c.theme.current = 'unknown';
+          c.theme.preferred = 'no-preference';
         }
+        emit('theme', { ...c.theme });
+      };
+      if (typeof darkMq.addEventListener === 'function') {
+        darkMq.addEventListener('change', updateTheme);
+        lightMq.addEventListener('change', updateTheme);
+      } else if (typeof (darkMq as any).addListener === 'function') {
+        (darkMq as any).addListener(updateTheme);
+        (lightMq as any).addListener(updateTheme);
       }
-    } catch (_) {}
+    }
+  } catch (_) {}
 
-    const updateViewport = () => {
-      const c = clientInfo;
-      if (!c?.viewport) return;
-      c.viewport.width = window.innerWidth || 0;
-      c.viewport.height = window.innerHeight || 0;
-      c.viewport.dpr = window.devicePixelRatio || 1;
-    };
-    window.addEventListener('resize', updateViewport);
-  }
+  const updateViewport = () => {
+    const c = clientInfo;
+    if (!c?.viewport) return;
+    c.viewport.width = window.innerWidth || 0;
+    c.viewport.height = window.innerHeight || 0;
+    c.viewport.dpr = window.devicePixelRatio || 1;
+  };
+  window.addEventListener('resize', updateViewport);
 
   const stagepassObj = (window as any).stagepass || {};
   const registry = createModuleRegistry(PKG_VERSION, spWarn);
 
-  const varsBase: Record<string, unknown> = {
+  stagepassObj.vars = Object.freeze({
     isLocal,
     env,
     domain: dom || hostname,
     timestamp: sessionStartTime,
     version: PKG_VERSION,
-  };
-
-  Object.defineProperty(varsBase, 'client', {
-    enumerable: true,
-    configurable: false,
-    get() {
-      return ensureClient();
-    },
+    client: clientInfo,
   });
-
-  stagepassObj.vars = Object.freeze(varsBase);
 
   stagepassObj.log = spLog;
   stagepassObj.warn = spWarn;
@@ -337,8 +317,6 @@ declare const __STAGEPASS_VERSION__: string;
     }
     const set = listeners[event as EventName];
     set.add(fn);
-    // Ensure theme listeners get live updates
-    if (event === 'theme') ensureClient();
     return () => {
       set.delete(fn);
     };

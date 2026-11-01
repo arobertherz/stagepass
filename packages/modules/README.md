@@ -11,7 +11,7 @@ npm install @stagepass/loader@2 @stagepass/modules@2
 ```
 
 `@stagepass/loader` should be loaded first.  
-Without the loader, modules log a clear console warning and skip registration (they do not throw).  
+Without the loader, `inject` and `cookies` still attach their APIs and warn; `maintenance` skips registration.  
 `@stagepass/modules` declares `@stagepass/loader` as a peer dependency (`>=2.0.0`).
 
 ## CDN Usage

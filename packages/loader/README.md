@@ -93,7 +93,7 @@ sp.vars.env         // 'local' | 'staging' | 'production' (localhost counts as l
 sp.vars.domain      // active .sp domain, or page hostname when no swap
 sp.vars.timestamp   // session start ms while swapping; otherwise 0
 sp.vars.version     // package version (build-time)
-sp.vars.client      // lazy on first access: theme / browser / os / device / viewport / locale / capabilities
+sp.vars.client      // theme / browser / os / device / viewport / locale / capabilities
 
 // Flat helpers (additive)
 sp.env()            // 'local' | 'staging' | 'production'
