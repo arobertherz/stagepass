@@ -6,8 +6,16 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 
 ## Install
 
+Requires Node.js **18+** (`engines.node`: `>=18.0.0`) on **macOS** with Homebrew.
+
 ```bash
-npm install -g @stagepass/cli
+npm install -g @stagepass/cli@2.0.0
+```
+
+Or without a global install:
+
+```bash
+npx @stagepass/cli@2.0.0 setup
 ```
 
 ## Requirements
@@ -18,44 +26,70 @@ npm install -g @stagepass/cli
 
 ## Quick Start
 
+Recommended order:
+
 ```bash
 stagepass setup
 stagepass start
 
 # inside your project folder
-stagepass link my-project
+stagepass link my-project --origin www.example.com --origin my-project.webflow.io
 ```
 
-Your project is now available at `https://my-project.sp`.
+Your project is then available at `https://my-project.sp`. Success output:
+
+```text
+Linked: https://my-project.sp -> /absolute/path/to/project
+```
 
 ## Commands
 
-- `stagepass setup` — install dependencies and configure local resolver.
-- `stagepass start` — start Caddy + PHP background services.
-- `stagepass link [domain]` — link current directory to a `.sp` domain.
-- `stagepass unlink [domain]` — remove link from Caddy config.
-- `stagepass reload` — reload Caddy config.
-- `stagepass stop` — stop background services.
+| Command | Description |
+| :--- | :--- |
+| `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
+| `stagepass start` | Start background Caddy & PHP services. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
+| `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
+| `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass stop` | Stop background services. |
 
 All commands support `-v, --verbose`.
 
+### Domain argument (`link` / `unlink`)
+
+- Optional. When omitted, defaults to the **current folder name**.
+- Values are lowercased; accidental `https://` and trailing `/` are stripped.
+- The `.sp` suffix is **always** applied (pass `my-project` or `my-project.sp`).
+- Labels must be DNS-safe (`[a-z0-9]`, inner hyphens). When derived from a folder and invalid, the CLI slugifies and prints a dim notice.
+- Explicit invalid domains are rejected (nothing is written).
+
 ### `link` options
 
-- `--origin <host>` — allow CORS from a live hostname (repeatable). Accepts `example.com`, `www.example.com`, `*.example.com`, or `https://example.com`.
-- `--remove-origin <host>` — remove a previously stored CORS hostname (repeatable; same validation as `--origin`).
-- `--allow-all-origins` — restore permissive `Access-Control-Allow-Origin: *` (prints a security warning). Prefer `--origin` instead.
-- `--no-allow-all-origins` — turn off allow-all mode and use the origin allowlist.
+| Option | Behaviour |
+| :--- | :--- |
+| `--origin <host>` | Allow CORS from this live hostname (**repeatable**). Merges into the stored list (deduped). |
+| `--remove-origin <host>` | Remove a previously stored CORS hostname (**repeatable**). |
+| `--allow-all-origins` | Enable `Access-Control-Allow-Origin: *` (prints a security warning). Prefer `--origin`. |
+| `--no-allow-all-origins` | Disable allow-all mode and use the origin allowlist. |
+| `-v, --verbose` | Show Caddy reload output / errors. |
+
+**`--origin` / `--remove-origin` format:** `example.com`, `www.example.com`, `*.example.com`, or `https://example.com`. Hostnames only (optional leading `*.`); no path, port, or `http://` for live origins.
+
+If Caddy reload fails after a successful write, the CLI warns and suggests `stagepass start`.
 
 Examples:
 
 ```bash
 stagepass link my-project --origin www.example.com --origin example.com
+stagepass link my-project --origin my-project.webflow.io
 stagepass link my-project --remove-origin old.example.com
 stagepass link my-project --no-allow-all-origins
 stagepass link my-project --allow-all-origins   # emergency / legacy compatibility only
 ```
 
-Re-running `stagepass link` keeps stored origins / allow-all setting unless you change them with flags. If `projects.json` is missing an entry but a v2 Caddyfile block exists, CORS options are restored from the `# stagepass-options:` marker instead of being reset.
+Re-running `stagepass link` keeps stored origins / allow-all setting unless you change them with flags. Omitting both `--allow-all-origins` and `--no-allow-all-origins` leaves the stored value unchanged. New projects default to `allowAllOrigins: false`.
+
+If `projects.json` is missing an entry but a v2 Caddyfile block exists, CORS options are restored from the `# stagepass-options:` marker instead of being reset.
 
 ## Security
 
@@ -63,7 +97,7 @@ Linked sites are hardened automatically:
 
 ### Blocked paths (always)
 
-These always return **404**, including with `--allow-all-origins`, and never reach PHP or `file_server`:
+These always return **404** (including `OPTIONS`), including with `--allow-all-origins`, and never reach PHP or `file_server`:
 
 - Any path segment starting with `.` (covers `.git`, `.env`, `.env.local`, `.DS_Store`, `.ssh`, `.npmrc`, …)
 - `node_modules/`
@@ -79,11 +113,11 @@ Stagepass reflects `Access-Control-Allow-Origin` for **allowed** browser `Origin
 - `http(s)://localhost[:port]` and `http(s)://127.0.0.1[:port]`
 - Per-project live domains from `--origin` / `~/.stagepass/projects.json`
 
-Webflow staging/live hosts are **not** included by default. Add them per project, e.g. `--origin my-project.webflow.io`. An explicit `--origin *.webflow.io` is accepted but prints a warning (any Webflow user's site would then be allowed).
+Webflow staging/live hosts are **not** included by default. Add them per project, e.g. `--origin my-project.webflow.io`. An explicit `--origin *.webflow.io` (or `*.webflow.com`) is accepted but prints a warning (any Webflow user's site would then be allowed).
 
-Matching responses also send `Vary: Origin`. Preflight (`OPTIONS`) returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
+Matching responses also send `Vary: Origin`. Preflight (`OPTIONS`) for allowed origins returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
 
-Non-matching origins get **no** ACAO.
+Non-matching origins get **no** ACAO. Non-allowlisted `OPTIONS` still get `204` without CORS headers.
 
 ### Domain & path validation
 

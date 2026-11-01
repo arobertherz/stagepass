@@ -7,12 +7,12 @@ The loader reads Stagepass session state and swaps tagged production assets with
 ## Install
 
 ```bash
-npm install @stagepass/loader
+npm install @stagepass/loader@2.0.0
 ```
 
 ## CDN Usage
 
-Pin exact versions in production:
+Pin exact versions in production (jsDelivr preferred; unpkg alternative):
 
 ```html
 <script
@@ -29,38 +29,84 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
 ## What it does
 
-- Processes `script[data-stagepass]` and `link[rel="stylesheet"][data-stagepass]`.
-- Uses `data-src` / `data-href` as source URL.
-- Uses `data-stagepass-path` as optional local path override.
-- Local session: cache bust with `?_cb=<timestamp>` (one per page load).
-- Production: version bust with `data-stagepass-version` / `data-stagepass-v` → `?v=<version>`.
-- Session expiry (default 12 h): `data-stagepass-session-hours`.
-- Optional legacy console mute: `data-stagepass-mute-console="true"`.
-- Chrome Local Network Access hint when permission is `prompt` / `denied`.
+- Processes `script[data-stagepass]:not([data-stagepass-processed])` and `link[rel="stylesheet"][data-stagepass]:not([data-stagepass-processed])`.
+- Uses `data-src` (scripts) / `data-href` (stylesheets) as the production URL.
+- Uses `data-stagepass-path` as an optional local path; if omitted while swapping, the filename is taken from the production URL.
+- Inserts the new element before the original, then removes the original (`data-stagepass-processed` prevents double work).
+- Local session: cache-bust with a single `?_cb=<timestamp>` per page load.
+- Production: version bust with `data-stagepass-version` (loader tag) and/or `data-stagepass-v` (per asset) → `?v=<version>` (URL-encoded; existing query/hash preserved).
+- `data-stagepass-cachebust="true"` is legacy and **does not** timestamp every production view in v2.
+- Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
+- Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
+- Dynamically created scripts use `async=false` unless the original had `async`; `defer` is added when neither async nor defer was set (keeps classic order).
+- Chrome Local Network Access: best-effort permission query; badge/console hint when state is `prompt` or `denied`.
 
-## Runtime API
+## Loader tag attributes
 
-Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Types ship in `global.d.ts`.
+| Attribute | Effect |
+| :--- | :--- |
+| `data-stagepass-version` | Production default `?v=<version>` for swapped/tagged assets without a per-asset override. |
+| `data-stagepass-session-hours` | Session lifetime in hours (positive number; default `12`). |
+| `data-stagepass-mute-console="true"` | Opt-in legacy mute of `console.log/warn/error/info/debug` in production when no session. |
 
-- `sp.vars.isLocal`
-- `sp.vars.env`
-- `sp.vars.domain`
-- `sp.vars.timestamp`
-- `sp.vars.version`
-- `sp.vars.client.*` (theme/browser/os/device/viewport/locale/capabilities)
-- `sp.resolveLocalUrl(relativePath)`
-- `sp.log(...)`, `sp.warn(...)`, `sp.error(...)`
+## Asset attributes
+
+| Attribute | Effect |
+| :--- | :--- |
+| `data-stagepass` | Marks the element for processing (any value). |
+| `data-src` / `data-href` | Production URL (required for processing). |
+| `data-stagepass-path` | Local path under the linked project root (optional). |
+| `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
+| `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
+| `data-stagepass-processed` | Internal; set after processing. |
 
 ## URL Modes
 
-- `?stagepass=my-project.sp` - activate local swapping (expires).
-- `?stagepass=debug` - logging only.
-- `?stagepass=off` / `0` / `false` - deactivate session.
+- `?stagepass=my-project.sp` — activate local swapping (expires; default 12 h).
+- `?stagepass=debug` — logging only (no asset swap).
+- `?stagepass=off` / `0` / `false` — clear the session.
+
+Allowed session values: `*.sp`, `localhost`, `localhost:<port>`, `debug`. Invalid values are rejected/cleared.
+
+After handling, `?stagepass=` is removed with `history.replaceState` (other query params and the hash are kept).
+
+Storage key: `localStorage.stagepass_domain` → JSON `{ "domain": "…", "expires": <ms> }`. Legacy plain-string values are cleared.
+
+## Badge
+
+Shown only while a session is active (including debug). Click clears the session and reloads.
+
+| State | Text |
+| :--- | :--- |
+| Active swap | `STAGEPASS ACTIVE` |
+| Debug | `STAGEPASS DEBUG` |
+| Active + LNA prompt/denied | `STAGEPASS · ALLOW LOCAL NETWORK` |
+| Debug + LNA prompt/denied | `STAGEPASS DEBUG · LNA` |
+
+## Runtime API
+
+Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Types ship in `global.d.ts`. There are **no** custom DOM events.
+
+```js
+sp.vars.isLocal     // boolean — session swap active or page on localhost
+sp.vars.env         // 'local' | 'staging' | 'production'
+sp.vars.domain      // active .sp domain, or page hostname when no swap
+sp.vars.timestamp   // session start ms while swapping; otherwise 0
+sp.vars.version     // package version (build-time)
+sp.vars.client      // theme / browser / os / device / viewport / locale / capabilities
+
+sp.resolveLocalUrl('js/app.js')  // local HTTPS URL while swapping; '' otherwise
+sp.log('…') / sp.log('warn', '…') / sp.log('error', '…')
+sp.warn('…')
+sp.error('…')
+```
+
+Logging helpers only print while a Stagepass session is active. Deprecated globals `splog` / `spwarn` / `sperror` were removed in v2.
 
 ## Related Packages
 
-- `@stagepass/cli` - creates and manages `.sp` infrastructure.
-- `@stagepass/modules` - optional modules that extend the loader.
+- `@stagepass/cli` — creates and manages `.sp` infrastructure.
+- `@stagepass/modules` — optional modules that extend the loader (`inject`, `cookies`).
 
 ## Repository
 
