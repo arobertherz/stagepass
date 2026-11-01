@@ -7,7 +7,7 @@
  */
 const api = window.stagepass;
 if (api.inject) {
-  void api.inject({ src: 'https://cdn.example.com/app.js', version: '2.0.0-beta.1' });
+  void api.inject({ src: 'https://cdn.example.com/app.js', version: '2.0.0' });
 }
 if (api.cookies) {
   api.cookies.bake('a', 'b');

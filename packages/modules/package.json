@@ -1,13 +1,15 @@
 {
   "name": "@stagepass/modules",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0",
   "description": "Modular feature extensions for Stagepass",
   "type": "module",
   "main": "dist/all.min.js",
   "types": "global.d.ts",
   "files": [
     "dist",
-    "global.d.ts"
+    "global.d.ts",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
@@ -29,7 +31,7 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@stagepass/loader": ">=2.0.0-beta.1"
+    "@stagepass/loader": ">=2.0.0"
   },
   "devDependencies": {
     "tsup": "^8.0.1",

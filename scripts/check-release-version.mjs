@@ -4,9 +4,9 @@
  * field of every Stagepass package.json.
  *
  * Usage:
- *   node scripts/check-release-version.mjs v2.0.0-beta.1
- *   node scripts/check-release-version.mjs 2.0.0-beta.1
- *   GITHUB_REF_NAME=v2.0.0-beta.1 node scripts/check-release-version.mjs
+ *   node scripts/check-release-version.mjs v2.0.0
+ *   node scripts/check-release-version.mjs 2.0.0
+ *   GITHUB_REF_NAME=v2.0.0 node scripts/check-release-version.mjs
  *
  * Exit 0 on match, 1 otherwise.
  */

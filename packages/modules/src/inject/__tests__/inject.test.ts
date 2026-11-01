@@ -179,13 +179,13 @@ describe('Injector Module', () => {
 
     it('uses version query param instead of Date.now cache bust', () => {
       const src = 'https://cdn.example.com/app.js?x=1#h';
-      const version = '2.0.0-beta.1';
+      const version = '2.0.0';
       const hashIdx = src.indexOf('#');
       const hash = hashIdx >= 0 ? src.slice(hashIdx) : '';
       const base = hashIdx >= 0 ? src.slice(0, hashIdx) : src;
       const sep = base.includes('?') ? '&' : '?';
       const resolved = `${base}${sep}v=${encodeURIComponent(version)}${hash}`;
-      expect(resolved).toBe('https://cdn.example.com/app.js?x=1&v=2.0.0-beta.1#h');
+      expect(resolved).toBe('https://cdn.example.com/app.js?x=1&v=2.0.0#h');
       expect(resolved.includes('_cb=')).toBe(false);
     });
 
