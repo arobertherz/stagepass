@@ -15,7 +15,7 @@ npm install @stagepass/loader@2 @stagepass/modules@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production (jsDelivr preferred; unpkg works the same path layout). Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control.
 
 ```html
 <script
@@ -32,6 +32,8 @@ Or load all modules:
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js"></script>
 ```
+
+unpkg serves the same paths if you need an alternative CDN.
 
 Published files: `dist/inject.min.js`, `dist/cookies.min.js`, `dist/all.min.js`.
 

@@ -118,15 +118,7 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
 
-```html
-<!-- unpkg short form (package `main`) -->
-<script src="https://unpkg.com/@stagepass/loader@2"></script>
-
-<!-- unpkg full path -->
-<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
-```
-
-Same pattern for modules, e.g. `https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js`.
+unpkg serves the same paths if you need an alternative CDN.
 
 See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
 
@@ -179,7 +171,7 @@ stagepass link my-project --origin www.example.com --origin my-project.webflow.i
 ### 3. Integrate with Webflow
 Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~9.7 KB (~4.0 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
 
-**Option 1 - CDN (jsDelivr & unpkg):**
+**Option 1 - CDN (jsDelivr):**
 
 ```html
 <!-- Core loader only (major pin @2) -->
@@ -187,10 +179,6 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
-
-<!-- Or using unpkg (short form or full path): -->
-<!-- <script src="https://unpkg.com/@stagepass/loader@2"></script> -->
-<!-- <script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script> -->
 ```
 
 **Option 2 - Local** (to avoid cross-domain issues):
