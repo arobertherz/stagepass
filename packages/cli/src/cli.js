@@ -7,6 +7,7 @@ import { unlink as defaultUnlink } from './commands/unlink.js';
 import { start as defaultStart } from './commands/start.js';
 import { stop as defaultStop } from './commands/stop.js';
 import { reload as defaultReload } from './commands/reload.js';
+import { assertSupportedPlatform } from './lib/platform.js';
 
 const require = createRequire(import.meta.url);
 const { version: packageVersion } = require('../package.json');
@@ -26,6 +27,7 @@ function collectRepeatable(value, previous) {
  * @param {typeof defaultStop} [deps.stop]
  * @param {typeof defaultReload} [deps.reload]
  * @param {string} [deps.version]
+ * @param {() => void} [deps.assertPlatform]
  */
 export function createProgram(deps = {}) {
   const setup = deps.setup || defaultSetup;
@@ -35,6 +37,8 @@ export function createProgram(deps = {}) {
   const stop = deps.stop || defaultStop;
   const reload = deps.reload || defaultReload;
   const version = deps.version || packageVersion;
+  const assertPlatform =
+    deps.assertPlatform || (() => assertSupportedPlatform());
 
   const program = new Command();
 
@@ -42,6 +46,11 @@ export function createProgram(deps = {}) {
     .name('stagepass')
     .description('The missing link between Webflow and local dev.')
     .version(version);
+
+  // Runs before every system command action. --help / --version never hit this.
+  program.hook('preAction', () => {
+    assertPlatform();
+  });
 
   program
     .command('setup')
