@@ -23,7 +23,7 @@ export function sanitizeSnippetVersion(version) {
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
  */
 export function buildWebflowSnippets(options) {
-  const version = sanitizeSnippetVersion(options.version || '2.0.0');
+  const version = sanitizeSnippetVersion(options.version || '2.1.0');
   const modules = options.modules === true;
   const majorPin = '@2';
   const exactPin = `@${version}`;
@@ -78,6 +78,6 @@ export function printWebflowSnippets(snippets, log = console.log) {
   log('\nWebflow Custom Code (Footer):');
   log(snippets.footer);
   log(
-    '\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @2.0.0).'
+    '\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @2.1.0).'
   );
 }

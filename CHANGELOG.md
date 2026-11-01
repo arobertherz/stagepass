@@ -11,13 +11,34 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### Docs
-
-- Default CDN / install recommendation is major pin `@2` (exact pin optional for maximum control). Documented prerelease → `next`, then stable → `latest` release flow in `RELEASING.md`.
-
 ---
 
 ## `@stagepass/cli`
+
+### [2.1.0] - 2026-11-02
+
+Non-breaking minor release. Existing commands, flags, defaults, and output contracts from 2.0.0 keep working.
+
+#### Added
+
+- `stagepass doctor [--json]`: read-only local stack diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, Chrome LNA hint). Never uses sudo. Exit `1` when any check fails.
+- `stagepass certs check` / `stagepass certs trust`: read-only Caddy local CA checks; `trust` runs `caddy trust` after confirmation or `--yes`.
+- `stagepass autostart on|off|status` and `stagepass daemon`: user Login LaunchAgent (`io.github.arobertherz.stagepass`) running `caddy run` without sudo.
+- `stagepass new [name]`: lean Webflow project scaffold (TypeScript/SCSS defaults, optional modules, git, install). Flags for every option; `--yes` / `--dry-run`.
+- `stagepass build` / `stagepass watch`: thin wrappers around project `npm run build` / `npm run watch` (exit code forwarded; no shell).
+- `stagepass upgrade`: bump `@stagepass/*` in the current `package.json` and print Webflow snippets (does not run install).
+- macOS platform guard for system commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`). `--version` / `--help` still work everywhere. Escape hatch `STAGEPASS_SKIP_PLATFORM_CHECK=1` for tests/CI only.
+- Manual macOS checklist `packages/cli/TESTING-macos.md`.
+
+#### Changed
+
+- CI test matrix uses Node 22 and 24 (development tooling). Published `engines.node` remains `>=18.0.0` (no consumer impact).
+
+#### Docs
+
+- Documented doctor, certs, autostart/daemon, and project helpers (`new` / `build` / `watch` / `upgrade`).
+- Default CDN / install recommendation is major pin `@2` (exact pin optional). jsDelivr is the documented CDN; unpkg noted as an alternative.
+- Issue/PR templates and jsDelivr `@2` purge notes.
 
 ### [2.0.0] - 2026-11-01
 
@@ -92,6 +113,22 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/loader`
+
+### [2.1.0] - 2026-11-02
+
+Non-breaking minor release. 2.0.0 behaviour is preserved (`vars.env`, eager `vars.client`, session/swap contracts unchanged).
+
+#### Added
+
+- Flat helpers: `stagepass.env()` / `is()` / `can()` / `client()` / `on()` / `use()` (module registry with major-version check).
+- Optional `data-stagepass-staging-hosts` (comma-separated hostnames treated as staging in addition to `*.webflow.io`).
+- Optional `data-stagepass-alias` (custom global name; assigned only when free).
+- Debug-mode warning when multiple tagged assets share the same local filename.
+
+#### Docs
+
+- Documented Runtime API helpers, staging hosts, and alias.
+- Prefer major CDN pin `@2` (exact pin optional); jsDelivr purge notes for the `@2` alias.
 
 ### [2.0.0] - 2026-11-01
 
@@ -176,6 +213,26 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/modules`
+
+### [2.1.0] - 2026-11-02
+
+Non-breaking minor release. Existing `inject` / `cookies` APIs keep working; new behaviour is additive or opt-in. Modules still register without the loader (`inject` / `cookies` warn; `maintenance` skips).
+
+#### Added
+
+- `maintenance.min.js`: opt-in client-side maintenance overlay (`data-stagepass-maintenance="true"`; `sp.maintenance.enable` / `disable` / `isActive`). Text via `textContent` only (not access protection; no `noindex`).
+- Cookies: consent categories with queue, `jar` / `crumbs` / `throwAll`, and `sp.cookie` alias.
+- Inject: `integrity`, `crossorigin`, `nonce`, and `allowedHosts` options.
+
+#### Security
+
+- Cookie attribute values validated against cookie injection.
+- Reserved inject attributes cannot bypass the host allowlist.
+
+#### Docs
+
+- Documented maintenance module, consent helpers, and inject security options.
+- Prefer major CDN pin `@2` (exact pin optional); published files list includes `maintenance.min.js`.
 
 ### [2.0.0] - 2026-11-01
 

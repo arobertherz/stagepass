@@ -16,12 +16,12 @@ Without the loader, `inject` and `cookies` still attach their APIs and warn; `ma
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see root README [Version pinning](../../README.md#-version-pinning)).
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.1.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see root README [Version pinning](../../README.md#-version-pinning)).
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.0.0"
+  data-stagepass-version="2.1.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
@@ -57,7 +57,7 @@ await sp.inject({
   localPath: 'lib.js',   // alias: path
   id: 'my-library',
   type: 'script',        // or 'style'; auto-detected from .css
-  version: '2.0.0',      // production ?v=<version>
+  version: '2.1.0',      // production ?v=<version>
   async: false,          // default false (keeps order)
   defer: true,           // default true unless async is true
   position: 'head',      // 'head' | 'body-start' | 'body-end' | { target, action }

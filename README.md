@@ -75,7 +75,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Auto Path Detection:** If `data-stagepass-path` is omitted, filename is automatically extracted from production URL.
 * **Debug Mode:** Enable logging without URL swapping for troubleshooting.
 * **Quiet Stagepass logs:** Stagepass' own `sp.log` / `sp.warn` / `sp.error` only print when a session is active (optional legacy global console mute via `data-stagepass-mute-console`).
-* **Modular Architecture:** Core loader (~9.7 KB minified, ~4.0 KB gzipped) with optional modules loaded as separate script tags.
+* **Modular Architecture:** Core loader (~11.8 KB minified, ~4.8 KB gzipped) with optional modules loaded as separate script tags.
 * **Programmatic API:** Access environment variables and inject assets programmatically via `sp` (preferred) or `stagepass` / `window.stagepass`.
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
@@ -113,7 +113,7 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.0.0"
+  data-stagepass-version="2.1.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
@@ -124,10 +124,10 @@ See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
 
 ### Optional exact pin
 
-For maximum control (freeze one publish), use an exact version such as `@2.0.0`:
+For maximum control (freeze one publish), use an exact version such as `@2.1.0`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.1.0/dist/loader.min.js"></script>
 ```
 
 jsDelivr may cache alias versions such as `@2` for a while after a new publish. Exact pins are not affected the same way. To force a refresh of the major alias, purge:
@@ -150,7 +150,7 @@ Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 Why `@2`:
 * **Compatible updates**: minor/patch releases within v2 stay backward compatible under strict semver.
 * **One intentional major bump**: breaking changes require a new major (v3) and a deliberate URL change.
-* **Exact pin when needed**: use `@2.0.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.1.0-beta.1`).
+* **Exact pin when needed**: use `@2.1.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.1.0-beta.1`).
 
 ---
 
@@ -177,7 +177,7 @@ stagepass link my-project --origin www.example.com --origin my-project.webflow.i
 * Default CORS allowlist is local only (`*.sp`, `localhost`, `127.0.0.1`). Live/Webflow hosts are **not** included until you pass `--origin` (repeatable). See [CLI Reference](#-cli-reference).
 
 ### 3. Integrate with Webflow
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~9.7 KB (~4.0 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~11.8 KB (~4.8 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
 
 **Option 1 - CDN (jsDelivr):**
 
@@ -185,7 +185,7 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
 <!-- Core loader only (major pin @2) -->
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.0.0"
+  data-stagepass-version="2.1.0"
 ></script>
 ```
 
@@ -213,10 +213,11 @@ Modules extend the core loader with additional features (e.g., programmatic inje
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.0.0"
+  data-stagepass-version="2.1.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
 ```
 
 Or load the combined modules bundle:
@@ -378,7 +379,7 @@ sp.can('localStorage')   // also: sessionStorage, cookies, serviceWorker
 sp.client('theme')       // or sp.client() for the whole object
 const off = sp.on('theme', (t) => {})  // also: 'session'; returns unsubscribe
 off()
-sp.use('my-module', '2.0.0', (api) => { /* register */ })
+sp.use('my-module', '2.1.0', (api) => { /* register */ })
 ```
 
 ### Client Runtime Info (`sp.vars.client`)
@@ -475,7 +476,7 @@ await sp.inject({
   id: 'my-library',        // Optional: for deduplication
   position: 'head',        // 'head' | 'body-start' | 'body-end' | { target: '#id', action: 'before' | 'after' }
   type: 'script',          // Optional: 'script' | 'style' (auto-detected from extension)
-  version: '2.0.0',        // Optional: in production, append ?v=<version> for cache busting
+  version: '2.1.0',        // Optional: in production, append ?v=<version> for cache busting
   async: false,            // Optional: default false (keeps script order)
   defer: true,             // Optional: default true (unless async is true)
   integrity: 'sha384-abc', // Optional: SRI
@@ -489,14 +490,14 @@ await sp.inject({
 
 // Batch injection (array)
 await sp.inject([
-  { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js', version: '2.0.0' },
-  { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style', version: '2.0.0' }
+  { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js', version: '2.1.0' },
+  { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style', version: '2.1.0' }
 ]);
 
 // Batch injection ({ scripts, styles })
 await sp.inject({
-  scripts: [{ src: 'https://cdn.example.com/lib1.js', stagepass: true, path: 'lib1.js', version: '2.0.0' }],
-  styles: [{ src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', version: '2.0.0' }]
+  scripts: [{ src: 'https://cdn.example.com/lib1.js', stagepass: true, path: 'lib1.js', version: '2.1.0' }],
+  styles: [{ src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', version: '2.1.0' }]
 });
 ```
 
