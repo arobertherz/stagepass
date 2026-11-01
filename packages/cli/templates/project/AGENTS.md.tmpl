@@ -4,12 +4,12 @@ Profile for AI coding agents and humans working on this Webflow + Stagepass proj
 
 ## Stagepass feature set
 
-- **CLI:** local `.sp` HTTPS domains (Caddy), DNS, optional PHP, `link` / `unlink` / `start` / `stop` / `reload`
+- **CLI:** local `.sp` HTTPS domains (Caddy), DNS, optional PHP, `link` / `unlink` / `start` / `stop` / `reload`, plus `doctor` / `certs` / `autostart` / `daemon` and project helpers `new` / `build` / `watch` / `upgrade`
 - **Loader:** swaps tagged production assets for local URLs when a session is active (`?stagepass={{NAME}}.sp`)
 - **Session:** `localStorage` JSON `{ domain, expires }` (default 12 h)
-- **Modules (optional):** `inject`, `cookies` as separate script tags after the loader
+- **Modules (optional):** load after `loader.min.js` as separate tags: `inject`, `cookies`, `maintenance`, or `all` (`modules/dist/{inject,cookies,maintenance,all}.min.js`)
 - **Runtime API:** prefer `sp` (`sp.vars`, `sp.log` / `sp.warn` / `sp.error`, `sp.resolveLocalUrl`)
-- **CDN:** jsDelivr / unpkg; recommend major pin `@2` (exact pin optional)
+- **CDN:** Prefer jsDelivr with major pin `@2` (exact pin optional), e.g. `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. unpkg serves the same paths if you need an alternative CDN.
 
 ## Safe development rules (beginners)
 

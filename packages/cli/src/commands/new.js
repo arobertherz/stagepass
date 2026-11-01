@@ -236,12 +236,40 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     ? config.dir
     : path.resolve(cwd, config.dir);
 
+  const templatesRootResolved = path.resolve(templatesRoot);
   const readTemplate = async (rel) => {
-    const abs = path.join(templatesRoot, rel);
+    const abs = path.resolve(templatesRootResolved, rel);
+    const relToRoot = path.relative(templatesRootResolved, abs);
+    if (
+      relToRoot.startsWith('..') ||
+      path.isAbsolute(relToRoot) ||
+      relToRoot.split(path.sep).includes('..')
+    ) {
+      throw new Error(`Template path escapes templates root: ${rel}`);
+    }
     return fse.readFile(abs, 'utf8');
   };
 
-  const files = await planScaffoldFiles(config, { readTemplate });
+  let files;
+  try {
+    files = await planScaffoldFiles(config, { readTemplate });
+  } catch (err) {
+    error(chalk.red(err instanceof Error ? err.message : String(err)));
+    return 1;
+  }
+
+  for (const file of files) {
+    const rel = String(file.relativePath || '');
+    if (
+      !rel ||
+      path.isAbsolute(rel) ||
+      rel.split(/[\\/]/).includes('..')
+    ) {
+      error(chalk.red(`Refusing unsafe output path: ${rel || '(empty)'}`));
+      return 1;
+    }
+  }
+
   const conflicts = await findConflicts(targetDir, files, fse);
   if (conflicts.length > 0) {
     error(chalk.red('Refusing to overwrite existing files:'));
@@ -265,7 +293,16 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   await fse.ensureDir(targetDir);
 
   for (const file of files) {
-    const abs = path.join(targetDir, file.relativePath);
+    const abs = path.resolve(targetDir, file.relativePath);
+    const relToTarget = path.relative(targetDir, abs);
+    if (
+      relToTarget.startsWith('..') ||
+      path.isAbsolute(relToTarget) ||
+      relToTarget.split(path.sep).includes('..')
+    ) {
+      error(chalk.red(`Refusing to write outside project directory: ${file.relativePath}`));
+      return 1;
+    }
     await fse.ensureDir(path.dirname(abs));
     await fse.writeFile(abs, file.contents, 'utf8');
   }

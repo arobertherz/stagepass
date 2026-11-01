@@ -231,6 +231,12 @@ describe('createNew', () => {
     const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
     expect(readme).toContain('@stagepass/loader@2');
     expect(readme).toContain('data-stagepass-version="2.0.0"');
+    expect(readme).not.toContain('unpkg.com');
+
+    const agents = await fs.readFile(path.join(target, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
+    expect(agents).toMatch(/unpkg serves the same paths/i);
+    expect(agents).toContain('modules/dist/{inject,cookies,maintenance,all}.min.js');
 
     expect(exec).toHaveBeenCalledWith('git', ['init'], expect.objectContaining({ cwd: target }));
     expect(exec).toHaveBeenCalledWith(

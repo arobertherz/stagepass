@@ -91,7 +91,7 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `-y, --yes` | Non-interactive; use defaults for omitted flags. |
 | `--dry-run` | Print the file plan without writing. |
 
-The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`), and an `AGENTS.md` with safe development rules.
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2` with `loader/dist/loader.min.js` and optional `modules/dist/{inject,cookies}.min.js`; also document `all` / `maintenance`), and an `AGENTS.md` with safe development rules.
 
 ### `upgrade` options
 

@@ -1,4 +1,20 @@
 /**
+ * Safe token for CDN pins and data-stagepass-version (blocks HTML/attr injection).
+ * @param {unknown} version
+ * @returns {string}
+ */
+export function sanitizeSnippetVersion(version) {
+  const value = String(version == null ? '' : version).trim();
+  // Allow optional ^/~ range prefixes used in package.json; reject quotes and HTML.
+  if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(value)) {
+    throw new Error(
+      'Invalid version for Webflow snippets (use a semver or npm dist-tag).'
+    );
+  }
+  return value;
+}
+
+/**
  * Build recommended Webflow Custom Code snippets (jsDelivr major pin @2).
  *
  * @param {object} options
@@ -7,7 +23,7 @@
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
  */
 export function buildWebflowSnippets(options) {
-  const version = String(options.version || '2.0.0');
+  const version = sanitizeSnippetVersion(options.version || '2.0.0');
   const modules = options.modules === true;
   const majorPin = '@2';
   const exactPin = `@${version}`;

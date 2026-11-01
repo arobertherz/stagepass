@@ -12,14 +12,15 @@ import { spawn as nodeSpawn } from 'node:child_process';
 
 /**
  * Spawn without a shell. Forwards stdio by default.
+ * Always forces shell:false after spreading options so callers cannot enable a shell.
  * @type {SpawnFn}
  */
 export function defaultSpawn(command, args = [], options = {}) {
   return new Promise((resolve, reject) => {
     const child = nodeSpawn(command, args, {
       stdio: 'inherit',
-      shell: false,
       ...options,
+      shell: false,
     });
     child.on('error', reject);
     child.on('close', (code, signal) => {

@@ -52,6 +52,12 @@ describe('upgrade helpers', () => {
       'version',
     ]);
   });
+
+  it('rejects unsafe literal --version values', async () => {
+    await expect(
+      resolveUpgradeVersion('2"><script>', { exec: vi.fn(), cliVersion: '2.0.0' })
+    ).rejects.toThrow(/Invalid --version/);
+  });
 });
 
 describe('upgrade command', () => {

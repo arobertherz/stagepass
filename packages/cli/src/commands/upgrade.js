@@ -47,13 +47,23 @@ export async function resolveUpgradeVersion(requested, deps = {}) {
 
   const value = String(requested).trim();
   if (!needsNpmView(value)) {
-    return value.replace(/^v/i, '');
+    const literal = value.replace(/^v/i, '');
+    // Keep package.json / snippet versions free of shell or HTML metacharacters.
+    if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(literal)) {
+      throw new Error(
+        'Invalid --version value (use a semver, range prefix ^/~, or npm dist-tag).'
+      );
+    }
+    return literal;
   }
 
   const { stdout } = await exec('npm', ['view', `@stagepass/cli@${value}`, 'version']);
   const resolved = String(stdout || '').trim();
   if (!resolved) {
     throw new Error(`Could not resolve version for dist-tag "${value}".`);
+  }
+  if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(resolved)) {
+    throw new Error(`Resolved version looks unsafe: ${resolved}`);
   }
   return resolved;
 }

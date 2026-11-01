@@ -30,4 +30,18 @@ describe('defaultExec', () => {
     expect(result.stdout).toBe('ok');
     expect(execFileMock).toHaveBeenCalled();
   });
+
+  it('resolveCommand uses /usr/bin/env which without a shell', async () => {
+    execFileMock.mockImplementation((file, args, options, callback) => {
+      const cb = typeof options === 'function' ? options : callback;
+      const opts = typeof options === 'function' ? {} : options;
+      expect(file).toBe('/usr/bin/env');
+      expect(args).toEqual(['which', 'caddy']);
+      expect(opts.shell).toBe(false);
+      cb(null, { stdout: '/opt/homebrew/bin/caddy\n', stderr: '' });
+    });
+
+    const { resolveCommand } = await import('../exec.js');
+    await expect(resolveCommand('caddy')).resolves.toBe('/opt/homebrew/bin/caddy');
+  });
 });
