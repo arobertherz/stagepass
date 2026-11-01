@@ -130,6 +130,14 @@ For maximum control (freeze one publish), use an exact version such as `@2.0.0`:
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
 ```
 
+jsDelivr may cache alias versions such as `@2` for a while after a new publish. Exact pins are not affected the same way. To force a refresh of the major alias, purge:
+
+```text
+https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js
+```
+
+Use the same purge URL pattern for modules (replace the package path). Details: [jsDelivr purge](https://www.jsdelivr.com/documentation#purge).
+
 ### Legacy 1.x (still valid if you pin it)
 
 Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
