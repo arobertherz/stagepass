@@ -82,6 +82,17 @@ stagepass/
 
 ## Testing Changes
 
+Prefer running the full suite in Docker (host `node_modules` may be macOS-native):
+
+```bash
+docker run --rm -v "$PWD":/w \
+  -v /w/node_modules -v /w/packages/cli/node_modules \
+  -v /w/packages/loader/node_modules -v /w/packages/modules/node_modules \
+  -w /w node:22-bookworm-slim bash -lc 'npm ci && npm run build && npm test --workspaces --if-present'
+```
+
+Also verify on Node 20 (`node:20-bookworm-slim`) to match CI. See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute — see `MIGRATION.md`.
+
 ### CLI Changes
 
 After modifying CLI code, the changes are immediately available if you used `npm link`. No rebuild needed.
