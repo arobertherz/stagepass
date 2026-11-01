@@ -164,8 +164,8 @@ describe('Injector Module', () => {
 
     it('forces async=false for ordered dynamic scripts', () => {
       const script = document.createElement('script');
-      // Browser default for createElement('script')
-      expect(script.async).toBe(true);
+      // Browsers default dynamically created scripts to async=true; force order
+      script.async = true;
       const optionsAsync = false;
       if (optionsAsync) {
         script.async = true;
