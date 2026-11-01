@@ -1,11 +1,49 @@
+import { cleanDomain, isValidDomain } from './domain.js';
+import {
+  SESSION_KEY,
+  createSession,
+  parseSession,
+  parseSessionHours,
+  serializeSession,
+} from './session.js';
+import { appendQueryParam, buildLocalAssetUrl } from './url.js';
+import { lnaHintMessage, queryLoopbackPermission, type LnaState } from './lna.js';
+import { applyScriptLoadOrder } from './script-attrs.js';
+
+declare const __STAGEPASS_VERSION__: string;
+
 (function () {
-  const K = 'stagepass_domain';
+  const K = SESSION_KEY;
   const P = 'stagepass';
-  
-  const isValidDomain = (d: string): boolean => d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:');
-  
+  const PKG_VERSION =
+    typeof __STAGEPASS_VERSION__ !== 'undefined' ? __STAGEPASS_VERSION__ : '0.0.0';
+
+  function getLoaderScript(): HTMLScriptElement | null {
+    try {
+      if (document.currentScript instanceof HTMLScriptElement) {
+        return document.currentScript;
+      }
+    } catch (_) {}
+    try {
+      const scripts = document.querySelectorAll('script[src*="loader"]');
+      for (let i = scripts.length - 1; i >= 0; i--) {
+        const s = scripts[i] as HTMLScriptElement;
+        if (/loader(?:\.min)?\.js/i.test(s.src || '')) return s;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  const loaderScript = getLoaderScript();
+  const muteConsole =
+    loaderScript?.getAttribute('data-stagepass-mute-console') === 'true';
+  const sessionHours = parseSessionHours(
+    loaderScript?.getAttribute('data-stagepass-session-hours')
+  );
+  const loaderVersionAttr = loaderScript?.getAttribute('data-stagepass-version');
+
   const p = new URLSearchParams(window.location.search);
-  
+
   function getCallerLocation(): string {
     try {
       const stack = new Error().stack?.split('\n');
@@ -23,94 +61,139 @@
     return '';
   }
 
-  function log(level: string, ...args: any[]) {
-    const v = localStorage.getItem(K);
-    if (!v) return;
-    const t = new Date().toTimeString().split(' ')[0];
-    const loc = getCallerLocation();
-    const pre = `[🎫 ${t}${loc ? ' |' + loc : ''}]`;
-    if (level === 'error') {
-      console.log(`%c${pre}`, 'color: red; font-weight: bold;', ...args);
-    } else if (console[level as keyof Console]) {
-      (console[level as keyof Console] as Function)(pre, ...args);
-    } else {
-      console.log(pre, level, ...args);
-    }
+  let hasActiveSession = false;
+
+  function log(level: string, ...args: unknown[]) {
+    if (!hasActiveSession) return;
+    try {
+      const t = new Date().toTimeString().split(' ')[0];
+      const loc = getCallerLocation();
+      const pre = `[🎫 ${t}${loc ? ' |' + loc : ''}]`;
+      if (level === 'error') {
+        console.log(`%c${pre}`, 'color: red; font-weight: bold;', ...args);
+      } else if (console[level as keyof Console]) {
+        (console[level as keyof Console] as Function)(pre, ...args);
+      } else {
+        console.log(pre, level, ...args);
+      }
+    } catch (_) {}
   }
 
-  /** @deprecated Use sp.log or stagepass.log instead */
-  const splog = (...args: any[]) => log('log', ...args);
-  /** @deprecated Use sp.warn or stagepass.warn instead */
-  const spwarn = (...args: any[]) => log('warn', ...args);
-  /** @deprecated Use sp.error or stagepass.error instead */
-  const sperror = (...args: any[]) => log('error', ...args);
-  (window as any).splog = splog;
-  (window as any).spwarn = spwarn;
-  (window as any).sperror = sperror;
-
-  function spLog(...args: any[]) {
-    let level: string = 'log';
+  function spLog(...args: unknown[]) {
+    let level = 'log';
     if (args.length > 0 && (args[0] === 'warn' || args[0] === 'error')) {
-      level = args[0];
+      level = args[0] as string;
       args = args.slice(1);
     }
     log(level, ...args);
   }
-  const spWarn = (...args: any[]) => log('warn', ...args);
-  const spError = (...args: any[]) => log('error', ...args);
+  const spWarn = (...args: unknown[]) => log('warn', ...args);
+  const spError = (...args: unknown[]) => log('error', ...args);
 
-  const clean = (d: string | null): string | null => d ? d.replace(/^https?:\/\//, '').replace(/\/$/, '') : null;
+  function readSessionDomain(): string | null {
+    try {
+      const raw = localStorage.getItem(K);
+      const record = parseSession(raw);
+      if (!record) {
+        if (raw) localStorage.removeItem(K);
+        return null;
+      }
+      return record.domain;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeSession(domain: string): void {
+    try {
+      const record = createSession(domain, sessionHours);
+      localStorage.setItem(K, serializeSession(record));
+    } catch (_) {}
+  }
+
+  function clearSession(): void {
+    try {
+      localStorage.removeItem(K);
+    } catch (_) {}
+  }
 
   let paramProcessed = false;
-  let sv = localStorage.getItem(K);
-  
+  let sv = readSessionDomain();
+
   if (p.has(P)) {
     const v = p.get(P);
     if (v === 'off' || v === '0' || v === 'false') {
-      localStorage.removeItem(K);
+      clearSession();
       sv = null;
-      splog('🔌 Stagepass disconnected.');
+      hasActiveSession = true; // allow one disconnect log
+      log('log', '🔌 Stagepass disconnected.');
+      hasActiveSession = false;
     } else if (v) {
-      const c = v === 'debug' ? 'debug' : clean(v);
+      const c = v === 'debug' ? 'debug' : cleanDomain(v);
       if (c && isValidDomain(c)) {
-        localStorage.setItem(K, c);
+        writeSession(c);
         sv = c;
-        splog(c === 'debug' ? '🔍 Stagepass debug mode enabled.' : `🔌 Stagepass connected to: ${c}`);
+        hasActiveSession = true;
+        log(
+          'log',
+          c === 'debug'
+            ? '🔍 Stagepass debug mode enabled.'
+            : `🔌 Stagepass connected to: ${c}`
+        );
         paramProcessed = true;
       } else if (c) {
-        spwarn(`Invalid domain: ${c}. Only .sp domains are allowed.`);
+        hasActiveSession = true;
+        spWarn(`Invalid domain: ${c}. Only .sp domains are allowed.`);
+        hasActiveSession = false;
       }
     }
-    p.delete(P);
-    const s = p.toString();
-    window.history.replaceState({}, '', window.location.pathname + (s ? `?${s}` : '') + window.location.hash);
+    try {
+      p.delete(P);
+      const s = p.toString();
+      window.history.replaceState(
+        {},
+        '',
+        window.location.pathname + (s ? `?${s}` : '') + window.location.hash
+      );
+    } catch (_) {}
   }
 
   if (sv && !isValidDomain(sv)) {
-    localStorage.removeItem(K);
+    clearSession();
     sv = null;
   }
-  if (sv && !paramProcessed && sv !== 'debug') {
-    splog(`🔌 Stagepass connected to: ${sv}`);
+
+  hasActiveSession = !!(sv && isValidDomain(sv));
+  if (sv && !paramProcessed && sv !== 'debug' && hasActiveSession) {
+    log('log', `🔌 Stagepass connected to: ${sv}`);
   }
+
   const dev = !!sv;
   const swap = !!sv && sv !== 'debug';
-  const dom = swap ? clean(sv) : null;
+  const dom = swap ? cleanDomain(sv) : null;
   const now = swap ? Date.now() : 0;
   const cacheBust = now;
   const sessionStartTime = now;
 
   const hostname = window.location.hostname;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('localhost:') || hostname.startsWith('127.0.0.1:');
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('localhost:') ||
+    hostname.startsWith('127.0.0.1:');
   const isLocal = swap || isLocalhost;
-  const env: 'local' | 'staging' | 'production' = isLocal ? 'local' : (hostname.endsWith('.webflow.io') ? 'staging' : 'production');
+  const env: 'local' | 'staging' | 'production' = isLocal
+    ? 'local'
+    : hostname.endsWith('.webflow.io')
+      ? 'staging'
+      : 'production';
 
-  const hasValidSession = sv && isValidDomain(sv);
-  const shouldSuppress = !hasValidSession && !p.has(P);
-  // Suppress console logs in production, allow in staging and local
-  if (shouldSuppress && env === 'production') {
-    const noop = () => {};
-    console.log = console.warn = console.error = console.info = console.debug = noop;
+  // Opt-in global console mute only (legacy 1.x production behaviour)
+  if (muteConsole && env === 'production' && !hasActiveSession) {
+    try {
+      const noop = () => {};
+      console.log = console.warn = console.error = console.info = console.debug = noop;
+    } catch (_) {}
   }
 
   type StagepassClientTheme = {
@@ -184,7 +267,7 @@
   }
 
   function getDeviceInfo(ua: string): StagepassClientInfo['device'] {
-    const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+    const touch = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
     let type: StagepassClientInfo['device']['type'] = 'desktop';
     if (/iPad|Tablet/i.test(ua)) type = 'tablet';
     else if (/Mobi|Android.+Mobile|iPhone/i.test(ua)) type = 'mobile';
@@ -256,25 +339,27 @@
     env,
     domain: dom || hostname,
     timestamp: sessionStartTime,
-    version: '1.2.0',
+    version: PKG_VERSION,
     client: clientInfo,
   });
   stagepassObj.log = spLog;
   stagepassObj.warn = spWarn;
   stagepassObj.error = spError;
+  /**
+   * Build a local HTTPS URL when a Stagepass session is active.
+   * @param relativePath - Path relative to the linked project root
+   * @returns Local URL or empty string when no session
+   */
   stagepassObj.resolveLocalUrl = (relativePath: string): string => {
     const v = stagepassObj.vars;
-    if (!v.isLocal || !v.domain) return '';
-    const clean = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
-    return clean ? `https://${v.domain}/${clean}?_cb=${v.timestamp}` : '';
+    if (!swap || !dom || !relativePath) return '';
+    return buildLocalAssetUrl(dom, relativePath, v.timestamp || Date.now());
   };
   (window as any).stagepass = stagepassObj;
-  // Also expose as global variable (without window prefix)
   (globalThis as any).stagepass = stagepassObj;
   (window as any).sp = stagepassObj;
   (globalThis as any).sp = stagepassObj;
 
-  // Phase 2: keep dynamic client data fresh
   try {
     if (window.matchMedia) {
       const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -310,83 +395,167 @@
   };
   window.addEventListener('resize', updateViewport);
 
-  function swapEl(sel: string, pathAttr: string, srcAttr: string, type: 'script' | 'link', skipAttrs: string[]) {
+  let lnaState: LnaState = 'unknown';
+  let lnaHint: string | null = null;
+
+  function resolveAssetUrl(
+    el: Element,
+    productionSrc: string,
+    localPath: string | null
+  ): string {
+    if (swap && localPath && dom) {
+      return buildLocalAssetUrl(dom, localPath, cacheBust);
+    }
+
+    const perAssetVersion = el.getAttribute('data-stagepass-v');
+    const version = perAssetVersion || loaderVersionAttr;
+    if (version) {
+      return appendQueryParam(productionSrc, 'v', version);
+    }
+
+    // data-stagepass-cachebust no longer timestamps every production view
+    return productionSrc;
+  }
+
+  function swapEl(
+    sel: string,
+    pathAttr: string,
+    srcAttr: string,
+    type: 'script' | 'link',
+    skipAttrs: string[]
+  ) {
     document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el: any) => {
-      el.setAttribute('data-stagepass-processed', 'true');
-      let lp = el.getAttribute(pathAttr);
-      const ps = el.getAttribute(srcAttr);
-      if (!ps) return;
-      if (!lp && ps && swap && dom) {
-        try {
-          const urlObj = new URL(ps);
-          const pathParts = urlObj.pathname.split('/');
-          lp = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
-        } catch (e) {
-          const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
-          if (match) lp = match[1];
+      try {
+        el.setAttribute('data-stagepass-processed', 'true');
+        let lp = el.getAttribute(pathAttr);
+        const ps = el.getAttribute(srcAttr);
+        if (!ps) return;
+        if (!lp && ps && swap && dom) {
+          try {
+            const urlObj = new URL(ps);
+            const pathParts = urlObj.pathname.split('/');
+            lp = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+          } catch (e) {
+            const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+            if (match) lp = match[1];
+          }
         }
-      }
-      let url: string;
-      if (swap && lp && dom) {
-        url = `https://${dom}/${lp.startsWith('/') ? lp.substring(1) : lp}?_cb=${cacheBust}`;
-      } else if (el.getAttribute('data-stagepass-cachebust') === 'true') {
-        url = ps + (ps.includes('?') ? '&' : '?') + '_cb=' + Date.now();
-      } else {
-        url = ps;
-      }
-      if (!url) return;
-      const n = document.createElement(type);
-      if (type === 'script') {
-        (n as HTMLScriptElement).src = url;
-        Array.from(el.attributes).forEach((a) => {
-          const attr = a as Attr;
-          if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
-        });
-        if (!el.hasAttribute('async') && !el.hasAttribute('defer')) n.setAttribute('defer', '');
-      } else {
-        (n as HTMLLinkElement).rel = 'stylesheet';
-        (n as HTMLLinkElement).href = url;
-        Array.from(el.attributes).forEach((a) => {
-          const attr = a as Attr;
-          if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
-        });
-      }
-      if (el.parentNode) {
-        el.parentNode.insertBefore(n, el);
-        el.remove();
-      } else {
-        sperror(`${type} injection failed: No parent node`);
+        const url = resolveAssetUrl(el, ps, lp);
+        if (!url) return;
+        const n = document.createElement(type);
+        if (type === 'script') {
+          (n as HTMLScriptElement).src = url;
+          Array.from(el.attributes).forEach((a) => {
+            const attr = a as Attr;
+            if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
+          });
+          applyScriptLoadOrder(n as HTMLScriptElement, el);
+        } else {
+          (n as HTMLLinkElement).rel = 'stylesheet';
+          (n as HTMLLinkElement).href = url;
+          Array.from(el.attributes).forEach((a) => {
+            const attr = a as Attr;
+            if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
+          });
+        }
+        if (el.parentNode) {
+          el.parentNode.insertBefore(n, el);
+          el.remove();
+        } else {
+          spError(`${type} injection failed: No parent node`);
+        }
+      } catch (_) {
+        // Never break the page
       }
     });
   }
 
   const process = () => {
-    swapEl('script[data-stagepass]', 'data-stagepass-path', 'data-src', 'script', ['data-src', 'data-stagepass', 'data-stagepass-path', 'data-stagepass-cachebust']);
-    swapEl('link[rel="stylesheet"][data-stagepass]', 'data-stagepass-path', 'data-href', 'link', ['href', 'data-href', 'data-stagepass', 'data-stagepass-path', 'data-stagepass-cachebust']);
+    try {
+      swapEl('script[data-stagepass]', 'data-stagepass-path', 'data-src', 'script', [
+        'data-src',
+        'data-stagepass',
+        'data-stagepass-path',
+        'data-stagepass-cachebust',
+        'data-stagepass-v',
+      ]);
+      swapEl(
+        'link[rel="stylesheet"][data-stagepass]',
+        'data-stagepass-path',
+        'data-href',
+        'link',
+        [
+          'href',
+          'data-href',
+          'data-stagepass',
+          'data-stagepass-path',
+          'data-stagepass-cachebust',
+          'data-stagepass-v',
+        ]
+      );
+    } catch (_) {}
   };
-  process();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', process);
+
+  function updateFlagText(flag: HTMLElement) {
+    let text = sv === 'debug' ? 'STAGEPASS DEBUG' : 'STAGEPASS ACTIVE';
+    if (lnaHint) {
+      text = sv === 'debug' ? 'STAGEPASS DEBUG · LNA' : 'STAGEPASS · ALLOW LOCAL NETWORK';
+    }
+    flag.textContent = text;
+    if (lnaHint) {
+      flag.title = lnaHint;
+    }
   }
 
   function flag() {
     if (!dev) return;
-    const f = document.createElement('div');
-    f.id = 'stagepass-flag';
-    f.textContent = sv === 'debug' ? 'STAGEPASS DEBUG' : 'STAGEPASS ACTIVE';
-    f.style.cssText = 'font:12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:bold;color:#fff;background:#D92662;padding:4px 6px;z-index:9999999999;position:fixed;top:0;right:0;cursor:pointer;border-radius:0 0 0 4px;user-select:none;';
-    f.addEventListener('click', () => {
-      localStorage.removeItem(K);
-      splog('🔌 Stagepass disconnected.');
-      window.location.reload();
-    });
-    if (document.body) {
-      document.body.appendChild(f);
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        if (document.body) document.body.appendChild(f);
+    try {
+      const f = document.createElement('div');
+      f.id = 'stagepass-flag';
+      updateFlagText(f);
+      f.style.cssText =
+        'font:12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:bold;color:#fff;background:#D92662;padding:4px 6px;z-index:9999999999;position:fixed;top:0;right:0;cursor:pointer;border-radius:0 0 0 4px;user-select:none;';
+      f.addEventListener('click', () => {
+        clearSession();
+        hasActiveSession = true;
+        log('log', '🔌 Stagepass disconnected.');
+        window.location.reload();
       });
+      const mount = () => {
+        if (document.body) document.body.appendChild(f);
+      };
+      if (document.body) mount();
+      else document.addEventListener('DOMContentLoaded', mount);
+
+      // Keep a reference so LNA async can update the badge
+      (stagepassObj as any).__flagEl = f;
+    } catch (_) {}
+  }
+
+  async function maybeCheckLnaAndProcess() {
+    if (swap) {
+      try {
+        lnaState = await queryLoopbackPermission();
+        lnaHint = lnaHintMessage(lnaState);
+        if (lnaHint) {
+          spWarn(lnaHint);
+          const flagEl = (stagepassObj as any).__flagEl as HTMLElement | undefined;
+          if (flagEl) updateFlagText(flagEl);
+        }
+      } catch (_) {
+        lnaState = 'unknown';
+        lnaHint = null;
+      }
     }
+    process();
+  }
+
+  // Start processing: never block rendering; LNA check is best-effort
+  void maybeCheckLnaAndProcess();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      void maybeCheckLnaAndProcess();
+    });
   }
 
   if (document.readyState === 'loading') {

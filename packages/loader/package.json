@@ -3,15 +3,18 @@
   "version": "1.2.0",
   "description": "Universal loader for Stagepass - injects local files into Webflow projects",
   "main": "dist/loader.min.js",
+  "types": "global.d.ts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "global.d.ts"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run && npm run typecheck",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p fixtures/tsconfig.json"
   },
   "keywords": [
     "webflow",
