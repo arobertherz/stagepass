@@ -40,7 +40,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Standalone Architecture
 **Decision:** The Loader must have zero dependencies on the CLI package.  
-**Rationale:** The Loader is hosted on jsDelivr and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~9.7 KB minified / ~4.0 KB gzipped for `loader.min.js`).  
+**Rationale:** The Loader is hosted on jsDelivr and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~12.0 KB minified for `loader.min.js` after Runtime API helpers).  
 **Constraint:** No Node.js dependencies, browser APIs only.
 
 ### Session Persistence: localStorage with expiry
@@ -108,6 +108,8 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `data-stagepass-session-hours` - Optional on the loader tag; session lifetime in hours (default 12)
 -   `data-stagepass-mute-console="true"` - Optional; legacy global console mute in production without a session
 -   `data-stagepass-cachebust="true"` - Legacy; no longer timestamps every production page view
+-   `data-stagepass-staging-hosts` - Optional comma-separated hostnames treated as staging (in addition to `*.webflow.io`)
+-   `data-stagepass-alias` - Optional custom global alias (valid JS identifier; assigned only when free)
 -   `data-stagepass-processed` - Internal flag set after processing (prevents double-processing)
 
 ### Loader: CSS Selectors
@@ -125,7 +127,12 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Runtime API (stagepass / sp)
 -   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version` (build-time from package.json)
--   `stagepass.vars.client` - Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
+-   `stagepass.vars.client` - Runtime client info (lazy on first access): `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
+-   `stagepass.env()` / `stagepass.is(name)` - Flat helpers (`local` = active `.sp` swap session; staging = `*.webflow.io` or `data-stagepass-staging-hosts`; else production). Independent of `vars.env` localhost semantics.
+-   `stagepass.can(capability)` - Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`)
+-   `stagepass.client(key?)` - Read `vars.client` key (or whole object)
+-   `stagepass.on(event, fn)` - Subscribe (`theme`, `session`); returns unsubscribe
+-   `stagepass.use(name, version, factory)` - Module registry with major-version check
 -   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (only when session active)
 -   `stagepass.resolveLocalUrl(relativePath)` - Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
 -   Types: `@stagepass/loader` ships `global.d.ts` (`types` field); modules extend via declaration merging.
@@ -136,10 +143,11 @@ We use a monorepo workspace structure to manage these distinct packages:
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
     ```
--   **Important:** Core loader must be loaded first, as modules require `stagepass.vars` (or `window.stagepass.vars`)
--   **Module Registration:** Modules automatically register themselves on `stagepass` / `sp` (e.g., `sp.inject`, `sp.cookies`)
--   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available
+-   **Important:** Core loader should be loaded first. Without it, modules log a console warning and skip registration (they no longer throw).
+-   **Module Registration:** Modules register via `stagepass.use(...)` when available (e.g. `sp.inject`, `sp.cookies` / `sp.cookie`, `sp.maintenance`)
+-   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available; optional `data-stagepass-alias`
 -   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.0.0`) is optional for maximum control. See README "Version pinning".
 
 ### CLI: Commands

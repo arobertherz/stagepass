@@ -4,6 +4,7 @@
 // Import all modules
 import './inject/index';
 import './cookies/index';
+import './maintenance/index';
 
 // All modules are self-registering via IIFE pattern
 // They attach themselves to window.stagepass

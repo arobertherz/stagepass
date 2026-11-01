@@ -9,6 +9,14 @@ import {
 import { appendQueryParam, buildLocalAssetUrl } from './url.js';
 import { lnaHintMessage, queryLoopbackPermission, type LnaState } from './lna.js';
 import { applyScriptLoadOrder } from './script-attrs.js';
+import { detectRuntimeEnv, parseStagingHosts } from './env.js';
+import { isGlobalFree, isValidJsIdentifier } from './alias.js';
+import {
+  canCapability,
+  getClientInfo,
+  type StagepassClientInfo,
+} from './client.js';
+import { createModuleRegistry } from './registry.js';
 
 declare const __STAGEPASS_VERSION__: string;
 
@@ -41,6 +49,10 @@ declare const __STAGEPASS_VERSION__: string;
     loaderScript?.getAttribute('data-stagepass-session-hours')
   );
   const loaderVersionAttr = loaderScript?.getAttribute('data-stagepass-version');
+  const stagingHosts = parseStagingHosts(
+    loaderScript?.getAttribute('data-stagepass-staging-hosts')
+  );
+  const aliasName = loaderScript?.getAttribute('data-stagepass-alias');
 
   const p = new URLSearchParams(window.location.search);
 
@@ -182,9 +194,10 @@ declare const __STAGEPASS_VERSION__: string;
     hostname.startsWith('localhost:') ||
     hostname.startsWith('127.0.0.1:');
   const isLocal = swap || isLocalhost;
+  // vars.env keeps 2.0.0 semantics (localhost counts as local)
   const env: 'local' | 'staging' | 'production' = isLocal
     ? 'local'
-    : hostname.endsWith('.webflow.io')
+    : hostname.endsWith('.webflow.io') || stagingHosts.includes(hostname.toLowerCase())
       ? 'staging'
       : 'production';
 
@@ -196,155 +209,102 @@ declare const __STAGEPASS_VERSION__: string;
     } catch (_) {}
   }
 
-  type StagepassClientTheme = {
-    preferred: 'light' | 'dark' | 'no-preference';
-    current: 'light' | 'dark' | 'unknown';
+  // Event subscribers
+  type EventName = 'theme' | 'session';
+  const listeners: Record<EventName, Set<(payload: unknown) => void>> = {
+    theme: new Set(),
+    session: new Set(),
   };
 
-  type StagepassClientInfo = {
-    theme: StagepassClientTheme;
-    browser: {
-      family: 'chrome' | 'safari' | 'firefox' | 'edge' | 'opera' | 'unknown';
-      major: number | null;
-      userAgent: string;
-    };
-    os: {
-      family: 'macos' | 'windows' | 'ios' | 'android' | 'linux' | 'unknown';
-    };
-    device: {
-      type: 'mobile' | 'tablet' | 'desktop' | 'unknown';
-      touch: boolean;
-    };
-    viewport: {
-      width: number;
-      height: number;
-      dpr: number;
-    };
-    locale: {
-      language: string;
-      timezone: string | null;
-    };
-    capabilities: {
-      cookiesEnabled: boolean;
-      localStorage: boolean;
-      sessionStorage: boolean;
-    };
-  };
+  function emit(event: EventName, payload: unknown) {
+    listeners[event].forEach((fn) => {
+      try {
+        fn(payload);
+      } catch (_) {}
+    });
+  }
 
-  function getBrowserInfo(ua: string): StagepassClientInfo['browser'] {
-    let family: StagepassClientInfo['browser']['family'] = 'unknown';
-    let major: number | null = null;
-    let m: RegExpMatchArray | null = null;
+  // Lazy client detection
+  let clientInfo: StagepassClientInfo | null = null;
+  let clientComputed = false;
 
-    if (/Edg\/(\d+)/.test(ua)) {
-      family = 'edge';
-      m = ua.match(/Edg\/(\d+)/);
-    } else if (/OPR\/(\d+)/.test(ua)) {
-      family = 'opera';
-      m = ua.match(/OPR\/(\d+)/);
-    } else if (/Firefox\/(\d+)/.test(ua)) {
-      family = 'firefox';
-      m = ua.match(/Firefox\/(\d+)/);
-    } else if (/Chrome\/(\d+)/.test(ua)) {
-      family = 'chrome';
-      m = ua.match(/Chrome\/(\d+)/);
-    } else if (/Version\/(\d+).+Safari\//.test(ua)) {
-      family = 'safari';
-      m = ua.match(/Version\/(\d+)/);
+  function ensureClient(): StagepassClientInfo {
+    if (!clientComputed || !clientInfo) {
+      clientInfo = getClientInfo();
+      clientComputed = true;
+      bindThemeAndViewport();
     }
-
-    if (m && m[1]) major = Number(m[1]);
-    return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+    return clientInfo;
   }
 
-  function getOsInfo(ua: string): StagepassClientInfo['os'] {
-    if (/Android/i.test(ua)) return { family: 'android' };
-    if (/iPhone|iPad|iPod/i.test(ua)) return { family: 'ios' };
-    if (/Mac OS X|Macintosh/i.test(ua)) return { family: 'macos' };
-    if (/Windows NT/i.test(ua)) return { family: 'windows' };
-    if (/Linux/i.test(ua)) return { family: 'linux' };
-    return { family: 'unknown' };
-  }
-
-  function getDeviceInfo(ua: string): StagepassClientInfo['device'] {
-    const touch = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
-    let type: StagepassClientInfo['device']['type'] = 'desktop';
-    if (/iPad|Tablet/i.test(ua)) type = 'tablet';
-    else if (/Mobi|Android.+Mobile|iPhone/i.test(ua)) type = 'mobile';
-    else if (/Android/i.test(ua) && touch) type = 'tablet';
-    return { type, touch };
-  }
-
-  function getThemeInfo(): StagepassClientTheme {
-    let preferred: StagepassClientTheme['preferred'] = 'no-preference';
-    let current: StagepassClientTheme['current'] = 'unknown';
+  let themeViewportBound = false;
+  function bindThemeAndViewport() {
+    if (themeViewportBound) return;
+    themeViewportBound = true;
     try {
       if (window.matchMedia) {
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          preferred = 'dark';
-          current = 'dark';
-        } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-          preferred = 'light';
-          current = 'light';
+        const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+        const lightMq = window.matchMedia('(prefers-color-scheme: light)');
+        const updateTheme = () => {
+          const c = clientInfo;
+          if (!c?.theme) return;
+          if (darkMq.matches) {
+            c.theme.current = 'dark';
+            c.theme.preferred = 'dark';
+          } else if (lightMq.matches) {
+            c.theme.current = 'light';
+            c.theme.preferred = 'light';
+          } else {
+            c.theme.current = 'unknown';
+            c.theme.preferred = 'no-preference';
+          }
+          emit('theme', { ...c.theme });
+        };
+        if (typeof darkMq.addEventListener === 'function') {
+          darkMq.addEventListener('change', updateTheme);
+          lightMq.addEventListener('change', updateTheme);
+        } else if (typeof (darkMq as any).addListener === 'function') {
+          (darkMq as any).addListener(updateTheme);
+          (lightMq as any).addListener(updateTheme);
         }
       }
     } catch (_) {}
-    return { preferred, current };
-  }
 
-  function hasStorage(type: 'localStorage' | 'sessionStorage'): boolean {
-    try {
-      const storage = window[type];
-      const key = '__stagepass_test__';
-      storage.setItem(key, '1');
-      storage.removeItem(key);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function getClientInfo(): StagepassClientInfo {
-    const ua = navigator.userAgent || '';
-    let timezone: string | null = null;
-    try {
-      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-    } catch (_) {}
-    return {
-      theme: getThemeInfo(),
-      browser: getBrowserInfo(ua),
-      os: getOsInfo(ua),
-      device: getDeviceInfo(ua),
-      viewport: {
-        width: window.innerWidth || 0,
-        height: window.innerHeight || 0,
-        dpr: window.devicePixelRatio || 1,
-      },
-      locale: {
-        language: navigator.language || 'unknown',
-        timezone,
-      },
-      capabilities: {
-        cookiesEnabled: navigator.cookieEnabled === true,
-        localStorage: hasStorage('localStorage'),
-        sessionStorage: hasStorage('sessionStorage'),
-      },
+    const updateViewport = () => {
+      const c = clientInfo;
+      if (!c?.viewport) return;
+      c.viewport.width = window.innerWidth || 0;
+      c.viewport.height = window.innerHeight || 0;
+      c.viewport.dpr = window.devicePixelRatio || 1;
     };
+    window.addEventListener('resize', updateViewport);
   }
 
   const stagepassObj = (window as any).stagepass || {};
-  const clientInfo = getClientInfo();
-  stagepassObj.vars = Object.freeze({
+  const registry = createModuleRegistry(PKG_VERSION, spWarn);
+
+  const varsBase: Record<string, unknown> = {
     isLocal,
     env,
     domain: dom || hostname,
     timestamp: sessionStartTime,
     version: PKG_VERSION,
-    client: clientInfo,
+  };
+
+  Object.defineProperty(varsBase, 'client', {
+    enumerable: true,
+    configurable: false,
+    get() {
+      return ensureClient();
+    },
   });
+
+  stagepassObj.vars = Object.freeze(varsBase);
+
   stagepassObj.log = spLog;
   stagepassObj.warn = spWarn;
   stagepassObj.error = spError;
+
   /**
    * Build a local HTTPS URL when a Stagepass session is active.
    * @param relativePath - Path relative to the linked project root
@@ -355,45 +315,64 @@ declare const __STAGEPASS_VERSION__: string;
     if (!swap || !dom || !relativePath) return '';
     return buildLocalAssetUrl(dom, relativePath, v.timestamp || Date.now());
   };
+
+  // Flat helpers (additive)
+  stagepassObj.env = (): 'local' | 'staging' | 'production' =>
+    detectRuntimeEnv(hostname, dom, stagingHosts);
+
+  stagepassObj.is = (name: string): boolean => stagepassObj.env() === name;
+
+  stagepassObj.can = (capability: string): boolean =>
+    canCapability(ensureClient(), capability);
+
+  stagepassObj.client = (key?: string): unknown => {
+    const c = ensureClient();
+    if (key == null || key === '') return c;
+    return (c as Record<string, unknown>)[key];
+  };
+
+  stagepassObj.on = (event: string, fn: (payload: unknown) => void): (() => void) => {
+    if (event !== 'theme' && event !== 'session') {
+      return () => {};
+    }
+    const set = listeners[event as EventName];
+    set.add(fn);
+    // Ensure theme listeners get live updates
+    if (event === 'theme') ensureClient();
+    return () => {
+      set.delete(fn);
+    };
+  };
+
+  stagepassObj.use = (
+    name: string,
+    version: string,
+    factory: (api: Record<string, unknown>) => void
+  ): boolean => registry.use(name, version, factory, stagepassObj);
+
   (window as any).stagepass = stagepassObj;
   (globalThis as any).stagepass = stagepassObj;
+  // Keep 2.0.0 behaviour: always assign `sp` (removing this would be breaking)
   (window as any).sp = stagepassObj;
   (globalThis as any).sp = stagepassObj;
 
-  try {
-    if (window.matchMedia) {
-      const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
-      const lightMq = window.matchMedia('(prefers-color-scheme: light)');
-      const updateTheme = () => {
-        if (!stagepassObj.vars?.client?.theme) return;
-        if (darkMq.matches) {
-          stagepassObj.vars.client.theme.current = 'dark';
-          stagepassObj.vars.client.theme.preferred = 'dark';
-        } else if (lightMq.matches) {
-          stagepassObj.vars.client.theme.current = 'light';
-          stagepassObj.vars.client.theme.preferred = 'light';
-        } else {
-          stagepassObj.vars.client.theme.current = 'unknown';
-          stagepassObj.vars.client.theme.preferred = 'no-preference';
-        }
-      };
-      if (typeof darkMq.addEventListener === 'function') {
-        darkMq.addEventListener('change', updateTheme);
-        lightMq.addEventListener('change', updateTheme);
-      } else if (typeof (darkMq as any).addListener === 'function') {
-        (darkMq as any).addListener(updateTheme);
-        (lightMq as any).addListener(updateTheme);
-      }
+  // Optional custom alias only when the name is free and a valid identifier
+  if (aliasName && isValidJsIdentifier(aliasName) && aliasName !== 'sp' && aliasName !== 'stagepass') {
+    if (isGlobalFree(window, aliasName)) {
+      (window as any)[aliasName] = stagepassObj;
     }
-  } catch (_) {}
+    if (isGlobalFree(globalThis, aliasName)) {
+      (globalThis as any)[aliasName] = stagepassObj;
+    }
+  }
 
-  const updateViewport = () => {
-    if (!stagepassObj.vars?.client?.viewport) return;
-    stagepassObj.vars.client.viewport.width = window.innerWidth || 0;
-    stagepassObj.vars.client.viewport.height = window.innerHeight || 0;
-    stagepassObj.vars.client.viewport.dpr = window.devicePixelRatio || 1;
-  };
-  window.addEventListener('resize', updateViewport);
+  // Notify session listeners once at boot (after globals are set)
+  emit('session', {
+    active: hasActiveSession,
+    domain: sv,
+    swap,
+    debug: sv === 'debug',
+  });
 
   let lnaState: LnaState = 'unknown';
   let lnaHint: string | null = null;
@@ -417,27 +396,44 @@ declare const __STAGEPASS_VERSION__: string;
     return productionSrc;
   }
 
+  function extractLocalFilename(ps: string): string | null {
+    try {
+      const urlObj = new URL(ps);
+      const pathParts = urlObj.pathname.split('/');
+      return pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || null;
+    } catch (e) {
+      const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+      return match ? match[1] : null;
+    }
+  }
+
   function swapEl(
     sel: string,
     pathAttr: string,
     srcAttr: string,
     type: 'script' | 'link',
-    skipAttrs: string[]
+    skipAttrs: string[],
+    seenLocalNames: Map<string, number>
   ) {
     document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el: any) => {
       try {
         el.setAttribute('data-stagepass-processed', 'true');
         let lp = el.getAttribute(pathAttr);
+        const hadExplicitPath = !!lp;
         const ps = el.getAttribute(srcAttr);
         if (!ps) return;
         if (!lp && ps && swap && dom) {
-          try {
-            const urlObj = new URL(ps);
-            const pathParts = urlObj.pathname.split('/');
-            lp = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
-          } catch (e) {
-            const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
-            if (match) lp = match[1];
+          lp = extractLocalFilename(ps);
+        }
+        // Debug warning: two tagged assets resolve to the same local file without data-stagepass-path
+        if (swap && lp && !hadExplicitPath && hasActiveSession) {
+          const key = lp;
+          const count = (seenLocalNames.get(key) || 0) + 1;
+          seenLocalNames.set(key, count);
+          if (count === 2) {
+            spWarn(
+              `Multiple assets resolve to local file "${key}" without data-stagepass-path. Set unique paths to avoid collisions.`
+            );
           }
         }
         const url = resolveAssetUrl(el, ps, lp);
@@ -472,13 +468,21 @@ declare const __STAGEPASS_VERSION__: string;
 
   const process = () => {
     try {
-      swapEl('script[data-stagepass]', 'data-stagepass-path', 'data-src', 'script', [
-        'data-src',
-        'data-stagepass',
+      const seenLocalNames = new Map<string, number>();
+      swapEl(
+        'script[data-stagepass]',
         'data-stagepass-path',
-        'data-stagepass-cachebust',
-        'data-stagepass-v',
-      ]);
+        'data-src',
+        'script',
+        [
+          'data-src',
+          'data-stagepass',
+          'data-stagepass-path',
+          'data-stagepass-cachebust',
+          'data-stagepass-v',
+        ],
+        seenLocalNames
+      );
       swapEl(
         'link[rel="stylesheet"][data-stagepass]',
         'data-stagepass-path',
@@ -491,7 +495,8 @@ declare const __STAGEPASS_VERSION__: string;
           'data-stagepass-path',
           'data-stagepass-cachebust',
           'data-stagepass-v',
-        ]
+        ],
+        seenLocalNames
       );
     } catch (_) {}
   };
@@ -519,6 +524,7 @@ declare const __STAGEPASS_VERSION__: string;
         clearSession();
         hasActiveSession = true;
         log('log', '🔌 Stagepass disconnected.');
+        emit('session', { active: false, domain: null, swap: false, debug: false });
         window.location.reload();
       });
       const mount = () => {
@@ -563,4 +569,5 @@ declare const __STAGEPASS_VERSION__: string;
   } else {
     flag();
   }
+
 })();

@@ -350,12 +350,28 @@ sp.vars.env         // 'local' | 'staging' | 'production'
 sp.vars.domain      // string - Current domain (local or production)
 sp.vars.timestamp   // number - Session start time (for cache-busting)
 sp.vars.version     // string - Loader version
-sp.vars.client      // object - Client runtime info (theme/browser/os/device/viewport/locale/capabilities)
+sp.vars.client      // object - Client runtime info (lazy on first access)
+```
+
+Optional loader attributes: `data-stagepass-staging-hosts`, `data-stagepass-alias` (custom global when free).
+
+### Flat helpers
+
+```javascript
+sp.env()                 // 'local' | 'staging' | 'production'
+                         // local = active swap session to a .sp domain
+                         // staging = *.webflow.io or data-stagepass-staging-hosts
+sp.is('staging')         // boolean
+sp.can('localStorage')   // also: sessionStorage, cookies, serviceWorker
+sp.client('theme')       // or sp.client() for the whole object
+const off = sp.on('theme', (t) => {})  // also: 'session'; returns unsubscribe
+off()
+sp.use('my-module', '2.0.0', (api) => { /* register */ })
 ```
 
 ### Client Runtime Info (`sp.vars.client`)
 
-The loader exposes technical client/runtime data:
+The loader exposes technical client/runtime data (computed on first access):
 
 ```javascript
 sp.vars.client.theme.preferred   // 'light' | 'dark' | 'no-preference'
@@ -406,11 +422,13 @@ sp.error('This is an error');
 
 `sp.log` automatically prefixes messages with a timestamp and (if available) the calling file and line, e.g. `[🎫 11:58:02 | app.js:830]`. Logging is only active when a Stagepass session is enabled; otherwise the helper functions are effectively no-ops. The deprecated globals `splog` / `spwarn` / `sperror` were **removed in v2**.
 
+With an active session or debug mode, the loader warns when two tagged assets resolve to the same local filename without `data-stagepass-path`.
+
 ---
 
 ## 🧩 Modules
 
-Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). The loader script must be loaded before any module script. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
+Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). Load the loader script before any module script. Without the loader, modules log a console warning and skip registration (they do not throw). For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
 
 ### Available Modules
 
@@ -418,12 +436,18 @@ Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.var
 - Programmatic asset injection API
 - Smart source resolution (local vs production)
 - Flexible positioning and deduplication
+- Pass-through `integrity` / `crossorigin`, optional `nonce`, optional `allowedHosts`
 - Include as a separate script tag after `loader.min.js`
 
 **Cookies Module** (`cookies.min.js`)
-- Lightweight cookie utility helpers (no consent manager)
-- Read, write, delete, existence checks, and list helpers
-- Available as `sp.cookies.*`
+- Lightweight cookie utility helpers (`sp.cookies` / singular `sp.cookie`)
+- Categories, `jar` / `crumbs` / `throwAll`, optional `sp.consent` hook (tool, not legal compliance)
+- Include as a separate script tag after `loader.min.js`
+
+**Maintenance Module** (`maintenance.min.js`)
+- Opt-in client-side overlay for visitors (`data-stagepass-maintenance="true"`)
+- Developers with an active session see the real page plus a badge
+- Not access protection; does not inject `noindex`
 - Include as a separate script tag after `loader.min.js`
 
 ### Injector: Programmatic Injection API
@@ -442,8 +466,12 @@ await sp.inject({
   version: '2.0.0',        // Optional: in production, append ?v=<version> for cache busting
   async: false,            // Optional: default false (keeps script order)
   defer: true,             // Optional: default true (unless async is true)
-  attributes: {            // Optional: additional HTML attributes
-    crossorigin: 'anonymous'
+  integrity: 'sha384-abc', // Optional: SRI
+  crossorigin: 'anonymous', // Optional: CORS
+  nonce: 'csp-nonce',       // Optional: CSP nonce
+  allowedHosts: ['cdn.example.com'], // Optional: host allowlist
+  attributes: {             // Optional: additional HTML attributes
+    'data-foo': 'bar'
   }
 });
 
@@ -464,19 +492,22 @@ await sp.inject({
 
 ### Cookies: Utility API
 
-When the Cookies module is loaded, use `sp.cookies`:
+When the Cookies module is loaded, use `sp.cookies` (singular alias `sp.cookie`):
 
 ```javascript
 sp.cookies.bake('token', 'abc123', { days: 7, path: '/' });
-sp.cookies.eat('token'); // 'abc123'
+sp.cookie.eat('token'); // 'abc123'
 sp.cookies.has('token'); // true
 sp.cookies.list(); // { token: 'abc123', ... }
 sp.cookies.throw('token', { path: '/' });
+sp.cookies.jar(); // copy of known cookies
+sp.cookies.crumbs('tok'); // known names with prefix
+sp.cookies.throwAll({ category: 'analytics' });
 ```
 
 API reference:
 - `sp.cookies.bake(name, value, options?)`  
-  Creates/updates a cookie.
+  Creates/updates a cookie. Optional `category` is remembered; rejected consent queues the write.
 - `sp.cookies.eat(name, options?)`  
   Reads a cookie value. Returns `null` when not found.
 - `sp.cookies.throw(name, options?)`  
@@ -485,6 +516,7 @@ API reference:
   Boolean existence check.
 - `sp.cookies.list(options?)`  
   Returns all visible cookies as an object map.
+- `sp.cookies.throwAll({ category? })` / `jar()` / `crumbs(prefix)`
 
 `bake` options:
 - `days?: number` - Expiration in days.
@@ -495,6 +527,15 @@ API reference:
 - `sameSite?: 'Lax' | 'Strict' | 'None'` - Default: `Lax`.
 - `encode?: boolean` - URL-encode key/value (default: `true`).
 - `json?: boolean` - Store value as JSON string.
+- `category?: string` - Optional category for consent gating / `throwAll`.
+
+Consent hook (tooling only, **not** legal compliance):
+
+```javascript
+sp.consent.set((category) => category !== 'marketing');
+sp.consent.allows('analytics'); // true/false
+sp.consent.update(); // flush queued categorized bakes
+```
 
 `eat` / `list` options:
 - `decode?: boolean` - URL-decode values (default: `true`).
@@ -517,7 +558,28 @@ Notes and limitations:
 - JavaScript cannot read or delete `HttpOnly` cookies.
 - To reliably delete a cookie, use the same `path`/`domain` you used when writing it.
 - If `sameSite: 'None'` is used, the module enforces `Secure=true` (browser requirement).
-- This module provides cookie storage helpers only (bake/eat/throw). It does **not** implement consent management.
+- Cookie helpers plus the optional consent hook are tools only; they are **not** a legal compliance solution.
+
+### Maintenance overlay
+
+Opt-in client-side overlay (`maintenance.min.js`). Not access protection; content remains in the HTML. Does not inject `noindex`.
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  data-stagepass-maintenance="true"
+  data-stagepass-maintenance-title="We will be back soon"
+  data-stagepass-maintenance-text="Please check again shortly."
+></script>
+```
+
+```javascript
+sp.maintenance.enable({ title: 'We will be back soon', text: 'Please check again shortly.' });
+sp.maintenance.isActive();
+sp.maintenance.disable();
+```
+
+Visitors without a Stagepass session see the overlay. Developers with an active session (or `?stagepass=debug`) see the real page plus a badge.
 
 ---
 

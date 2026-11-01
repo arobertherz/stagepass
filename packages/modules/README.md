@@ -10,7 +10,8 @@ This package provides optional browser modules that extend `@stagepass/loader`.
 npm install @stagepass/loader@2 @stagepass/modules@2
 ```
 
-`@stagepass/loader` must be loaded first.  
+`@stagepass/loader` should be loaded first.  
+Without the loader, modules log a clear console warning and skip registration (they do not throw).  
 `@stagepass/modules` declares `@stagepass/loader` as a peer dependency (`>=2.0.0`).
 
 ## CDN Usage
@@ -24,6 +25,12 @@ Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict se
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  data-stagepass-maintenance="true"
+  data-stagepass-maintenance-title="We will be back soon"
+  data-stagepass-maintenance-text="Please check again shortly."
+></script>
 ```
 
 Or load all modules:
@@ -35,7 +42,7 @@ Or load all modules:
 
 unpkg serves the same paths if you need an alternative CDN.
 
-Published files: `dist/inject.min.js`, `dist/cookies.min.js`, `dist/all.min.js`.
+Published files: `dist/inject.min.js`, `dist/cookies.min.js`, `dist/maintenance.min.js`, `dist/all.min.js`.
 
 ## Available Modules
 
@@ -54,17 +61,11 @@ await sp.inject({
   async: false,          // default false (keeps order)
   defer: true,           // default true unless async is true
   position: 'head',      // 'head' | 'body-start' | 'body-end' | { target, action }
-  attributes: { crossorigin: 'anonymous' },
-});
-
-await sp.inject([
-  { src: 'https://cdn.example.com/a.js', stagepass: true, path: 'a.js', version: '2.0.0' },
-  { src: 'https://cdn.example.com/b.css', stagepass: true, localPath: 'b.css', type: 'style', version: '2.0.0' },
-]);
-
-await sp.inject({
-  scripts: [{ src: 'https://cdn.example.com/a.js', stagepass: true, localPath: 'a.js' }],
-  styles: [{ src: 'https://cdn.example.com/b.css', stagepass: true, localPath: 'b.css' }],
+  integrity: 'sha384-abc',
+  crossorigin: 'anonymous',
+  nonce: 'csp-nonce',
+  allowedHosts: ['cdn.example.com'],
+  attributes: { 'data-foo': 'bar' },
 });
 ```
 
@@ -82,34 +83,49 @@ await sp.inject({
 | `version` | Production cache bust: append `?v=<version>` (URL-encoded). |
 | `cacheBust` | Deprecated; does **not** append per-view timestamps in v2 production. Prefer `version`. |
 | `attributes` | Extra HTML attributes on the created element. |
+| `integrity` | Pass-through SRI hash. |
+| `crossorigin` | Pass-through CORS mode. |
+| `nonce` | Optional CSP nonce. |
+| `allowedHosts` | Optional host allowlist; other hosts are skipped with a warning. |
 | `position` | `'head'` \| `'body-start'` \| `'body-end'` (default) \| `{ target: cssSelector, action: 'before' \| 'after' }`. |
 
 Deduplication: skips when `id` already exists or a matching `script[src]` / `link[href]` is present. Failed items log in non-production and do not abort the rest of a batch.
 
 ### Cookies (`cookies.min.js`)
 
-Registers `sp.cookies` (also `stagepass.cookies`). Cookie helpers only, **not** a consent manager.
+Registers `sp.cookies` and singular alias `sp.cookie`. Cookie helpers only, **not** a consent manager or legal compliance solution. A tiny optional consent hook (`sp.consent`) can gate categorized writes.
 
 ```js
 sp.cookies.bake('token', 'abc123', { days: 7, path: '/' });
-sp.cookies.eat('token');              // 'abc123'
-sp.cookies.has('token');              // true
-sp.cookies.list();                    // { token: 'abc123', ... }
+sp.cookie.eat('token');              // singular alias
+sp.cookies.has('token');             // true
+sp.cookies.list();                   // { token: 'abc123', ... }
 sp.cookies.throw('token', { path: '/' });
 
-sp.cookies.bake('profile', { id: 7, role: 'editor' }, { json: true, days: 30 });
-sp.cookies.eat('profile', { json: true });
+sp.cookies.bake('analytics_id', 'x', { category: 'analytics', days: 30 });
+sp.cookies.throwAll({ category: 'analytics' });
+sp.cookies.jar();                    // copy of known cookies
+sp.cookies.crumbs('analytics_');     // matching known names
+
+// Consent hook (tooling only; default allows all)
+sp.consent.set((category) => category !== 'marketing');
+sp.cookies.bake('ad', '1', { category: 'marketing' }); // queued
+sp.consent.set(() => true);
+sp.consent.update(); // flushes queue
 ```
 
 | Method | Description |
 | :--- | :--- |
-| `bake(name, value, options?)` | Write/update a cookie. |
+| `bake(name, value, options?)` | Write/update a cookie. Optional `category` remembers the category and may queue when consent rejects. |
 | `eat(name, options?)` | Read a cookie; `null` if missing. |
 | `throw(name, options?)` | Delete via `Max-Age=0` + expired date. |
 | `has(name)` | Existence check. |
 | `list(options?)` | All visible cookies as a name → value map. |
+| `throwAll({ category? })` | Delete known cookies, optionally by category. |
+| `jar()` | Shallow copy of cookies known to this helper. |
+| `crumbs(prefix)` | Known cookie names starting with `prefix`. |
 
-**`bake` options:** `days?`, `maxAge?` (seconds), `path?` (default `/`), `domain?`, `secure?` (default `true` on HTTPS), `sameSite?` (`'Lax'` \| `'Strict'` \| `'None'`, default `'Lax'`), `encode?` (default `true`), `json?`.
+**`bake` options:** `days?`, `maxAge?` (seconds), `path?` (default `/`), `domain?`, `secure?` (default `true` on HTTPS), `sameSite?` (`'Lax'` \| `'Strict'` \| `'None'`, default `'Lax'`), `encode?` (default `true`), `json?`, `category?`.
 
 **`eat` / `list` options:** `decode?` (default `true`), `json?`.
 
@@ -117,9 +133,35 @@ sp.cookies.eat('profile', { json: true });
 
 Notes: `HttpOnly` cookies are invisible to JS; use the same `path`/`domain` to delete; `sameSite: 'None'` forces `Secure=true`.
 
+### Maintenance (`maintenance.min.js`)
+
+Client-side full-page overlay for visitors when enabled. **Not access protection**: page HTML remains in the document. This module does **not** inject `noindex`; SEO handling belongs to the site.
+
+Off unless `data-stagepass-maintenance="true"` on the module script tag (or enabled programmatically).
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  data-stagepass-maintenance="true"
+  data-stagepass-maintenance-title="We will be back soon"
+  data-stagepass-maintenance-text="Please check again shortly."
+></script>
+```
+
+Behaviour:
+- Visitors without an active Stagepass session see the overlay (text via `textContent` only; accessible `role` / focus / `aria`).
+- Developers with an active session (or `?stagepass=debug`) see the real page plus a small badge.
+- Respects `prefers-color-scheme`; no external resources.
+
+```js
+sp.maintenance.enable({ title: 'We will be back soon', text: 'Please check again shortly.' });
+sp.maintenance.isActive(); // true
+sp.maintenance.disable();
+```
+
 ## Types
 
-`global.d.ts` extends `@stagepass/loader` via declaration merging (`stagepass.inject`, `stagepass.cookies`).
+`global.d.ts` extends `@stagepass/loader` via declaration merging (`inject`, `cookies` / `cookie`, `consent`, `maintenance`).
 
 ## Repository
 

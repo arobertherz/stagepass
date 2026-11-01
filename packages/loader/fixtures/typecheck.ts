@@ -12,10 +12,26 @@ api.warn('warn');
 api.error('err');
 const url: string = api.resolveLocalUrl('app.js');
 
+const envName = api.env();
+const isLocal = api.is('local');
+const canLs = api.can('localStorage');
+const canSw = api.can('serviceWorker');
+const theme = api.client('theme');
+const unsub = api.on('theme', (_payload) => {});
+unsub();
+api.use('demo', '2.0.0', (sp) => {
+  void sp.vars;
+});
+
 const g: typeof stagepass = stagepass;
 const alias: typeof sp = sp;
 void _v;
 void _env;
 void url;
+void envName;
+void isLocal;
+void canLs;
+void canSw;
+void theme;
 void g;
 void alias;

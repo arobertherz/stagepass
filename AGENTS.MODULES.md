@@ -1,11 +1,11 @@
 # Stagepass Runtime (Loader + Modules)
 
-Profile-Version: 2.0  
+Profile-Version: 2.1  
 Compatible with: `@stagepass/loader@2`, `@stagepass/modules@2`  
 Last updated: 2026-11-01
 
-This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies).  
-Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters).
+This profile is for projects that use Stagepass Loader and Stagepass Modules (Injector + Cookies + Maintenance).  
+Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters). Without the loader, modules log a console warning and skip registration (they do not throw).
 
 ## CDN (version pinning)
 Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
@@ -17,13 +17,19 @@ Prefer the major pin `@2` in production. Stagepass follows strict semver: no bre
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  data-stagepass-maintenance="true"
+  data-stagepass-maintenance-title="We will be back soon"
+  data-stagepass-maintenance-text="Please check again shortly."
+></script>
 ```
 
 ## Capability Profile
 - Profile: `loader+modules`
 - Runtime prerequisites:
-  - Loader script must load before module scripts
-  - `sp` global exists and includes module registrations
+  - Loader script should load before module scripts
+  - `sp` global exists and includes module registrations when the loader is present
 
 ## Available Global API
 - Preferred global: `sp`
@@ -58,6 +64,7 @@ This profile is a **superset** and already includes the full Loader contract.
 - `sp.vars.client.capabilities.sessionStorage` (`boolean`)
 
 ### Loader: helper/runtime functions
+- `sp.env()` / `sp.is(name)` / `sp.can(capability)` / `sp.client(key?)` / `sp.on(event, fn)` / `sp.use(name, version, factory)`
 - `sp.resolveLocalUrl(relativePath: string): string`  
   Returns local Stagepass URL with `?_cb=<timestamp>` when a session is active, otherwise `''`.
 - `sp.log(...args)` and `sp.log('warn' | 'error', ...args)`
@@ -68,25 +75,35 @@ This profile is a **superset** and already includes the full Loader contract.
 - Injector API:
   - `sp.inject(options | options[] | { scripts?: options[]; styles?: options[] })`
 - Cookies API:
-  - `sp.cookies.bake(name, value, options?)`
-  - `sp.cookies.eat(name, options?)`
-  - `sp.cookies.throw(name, options?)`
-  - `sp.cookies.has(name)`
-  - `sp.cookies.list(options?)`
+  - `sp.cookies` and singular alias `sp.cookie`
+  - `bake` / `eat` / `throw` / `has` / `list`
+  - `throwAll({ category? })` / `jar()` / `crumbs(prefix)`
+  - Optional `category` on `bake`; consent queue via `sp.consent`
+- Consent hook (tool only, not legal compliance):
+  - `sp.consent.allows(category)` (default true)
+  - `sp.consent.set(fn)` / `sp.consent.update()`
+- Maintenance overlay:
+  - `sp.maintenance.enable()` / `disable()` / `isActive()`
+  - Opt-in via `data-stagepass-maintenance="true"` on the module script tag
+  - Client-side overlay only (not access protection; HTML remains in the page)
+  - Does not inject `noindex` (SEO belongs to the site)
 
 ## Constraints (hard limits)
-- Cookies module is utility-only (`bake/eat/throw/has/list`), not consent management.
+- Cookies module is a utility (plus optional consent hook as a tool), not a legal consent banner.
 - JS cannot read/delete HttpOnly cookies.
 - Cookie deletion reliability depends on matching `path`/`domain`.
 - `sp.inject` supports local swap only when Stagepass local session is active.
+- Maintenance mode is a visitor overlay; developers with an active session or debug see the real page plus a badge.
 - Browser/OS/device detection in `sp.vars.client` is heuristic (best effort).
 - `sp.resolveLocalUrl(...)` may return `''` when no active Stagepass local session exists.
 
 ## Decision Rules (for AI agents)
 - Prefer `sp` over `stagepass` for new code.
+- Prefer flat helpers for env/capability checks.
 - Use `sp.inject` for runtime/script-style injection needs; use static tags otherwise.
 - Prefer `version: '…'` for production cache freshness (appends `?v=`). Do not rely on `cacheBust` for timestamps (deprecated / no-op for that behaviour in v2).
-- Use `sp.cookies.*` for browser-readable cookies; do not propose it for HttpOnly/session server cookies.
+- Use `sp.cookies.*` / `sp.cookie.*` for browser-readable cookies; do not propose it for HttpOnly/session server cookies.
+- Treat `sp.consent` as an integration hook for existing consent tools, not as compliance by itself.
 - Use `sp.vars.client.*` for runtime adaptation (theme/device/viewport checks).
 
 ## Injector option highlights
@@ -98,6 +115,7 @@ This profile is a **superset** and already includes the full Loader contract.
 - `type?: 'script' | 'style'`
 - `position?: 'head' | 'body-start' | 'body-end' | { target, action }`
 - `id?`, `async?` (default `false`), `defer?`, `attributes?`
+- `integrity?`, `crossorigin?`, `nonce?`, `allowedHosts?`
 - Scripts keep insertion order unless `async: true`
 
 ## Canonical Examples
@@ -108,12 +126,20 @@ await sp.inject({
   stagepass: true,
   localPath: 'widget.js',
   version: '2.0.0',
+  integrity: 'sha384-abc',
+  crossorigin: 'anonymous',
+  allowedHosts: ['cdn.example.com'],
 });
 
-// Cookie utility usage
-sp.cookies.bake('feature_flag', 'on', { days: 7, path: '/' });
-const enabled = sp.cookies.eat('feature_flag') === 'on';
+// Cookie utility + category/consent hook (tool, not legal compliance)
+sp.consent.set((category) => category !== 'marketing');
+sp.cookies.bake('feature_flag', 'on', { days: 7, path: '/', category: 'analytics' });
+sp.consent.update();
+const enabled = sp.cookie.eat('feature_flag') === 'on';
 if (!enabled) sp.cookies.throw('feature_flag', { path: '/' });
+
+// Maintenance (client-side overlay only)
+sp.maintenance.enable({ title: 'We will be back soon', text: 'Please check again shortly.' });
 ```
 
 ## Removed / changed in v2
