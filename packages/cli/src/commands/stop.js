@@ -1,6 +1,7 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
 import ora from 'ora';
+import { getAutostartStatus } from '../lib/autostart.js';
 
 export async function stop(options = {}) {
   console.log(chalk.bold('\n🛑 Stopping Stagepass...'));
@@ -32,6 +33,20 @@ export async function stop(options = {}) {
         spinner.succeed(chalk.green('Services stopped.'));
     } else {
         console.log(chalk.green('✔ Services stopped.'));
+    }
+
+    // Non-breaking hint only: existing stop semantics stay unchanged.
+    try {
+      const status = await getAutostartStatus();
+      if (status.loaded || status.plistExists) {
+        console.log(
+          chalk.dim(
+            'Autostart is enabled; Caddy may start again at next login. Use `stagepass autostart off` to disable permanently.'
+          )
+        );
+      }
+    } catch {
+      // ignore status failures
     }
 
   } catch (error) {

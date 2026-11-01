@@ -1,0 +1,15 @@
+keychain: "/Library/Keychains/System.keychain"
+version: 256
+class: 0x80001000 
+attributes:
+    "alis"<blob>="Caddy Local Authority - 2024 ECC Root"
+SHA-256 hash: E8D077DC284BD2A22D10C7C033C8E2E76D411DDB248698671DA1A373DB6217A9
+SHA-1 hash: 6B91BB06BE041D6B5D74AD9CE2912E1FC7BED506
+
+keychain: "/Library/Keychains/System.keychain"
+version: 256
+class: 0x80001000 
+attributes:
+    "alis"<blob>="Caddy Local Authority - 2021 ECC Root"
+SHA-256 hash: 561CC8125F74BA95D4C7F9F3BDD356B7C1C258AA75E19657DA3D11093714D83C
+SHA-1 hash: 363F2AB58843281EA7F11BD7A32841B1F9CC1A61
