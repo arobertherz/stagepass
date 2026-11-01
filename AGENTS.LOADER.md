@@ -72,6 +72,6 @@ sp.log('Loader active', { env: sp.vars.env, domain: sp.vars.domain });
 ```
 
 ## Deprecated aliases (still available)
-- `splog(...)` -> use `sp.log(...)`
+- `splog` / `spwarn` / `sperror` are removed in v2; use `sp.log` / `sp.warn` / `sp.error`
 - `spwarn(...)` -> use `sp.warn(...)`
 - `sperror(...)` -> use `sp.error(...)`

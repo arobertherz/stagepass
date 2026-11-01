@@ -8,6 +8,8 @@ This package provides optional browser modules that extend `@stagepass/loader`.
 
 ```bash
 npm install @stagepass/loader @stagepass/modules
+# beta
+npm install @stagepass/loader@2.0.0-beta.1 @stagepass/modules@2.0.0-beta.1
 ```
 
 `@stagepass/loader` must be loaded first.  
@@ -15,7 +17,7 @@ npm install @stagepass/loader @stagepass/modules
 
 ## CDN Usage
 
-Include the loader first, then modules as separate script tags. Pin exact versions in production (avoid floating `@1`):
+### Stable 1.x
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
@@ -23,11 +25,21 @@ Include the loader first, then modules as separate script tags. Pin exact versio
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
 ```
 
+### v2 beta
+
+jsDelivr ranges like `@2` do **not** resolve prereleases — pin the exact version:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/cookies.min.js"></script>
+```
+
 Or load all modules:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/all.min.js"></script>
 ```
 
 ## Available Modules
@@ -40,7 +52,8 @@ Highlights:
 - single, array, or batch input
 - script/style auto-detection
 - local swap support via loader vars
-- optional production cache busting (`cacheBust: true`)
+- scripts keep order (`async = false` unless opted in)
+- production version busting via `version: '…'` (not per-view timestamps)
 
 ### Cookies (`cookies.min.js`)
 
@@ -50,14 +63,13 @@ Cookie utility helpers via `sp.cookies.*`:
 - `sp.cookies.eat(name, options?)`
 - `sp.cookies.throw(name, options?)`
 - `sp.cookies.has(name)`
-- `sp.cookies.list(options?)`
+- `sp.cookies.list()`
 
-This is utility-only and does not implement consent management.
+## Types
 
-## Runtime Globals
-
-Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`).
+`global.d.ts` extends `@stagepass/loader` via declaration merging (`stagepass.inject`, `stagepass.cookies`).
 
 ## Repository
 
 - Full docs and examples: [stagepass repository](https://github.com/arobertherz/stagepass)
+- Migration: [MIGRATION.md](../../MIGRATION.md)

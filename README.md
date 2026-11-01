@@ -40,7 +40,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 **How it works:**
 1. **Local SSL Proxy:** Stagepass creates secure `.sp` domains (e.g., `my-project.sp`) that serve your local files with valid SSL certificates
 2. **Universal Loader:** A tiny script injected into your Webflow site detects when you're in "dev mode" and swaps production asset URLs with your local `.sp` domain URLs
-3. **Session Persistence:** Once activated via URL parameter (`?stagepass=my-project.sp`), the dev session persists across page reloads and navigation
+3. **Session Persistence:** Once activated via URL parameter (`?stagepass=my-project.sp`), the dev session persists across tabs/reloads until it expires (default 12 hours in v2)
 4. **Selective Injection:** Only files tagged with `data-stagepass` attributes are swapped - everything else loads normally from production
 
 **The magic:** Your production site stays live and unchanged. Only you (when dev mode is active) see your local code injected seamlessly into the live site.
@@ -74,7 +74,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Intelligent Loading:** Automatically uses `defer` for scripts to ensure proper dependency loading order.
 * **Auto Path Detection:** If `data-stagepass-path` is omitted, filename is automatically extracted from production URL.
 * **Debug Mode:** Enable logging without URL swapping for troubleshooting.
-* **Console Suppression:** Automatically suppresses console logs in production when no Stagepass session is active.
+* **Quiet Stagepass logs:** Stagepass' own `sp.log` / `sp.warn` / `sp.error` only print when a session is active (optional legacy global console mute via `data-stagepass-mute-console`).
 * **Modular Architecture:** Core loader (~7.4 KB minified, ~3.1 KB gzipped) with optional modules loaded as separate script tags.
 * **Programmatic API:** Access environment variables and inject assets programmatically via `sp` (preferred) or `stagepass` / `window.stagepass`.
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
@@ -102,9 +102,27 @@ npm install -g @stagepass/cli
 
 For production Webflow sites (and any long-lived CDN `<script>` tags), pin **exact** package versions instead of a major-only range like `@1`:
 
+### Stable 1.x (production)
+
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
+```
+
+### v2 beta (`next` dist-tag)
+
+jsDelivr ranges like `@2` do **not** resolve prereleases — pin the exact beta version. See [MIGRATION.md](MIGRATION.md).
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
+  data-stagepass-version="2.0.0-beta.1"
+></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
+```
+
+```html
+<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
 ```
 
 Why pin exact versions:
@@ -112,8 +130,6 @@ Why pin exact versions:
 * **No silent upgrades** – `@1` floats to the newest `1.x` publish; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
 * **CDN caching** – exact versions cache stably; floating tags can surprise you after a publish.
 * **Deliberate updates** – bump the version in the script URL, test, then roll out.
-
-`@1` is fine for quick experiments. For production, use exact versions (currently published: `@stagepass/loader@1.2.0`, `@stagepass/modules@1.1.0`).
 
 ---
 
@@ -140,12 +156,20 @@ stagepass link my-project
 Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~7.4 KB (~3.1 KB gzipped) and safe for production. Prefer exact version pins (see [Version pinning](#-version-pinning)).
 
 **Option 1 - CDN (jsDelivr & unpkg):**
+
+Stable 1.x:
 ```html
 <!-- Core loader only (pin exact version in production) -->
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
 
 <!-- Or using unpkg: -->
 <script src="https://unpkg.com/@stagepass/loader@1.2.0"></script>
+```
+
+v2 beta (exact pin required; `@2` does not resolve prereleases):
+```html
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
 ```
 
 **Option 2 - Local** (to avoid cross-domain issues):
@@ -170,9 +194,15 @@ npm install @stagepass/loader @stagepass/modules --save-dev
 Modules extend the core loader with additional features (e.g., programmatic injection). **Modules depend on the Loader:** include both as separate `<script>` tags in `<head>`, loader first; when using npm, `@stagepass/modules` declares `@stagepass/loader` as a peer dependency (install both, e.g. `npm install @stagepass/loader @stagepass/modules`).
 
 ```html
+<!-- Stable 1.x -->
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
+
+<!-- v2 beta -->
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/cookies.min.js"></script>
 ```
 
 Or load the combined modules bundle:
@@ -218,7 +248,9 @@ In the Webflow Designer, instead of hardcoding your script `src` or stylesheet `
 * `data-src` / `data-href`: The production URL (loaded by default for all users).
 * `data-stagepass-path`: The relative path to the file on your local machine (optional - if omitted, filename is extracted from production URL and used as root path).
 * `data-stagepass="true"`: Enables Stagepass for this element.
-* `data-stagepass-cachebust="true"`: In production, appends `?_cb=timestamp` to the asset URL so the browser loads a fresh copy each page load (optional).
+* `data-stagepass-version` (loader tag) / `data-stagepass-v` (per asset): In production, appends `?v=<version>` for cache busting (v2). `data-stagepass-cachebust="true"` no longer timestamps every production page view.
+* `data-stagepass-session-hours`: Optional session lifetime in hours (default `12`).
+* `data-stagepass-mute-console="true"`: Opt-in legacy global console mute in production when no session.
 
 ### 5. Activate Dev Mode
 Go to your live Webflow URL and append the parameter:
@@ -254,7 +286,7 @@ Stagepass does not allow arbitrary code injection. The loader implements strict 
 1.  It only accepts injection from domains ending in `.sp`, `localhost`, or `localhost:*`.
 2.  It uses `data-src` as the source of truth, preventing race conditions or double-loading scripts.
 3.  Without an active Stagepass session, tagged assets keep their production URLs (no local swap).
-4.  Console logs are automatically suppressed in production when no Stagepass session is active.
+4.  Stagepass logging (`sp.log` / …) is quiet without a session; the global console is not muted unless `data-stagepass-mute-console="true"`.
 
 ---
 
@@ -322,14 +354,9 @@ sp.log('error', 'Something went wrong'); // error level
 
 sp.warn('This is a warning');
 sp.error('This is an error');
-
-// Legacy aliases (deprecated but still supported)
-splog('message');   // use sp.log instead
-spwarn('warning');  // use sp.warn instead
-sperror('error');   // use sp.error instead
 ```
 
-`sp.log` automatically prefixes messages with a timestamp and (if available) the calling file and line, e.g. `[🎫 11:58:02 | app.js:830]`. Logging is only active when a Stagepass session is enabled; otherwise the helper functions are effectively no-ops.
+`sp.log` automatically prefixes messages with a timestamp and (if available) the calling file and line, e.g. `[🎫 11:58:02 | app.js:830]`. Logging is only active when a Stagepass session is enabled; otherwise the helper functions are effectively no-ops. The deprecated globals `splog` / `spwarn` / `sperror` were **removed in v2**.
 
 ---
 
@@ -508,4 +535,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-Vibe-Coded with friendly support from Google Gemini and Cursor.
+Development assisted by Grok and Cursor.

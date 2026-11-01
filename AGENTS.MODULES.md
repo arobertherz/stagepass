@@ -113,5 +113,6 @@ const enabled = sp.cookies.eat('feature_flag') === 'on';
 if (!enabled) sp.cookies.throw('feature_flag', { path: '/' });
 ```
 
-## Deprecated aliases (still available)
-- `splog(...)`, `spwarn(...)`, `sperror(...)`
+## Removed in v2
+- `splog(...)`, `spwarn(...)`, `sperror(...)` — use `sp.log` / `sp.warn` / `sp.error`
+- Inject `cacheBust: true` no longer appends per-view timestamps; use `version: '…'`

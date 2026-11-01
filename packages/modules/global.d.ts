@@ -36,8 +36,8 @@ export interface StagepassCookiesAPI {
   throw: (name: string, options?: Record<string, unknown>) => void;
   /** Whether a cookie exists. */
   has: (name: string) => boolean;
-  /** List cookie names. */
-  list: () => string[];
+  /** List cookies as a name → value map. */
+  list: (options?: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export type StagepassInjectAPI = (

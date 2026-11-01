@@ -11,12 +11,13 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### Unreleased
+### [2.0.0-beta.1] - 2026-11-01
 
 #### Security
 
 - Caddy site blocks no longer serve hidden path segments (`.git`, `.env`, …), `node_modules`, or common private key/cert/db/log extensions; blocked before `php_fastcgi` / `file_server`.
-- CORS no longer uses blanket `Access-Control-Allow-Origin: *` by default. Allowed origins are reflected with `Vary: Origin` (Webflow, `.sp`, localhost/127.0.0.1, plus per-project `--origin` / `projects.json`). No `Access-Control-Allow-Credentials`.
+- CORS no longer uses blanket `Access-Control-Allow-Origin: *` by default. Allowed origins are reflected with `Vary: Origin` (local `.sp` / localhost / 127.0.0.1, plus per-project `--origin` / `projects.json`). No `Access-Control-Allow-Credentials`.
+- **Breaking:** `*.webflow.io` / `*.webflow.com` are **not** in the default allowlist; add hosts via `--origin` (explicit `*.webflow.io` allowed with a warning).
 - Domain and project-root inputs are validated to prevent Caddyfile injection; dangerous roots (`/`, home, `/Users`, `/System`, …) are refused.
 
 #### Added
@@ -26,21 +27,19 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - `--remove-origin <host>` (repeatable) to drop stored CORS hostnames.
 - Automatic legacy Caddyfile migration on `link` / `reload` / `start` (timestamped backup, version marker `# stagepass-block: v2`; migrated blocks keep `allowAllOrigins` enabled for compatibility).
 - Shared pure helpers under `src/lib/` (`caddyfile`, `domain`, `origins`, `paths`, `projects`, `migrate`) and expanded Vitest coverage; optional Docker/`caddy adapt` integration test (skipped when unavailable).
+- Tag-triggered `npm stage publish` release workflow (see `RELEASING.md`).
 
 #### Changed
 
 - `stagepass --version` reads the version from `packages/cli/package.json` instead of a hard-coded value.
 - Generated site blocks include `# stagepass-block: v2` / `# stagepass-options: …` markers.
+- Regenerating v2 blocks uses the tighter defaults and prints a tip to add `--origin` for Webflow/staging hosts.
 
 #### Fixed
 
 - Invalid or injectable domain names are rejected before writing the Caddyfile; folder-derived domains are slugified when needed.
 - `--no-allow-all-origins` is a defined Commander option (three-state with `--allow-all-origins`; omitting both keeps stored settings).
 - Re-linking a v2 site when `projects.json` lacks the domain restores CORS options from the Caddyfile marker instead of silently resetting them.
-
-#### Notes
-
-- Package version remains `1.0.2` (not bumped; release decided separately). Prior unreleased note: 1.0.2 vs published 1.0.1 was documentation/LICENSE only before these security changes.
 
 ### [1.0.1] - 2026-03-10
 
@@ -54,9 +53,25 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/loader`
 
-### Unreleased
+### [2.0.0-beta.1] - 2026-11-01
 
-- Added package `LICENSE` (MIT). No runtime/code changes since published 1.2.0.
+#### Breaking
+
+- No global console mute in production by default; opt in with `data-stagepass-mute-console="true"`.
+- `?stagepass=` sessions expire (default 12 h; `data-stagepass-session-hours`); stored as JSON with expiry.
+- `data-stagepass-cachebust="true"` no longer appends a timestamp on every production page view; use `data-stagepass-version` / `data-stagepass-v` → `?v=`.
+- Injected scripts keep order (`script.async = false`).
+- Removed deprecated globals `splog`, `spwarn`, `sperror`.
+
+#### Added
+
+- Chrome Local Network Access permission hint (`loopback-network` / `local-network-access`) before local swaps.
+- Build-time `__STAGEPASS_VERSION__` from `package.json`.
+- Shipped `global.d.ts` (`types` field) for `Window.stagepass` / `stagepass` / `sp`.
+
+### Unreleased (folded into 2.0.0-beta.1)
+
+- Added package `LICENSE` (MIT).
 
 ### [1.2.0] - 2026-04-10
 
@@ -103,9 +118,21 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/modules`
 
-### Unreleased
+### [2.0.0-beta.1] - 2026-11-01
 
-#### 1.1.1 (not yet published; npm latest is 1.1.0)
+#### Breaking
+
+- Injected scripts keep insertion order (`async = false` unless `async: true`).
+- Production `cacheBust: true` no longer appends per-view timestamps; use `version: '…'` → `?v=`.
+
+#### Added
+
+- Declaration merging types (`global.d.ts`) for `stagepass.inject` / `stagepass.cookies`.
+- JSDoc on public cookie helpers and `inject`.
+
+### Unreleased (folded into 2.0.0-beta.1)
+
+#### 1.1.1 (superseded by beta)
 
 - Documentation only relative to published 1.1.0: package `README.md`, `LICENSE`, and version bump in `package.json`. Dist artifacts match npm 1.1.0.
 
