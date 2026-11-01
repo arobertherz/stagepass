@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a problem with the CLI, loader, or modules
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Fill in every section you can.
+        Do not include secrets, tokens, private URLs, or credentials.
+
+  - type: input
+    id: package-versions
+    attributes:
+      label: Package versions
+      description: Versions of `@stagepass/cli`, `@stagepass/loader`, and/or `@stagepass/modules` (e.g. 2.0.0, or the CDN pin you use).
+      placeholder: "cli 2.0.0, loader@2, modules@2"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: Required for CLI issues. Optional for loader/modules-only reports.
+      placeholder: "macOS 15.1"
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Required for loader/modules issues (name and version).
+      placeholder: "Chrome 131, Safari 18"
+    validations:
+      required: false
+
+  - type: textarea
+    id: loader-snippet
+    attributes:
+      label: Loader / embed snippet
+      description: Relevant script tags or HTML (redact any secrets). Leave blank if this is CLI-only.
+      render: html
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps someone else can follow.
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead, including errors or console output (no secrets).
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Secrets
+      options:
+        - label: I have not included secrets, tokens, private credentials, or sensitive URLs in this report.
+          required: true

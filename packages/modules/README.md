@@ -16,7 +16,7 @@ Without the loader, `inject` and `cookies` still attach their APIs and warn; `ma
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.0.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see root README [Version pinning](../../README.md#-version-pinning)).
 
 ```html
 <script
