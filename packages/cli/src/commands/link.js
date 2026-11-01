@@ -12,7 +12,10 @@ import {
   getProjectsPath,
 } from '../lib/paths.js';
 import { upsertProject, getProject } from '../lib/projects.js';
-import { validateOriginList } from '../lib/origins.js';
+import {
+  validateOriginList,
+  isBroadWebflowWildcard,
+} from '../lib/origins.js';
 import { ensureCaddyfileMigrated } from '../lib/migrate.js';
 
 /**
@@ -46,6 +49,15 @@ export async function link(domain, options = {}) {
     if (!check.ok) {
       console.log(chalk.red(`❌ Invalid --origin: ${check.error}`));
       return;
+    }
+    for (const entry of check.origins) {
+      if (isBroadWebflowWildcard(entry)) {
+        console.log(
+          chalk.yellow(
+            `   Warning: ${entry} allows any Webflow user's site to make cross-origin requests to this .sp domain.`
+          )
+        );
+      }
     }
   }
 
@@ -131,6 +143,18 @@ export async function link(domain, options = {}) {
       console.log(
         chalk.yellow(
           '   Warning: allow-all-origins is enabled (Access-Control-Allow-Origin: *). Prefer --origin <live-domain> then --no-allow-all-origins.'
+        )
+      );
+      spinner.start(`Linking ${chalk.bold(targetDomain)}...`);
+    } else if (
+      !project.origins.some(
+        (o) => o.endsWith('.webflow.io') || o.endsWith('.webflow.com') || isBroadWebflowWildcard(o)
+      )
+    ) {
+      spinner.stop();
+      console.log(
+        chalk.dim(
+          '   Tip: Webflow is not in the default CORS allowlist. Add staging/live with `stagepass link --origin my-project.webflow.io` (or an explicit `*.webflow.io` with caution).'
         )
       );
       spinner.start(`Linking ${chalk.bold(targetDomain)}...`);

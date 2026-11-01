@@ -2,11 +2,11 @@
  * CORS origin allowlist helpers.
  *
  * Default patterns (anchored, case-insensitive):
- * - https://*.webflow.io / https://*.webflow.com (any subdomain depth; apex included)
  * - https://*.sp
  * - http(s)://localhost[:port]
  * - http(s)://127.0.0.1[:port]
  * - per-project live hostnames / *.wildcards / https:// origins
+ *   (including explicit `*.webflow.io` when passed via --origin)
  */
 
 const UNSAFE_ORIGIN_RE = /[\s#"'{}$\\;()[\],<>|/]/;
@@ -14,16 +14,27 @@ const HOSTNAME_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Built-in Origin regex alternatives (without leading ^ / trailing $ / (?i)). */
 export const DEFAULT_ORIGIN_ALTERNATIVES = Object.freeze([
-  'https://([a-z0-9-]+\\.)*webflow\\.io',
-  'https://([a-z0-9-]+\\.)*webflow\\.com',
   'https://([a-z0-9-]+\\.)*[a-z0-9-]+\\.sp',
   'https?://localhost(:[0-9]{1,5})?',
   'https?://127\\.0\\.0\\.1(:[0-9]{1,5})?',
 ]);
 
 /**
+ * Broad Webflow wildcards that allow any Webflow user's site.
+ * Allowed when passed explicitly via --origin, but deserve a warning.
+ *
+ * @param {string} entry - validated origin entry
+ * @returns {boolean}
+ */
+export function isBroadWebflowWildcard(entry) {
+  return entry === '*.webflow.io' || entry === '*.webflow.com';
+}
+
+/**
  * Validate a single live-domain / origin entry.
  * Accepts: example.com | www.example.com | *.example.com | https://example.com
+ * Also accepts full Webflow staging hosts (my-project.webflow.io) and explicit
+ * wildcards (*.webflow.io) when passed by the user.
  *
  * @param {string} input
  * @returns {{ ok: true, value: string } | { ok: false, error: string }}

@@ -44,8 +44,10 @@ describe('renderSiteBlock', () => {
     expect(block).toContain('respond 404');
     expect(block).toContain('Access-Control-Allow-Private-Network true');
     expect(block).toContain('Vary Origin');
-    expect(block).toContain('webflow\\.io');
+    expect(block).not.toContain('webflow\\.io');
+    expect(block).not.toContain('webflow\\.com');
     expect(block).toContain('example\\.com');
+    expect(block).toContain('localhost');
     expect(block).not.toContain('header Access-Control-Allow-Origin *');
     expect(block).toContain('root * "/Users/dev/Sites/app"');
     expect(block).toContain('php_fastcgi 127.0.0.1:9000');
