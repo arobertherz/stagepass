@@ -10,15 +10,15 @@ Stagepass publishes `@stagepass/cli`, `@stagepass/loader`, and `@stagepass/modul
 
 ## 1. Bump versions
 
-Set the same version in all three `packages/*/package.json` files (and any internal peer ranges), e.g. `2.0.0-beta.1`.
+Set the same version in all three `packages/*/package.json` files (and any internal peer ranges), e.g. `2.0.0`.
 
 Update `CHANGELOG.md` and docs as needed. Commit on the release branch.
 
 ## 2. Tag and push
 
 ```bash
-git tag v2.0.0-beta.1
-git push origin v2.0.0-beta.1
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
 The tag **without** the leading `v` must equal every package `version`. CI fails otherwise (`scripts/check-release-version.mjs`).
@@ -60,7 +60,7 @@ Or approve in the npm website **Staged Packages** tab. Reject with `npm stage re
 
 ## 5. Verify dist-tags
 
-For a beta release, `latest` must stay on 1.x and `next` should point at the beta:
+For a stable 2.x release, `latest` should point at `2.0.0` (or the version you just published). Sites that pin `@1` stay on 1.x.
 
 ```bash
 npm view @stagepass/loader dist-tags
@@ -71,9 +71,9 @@ npm view @stagepass/cli dist-tags
 If needed:
 
 ```bash
-npm dist-tag add @stagepass/loader@2.0.0-beta.1 next
-npm dist-tag add @stagepass/modules@2.0.0-beta.1 next
-npm dist-tag add @stagepass/cli@2.0.0-beta.1 next
+npm dist-tag add @stagepass/loader@2.0.0 latest
+npm dist-tag add @stagepass/modules@2.0.0 latest
+npm dist-tag add @stagepass/cli@2.0.0 latest
 ```
 
 ## Notes

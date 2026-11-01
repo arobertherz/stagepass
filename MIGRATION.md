@@ -1,20 +1,20 @@
 # Migrating from Stagepass 1.x to 2.0
 
-This guide covers every breaking change in **2.0.0-beta**. Sites that keep using `@1` / `latest` CDN URLs are unaffected until you opt in.
+This guide covers every breaking change in **2.0.0**. Sites that keep using `@1` / exact `1.x` CDN URLs are unaffected until you opt in.
 
-Pin the beta explicitly (jsDelivr ranges like `@2` do **not** resolve prereleases):
+Pin 2.0.0 explicitly:
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
-  data-stagepass-version="2.0.0-beta.1"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
 ></script>
 ```
 
 Or unpkg:
 
 ```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
 ```
 
 ---
@@ -86,7 +86,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
   data-stagepass-mute-console="true"
 ></script>
 ```
@@ -103,7 +103,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
   data-stagepass-session-hours="24"
 ></script>
 ```
@@ -125,7 +125,7 @@ Both append `?v=<version>` (URL-encoded; existing query/hash preserved). Per-req
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
   data-stagepass-version="2026-11-01"
 ></script>
 <script
@@ -171,22 +171,20 @@ sp.error('fail');
 
 ---
 
-## CLI install (beta)
+## CLI install
 
 ```bash
-npm install -g @stagepass/cli@next
-# or
-npm install -g @stagepass/cli@2.0.0-beta.1
+npm install -g @stagepass/cli@2.0.0
 ```
 
-`stagepass --version` should print `2.0.0-beta.1`.
+`stagepass --version` should print `2.0.0`.
 
-## Modules (beta)
+## Modules
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
 ```
 
 Injector option `cacheBust: true` no longer appends timestamps in production; use `version: '…'` instead.

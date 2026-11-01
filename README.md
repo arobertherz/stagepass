@@ -75,7 +75,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Auto Path Detection:** If `data-stagepass-path` is omitted, filename is automatically extracted from production URL.
 * **Debug Mode:** Enable logging without URL swapping for troubleshooting.
 * **Quiet Stagepass logs:** Stagepass' own `sp.log` / `sp.warn` / `sp.error` only print when a session is active (optional legacy global console mute via `data-stagepass-mute-console`).
-* **Modular Architecture:** Core loader (~7.4 KB minified, ~3.1 KB gzipped) with optional modules loaded as separate script tags.
+* **Modular Architecture:** Core loader (~9.7 KB minified, ~4.0 KB gzipped) with optional modules loaded as separate script tags.
 * **Programmatic API:** Access environment variables and inject assets programmatically via `sp` (preferred) or `stagepass` / `window.stagepass`.
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
@@ -100,34 +100,36 @@ npm install -g @stagepass/cli
 
 ## 📌 Version pinning
 
-For production Webflow sites (and any long-lived CDN `<script>` tags), pin **exact** package versions instead of a major-only range like `@1`:
+For production Webflow sites (and any long-lived CDN `<script>` tags), pin **exact** package versions instead of a major-only range like `@1` or `@2`:
 
-### Stable 1.x (production)
+### Current 2.x
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
+></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+```
+
+```html
+<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+```
+
+See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
+
+### Legacy 1.x (still valid if you pin it)
+
+Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
 ```
 
-### v2 beta (`next` dist-tag)
-
-jsDelivr ranges like `@2` do **not** resolve prereleases — pin the exact beta version. See [MIGRATION.md](MIGRATION.md).
-
-```html
-<script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
-  data-stagepass-version="2.0.0-beta.1"
-></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
-```
-
-```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
-```
-
 Why pin exact versions:
 * **Reproducible behaviour** – every visitor gets the same loader/modules build you tested.
-* **No silent upgrades** – `@1` floats to the newest `1.x` publish; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
+* **No silent upgrades** – `@1` / `@2` float to the newest publish on that major; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
 * **CDN caching** – exact versions cache stably; floating tags can surprise you after a publish.
 * **Deliberate updates** – bump the version in the script URL, test, then roll out.
 
@@ -153,23 +155,19 @@ stagepass link my-project
 *Your local folder is now served at `https://my-project.sp` with valid SSL.*
 
 ### 3. Integrate with Webflow
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~7.4 KB (~3.1 KB gzipped) and safe for production. Prefer exact version pins (see [Version pinning](#-version-pinning)).
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~9.7 KB (~4.0 KB gzipped) and safe for production. Prefer exact version pins (see [Version pinning](#-version-pinning)).
 
 **Option 1 - CDN (jsDelivr & unpkg):**
 
-Stable 1.x:
 ```html
 <!-- Core loader only (pin exact version in production) -->
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
+></script>
 
 <!-- Or using unpkg: -->
-<script src="https://unpkg.com/@stagepass/loader@1.2.0"></script>
-```
-
-v2 beta (exact pin required; `@2` does not resolve prereleases):
-```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
-<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
 ```
 
 **Option 2 - Local** (to avoid cross-domain issues):
@@ -194,22 +192,19 @@ npm install @stagepass/loader @stagepass/modules --save-dev
 Modules extend the core loader with additional features (e.g., programmatic injection). **Modules depend on the Loader:** include both as separate `<script>` tags in `<head>`, loader first; when using npm, `@stagepass/modules` declares `@stagepass/loader` as a peer dependency (install both, e.g. `npm install @stagepass/loader @stagepass/modules`).
 
 ```html
-<!-- Stable 1.x -->
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/cookies.min.js"></script>
-
-<!-- v2 beta -->
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0-beta.1/dist/cookies.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
+></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
 ```
 
 Or load the combined modules bundle:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/all.min.js"></script>
 ```
 
 ### 4. Tag Your Scripts & Stylesheets
@@ -391,8 +386,8 @@ await sp.inject({
   id: 'my-library',        // Optional: for deduplication
   position: 'head',        // 'head' | 'body-start' | 'body-end' | { target: '#id', action: 'before' | 'after' }
   type: 'script',          // Optional: 'script' | 'style' (auto-detected from extension)
-  cacheBust: true,        // Optional: in production, append ?_cb=timestamp to force fresh load
-  async: false,            // Optional: default false
+  version: '2.0.0',        // Optional: in production, append ?v=<version> for cache busting
+  async: false,            // Optional: default false (keeps script order)
   defer: true,             // Optional: default true (unless async is true)
   attributes: {            // Optional: additional HTML attributes
     crossorigin: 'anonymous'
@@ -401,8 +396,8 @@ await sp.inject({
 
 // Batch injection
 await sp.inject([
-  { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js' },
-  { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style' }
+  { src: 'https://cdn.example.com/lib1.js', stagepass: true, localPath: 'lib1.js', version: '2.0.0' },
+  { src: 'https://cdn.example.com/lib2.css', stagepass: true, localPath: 'lib2.css', type: 'style', version: '2.0.0' }
 ]);
 ```
 
@@ -467,7 +462,7 @@ Notes and limitations:
 
 ## 🤖 AGENTS.md Templates
 
-Use one of the following canonical profiles in your project-level `AGENTS.md` so IDE agents (e.g., Cursor) know exactly which Stagepass runtime APIs are available.
+Use one of the following canonical profiles in your project-level `AGENTS.md` so AI coding agents know exactly which Stagepass runtime APIs are available.
 
 ### Canonical profile files
 - Loader only: [`AGENTS.LOADER.md`](./AGENTS.LOADER.md)
@@ -490,42 +485,9 @@ If your tooling does **not** support remote include/import, use copy-paste from 
 
 We welcome contributions! This project is a monorepo managed with npm workspaces.
 
-1.  Clone the repo: `git clone https://github.com/arobertherz/stagepass.git`
-2.  Install dependencies: `npm install`
-3.  Build packages: `npm run build`
-
-**For detailed local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).**
-
-### Project Goals & Philosophy
-
-Stagepass is designed with a clear mission: **to lower the barrier for less technical Webflow developers** and enable professional development workflows without requiring deep technical expertise.
-
-**Our Core Principles:**
-- **Accessibility First:** All features are opt-in and can be used independently
-- **No Breaking Changes:** New features must maintain backward compatibility
-- **Developer Experience:** Focus on ease of use and intuitive workflows
-- **Professional Standards:** Enable best practices (TypeScript, SCSS, Git workflows) without complexity
-
-**Shipped:**
-- **Variables API** (`sp.vars`, including `sp.vars.client`) – available in `@stagepass/loader` 1.2.0
-- **Code Injection** (`sp.inject`) – available in `@stagepass/modules` (Injector)
-
-**Current Development Priorities:**
-
-1. **Git Simplification** (Issue #4) – ⭐⭐ Medium complexity, medium value
-   - Improves developer workflow
-   - Moderate implementation effort
-
-2. **New Project Scaffolding** (Issue #3) – ⭐⭐⭐ High complexity, high value
-   - Greatest impact on developer experience
-   - Requires significant development effort
-
-**Risk Considerations:**
-- ⚠️ **Compatibility:** Git commands may vary across Git versions and platforms
-- ⚠️ **Maintainability:** Additional features increase codebase complexity
-- ⚠️ **User Experience:** Need to balance simplicity with power and flexibility
-
-For detailed specifications of planned features, see [GitHub Issues](https://github.com/arobertherz/stagepass/issues).
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, the Docker test recipe, commit style, and PR flow.  
+For local development details, see [DEVELOPMENT.md](DEVELOPMENT.md).  
+To report a vulnerability, see **[SECURITY.md](SECURITY.md)** (private reporting only).
 
 ## 📄 License
 
@@ -535,4 +497,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-Development assisted by Grok and Cursor.
+Built with AI coding agents and tools, every release reviewed by a human.

@@ -8,34 +8,24 @@ The loader reads Stagepass session state and swaps tagged production assets with
 
 ```bash
 npm install @stagepass/loader
-# beta
-npm install @stagepass/loader@2.0.0-beta.1
 ```
 
 ## CDN Usage
 
-### Stable 1.x
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-```
-
-### v2 beta
-
-jsDelivr ranges like `@2` do **not** resolve prereleases — pin the exact version:
+Pin exact versions in production:
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"
-  data-stagepass-version="2.0.0-beta.1"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
 ></script>
 ```
 
 ```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0-beta.1/dist/loader.min.js"></script>
+<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
 ```
 
-See [MIGRATION.md](../../MIGRATION.md) for breaking changes.
+See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
 ## What it does
 

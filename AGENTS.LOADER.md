@@ -1,19 +1,26 @@
 # Stagepass Runtime (Loader Only)
 
-Profile-Version: 1.1  
-Compatible with: `@stagepass/loader >= 1.2.0`  
-Last updated: 2026-10-29
+Profile-Version: 2.0  
+Compatible with: `@stagepass/loader@2.0.0`  
+Last updated: 2026-11-01
 
 This profile is for projects that use Stagepass Loader only (no `@stagepass/modules`).
 
 ## CDN (version pinning)
-Prefer exact versions in production script tags (avoid floating `@1`):
+Prefer exact versions in production script tags (avoid floating `@1` / `@2`):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  data-stagepass-version="2.0.0"
+></script>
 ```
 
-`@1` resolves to the newest `1.x` publish and can change behaviour on live sites without an intentional update.
+```html
+<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+```
+
+Floating majors can change behaviour on live sites without an intentional update.
 
 ## Capability Profile
 - Profile: `loader-only`
@@ -40,10 +47,17 @@ Prefer exact versions in production script tags (avoid floating `@1`):
   - `locale` (`language`, `timezone`)
   - `capabilities` (`cookiesEnabled`, `localStorage`, `sessionStorage`)
 - `sp.resolveLocalUrl(relativePath: string): string`  
-  Returns a local Stagepass URL with cache-busting when session is active, otherwise `''`.
+  Returns a local Stagepass URL with `?_cb=<timestamp>` when a session is active, otherwise `''`.
 - `sp.log(...args)` and `sp.log('warn' | 'error', ...args)`
 - `sp.warn(...args)`
 - `sp.error(...args)`
+
+## v2 behaviour notes
+- Sessions expire (default 12 h; `data-stagepass-session-hours` on the loader tag).
+- Production cache busting uses `data-stagepass-version` / `data-stagepass-v` → `?v=` (not per-view timestamps).
+- No global console mute by default; opt in with `data-stagepass-mute-console="true"`.
+- Injected scripts keep order (`async = false` unless the original had `async`).
+- `splog` / `spwarn` / `sperror` are removed.
 
 ## Constraints (hard limits)
 - `sp.inject(...)` is not available in this profile.
@@ -70,8 +84,3 @@ if (localUrl) {
 // Structured logging
 sp.log('Loader active', { env: sp.vars.env, domain: sp.vars.domain });
 ```
-
-## Deprecated aliases (still available)
-- `splog` / `spwarn` / `sperror` are removed in v2; use `sp.log` / `sp.warn` / `sp.error`
-- `spwarn(...)` -> use `sp.warn(...)`
-- `sperror(...)` -> use `sp.error(...)`
