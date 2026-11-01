@@ -72,6 +72,10 @@ Full command set (keep in sync with the root README, `packages/cli/README.md`, a
 | `stagepass certs trust` | Run `caddy trust` after confirmation or `--yes` |
 | `stagepass autostart on\|off\|status` | Login LaunchAgent (`io.github.arobertherz.stagepass`) |
 | `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`; never sudo) |
+| `stagepass new [name]` | Scaffold a lean Webflow project (`--yes`, `--dry-run`, flags for every option) |
+| `stagepass build` | Run `npm run build` in the current project |
+| `stagepass watch` | Run `npm run watch` in the current project |
+| `stagepass upgrade` | Bump `@stagepass/*` in `package.json` and print the Webflow snippet |
 
 ### 4. Build Loader and Modules
 
