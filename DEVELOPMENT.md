@@ -6,7 +6,7 @@ This guide explains how to set up Stagepass for local development.
 
 - Node.js **22 or 24** for development and CI (Vitest 5 and related tooling need Node `>=22.12`). The published CLI still declares `engines.node`: `>=18.0.0` for consumers; do not bump that field casually.
 - npm (comes with Node.js)
-- macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`). Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
+- macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`, `doctor`, `certs`, `autostart`, `daemon`). Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
 - Homebrew (for dependency management)
 
 ## Local Development Setup
@@ -46,18 +46,39 @@ After linking, you can use `stagepass` commands from anywhere:
 stagepass setup
 stagepass start
 stagepass link my-project
+stagepass doctor
+stagepass certs check
+stagepass autostart status
 ```
 
-### 4. Build Loader
+Full command set (keep in sync with the root README, `packages/cli/README.md`, and `AGENTS.md`):
 
-Build the loader package:
+| Command | Role |
+| :--- | :--- |
+| `stagepass setup` | Install dependencies and configure the `.sp` resolver |
+| `stagepass start` | Start background Caddy and PHP |
+| `stagepass stop` | Stop background services (hints when autostart is enabled) |
+| `stagepass reload` | Reload Caddy configuration |
+| `stagepass link [domain]` | Link the current directory to a `.sp` domain |
+| `stagepass unlink [domain]` | Unlink a `.sp` domain |
+| `stagepass doctor` | Read-only diagnostics; `--json`; exit 1 on fail |
+| `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks |
+| `stagepass certs trust` | Run `caddy trust` after confirmation or `--yes` |
+| `stagepass autostart on\|off\|status` | Login LaunchAgent (`io.github.arobertherz.stagepass`) |
+| `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`; never sudo) |
+
+### 4. Build Loader and Modules
+
+Build the loader and modules packages:
 
 ```bash
 cd packages/loader
 npm run build
+cd ../modules
+npm run build
 ```
 
-This generates `dist/loader.js` and `dist/loader.min.js`.
+This generates `packages/loader/dist/loader.js` and `loader.min.js`, plus `packages/modules/dist/{inject,cookies,maintenance,all}.min.js`.
 
 For development with watch mode:
 
@@ -73,8 +94,10 @@ stagepass/
 │   ├── cli/           # CLI tool (published as @stagepass/cli)
 │   │   ├── bin/       # Executable entry point
 │   │   └── src/       # Source code
-│   │       └── commands/
-│   └── loader/        # Browser loader (published as @stagepass/loader)
+│   ├── loader/        # Browser loader (published as @stagepass/loader)
+│   │   ├── src/       # TypeScript source
+│   │   └── dist/      # Built files (committed for CDN)
+│   └── modules/       # Browser modules (published as @stagepass/modules)
 │       ├── src/       # TypeScript source
 │       └── dist/      # Built files (committed for CDN)
 └── README.md

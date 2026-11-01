@@ -5,7 +5,10 @@ import {
   assessCaddyfileStructure,
   runDoctor,
 } from '../doctor.js';
-import { findUnpinnedCdnSnippets } from '../cdn-snippets.js';
+import {
+  RECOMMENDED_CDN_SNIPPETS,
+  findUnpinnedCdnSnippets,
+} from '../cdn-snippets.js';
 
 describe('doctor helpers', () => {
   it('parses lsof listen lines', () => {
@@ -46,6 +49,21 @@ my-project.sp {
         'https://cdn.jsdelivr.net/npm/@stagepass/loader@latest/dist/loader.min.js',
       ]).ok
     ).toBe(false);
+  });
+
+  it('recommended CDN snippets use jsDelivr @2 and real dist paths', () => {
+    expect(RECOMMENDED_CDN_SNIPPETS).toEqual([
+      'https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js',
+      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js',
+      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js',
+      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js',
+      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js',
+    ]);
+    for (const url of RECOMMENDED_CDN_SNIPPETS) {
+      expect(url).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@stagepass\//);
+      expect(url).not.toMatch(/unpkg/i);
+      expect(url).toMatch(/@2\//);
+    }
   });
 
   it('runDoctor is read-only and uses execFile-style arrays', async () => {
