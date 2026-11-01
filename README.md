@@ -296,7 +296,12 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain and reload Caddy. |
 | `stagepass unlink [domain]` | Remove the link (and `projects.json` entry) for that domain. |
 | `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). |
-| `stagepass stop` | Stop background services. |
+| `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
+| `stagepass doctor` | Read-only stack diagnostics (never sudo). `--json`. Exit `1` on any fail. |
+| `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
+| `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
+| `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
+| `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`); non-interactive; never sudo. |
 
 ### `link` details
 

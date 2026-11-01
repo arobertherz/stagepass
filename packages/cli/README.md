@@ -53,9 +53,22 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
-| `stagepass stop` | Stop background services. |
+| `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent). Never uses sudo. `--json` available. Exit `1` if any fail. |
+| `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
+| `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
+| `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
+| `stagepass daemon` | Non-interactive foreground helper for the LaunchAgent (certs check log-only, then `caddy run`). Never uses sudo. |
 
-All commands support `-v, --verbose`.
+All commands support `-v, --verbose` where applicable.
+
+### Doctor / certificates / autostart
+
+- `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
+- Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
+- Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
+- Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
+- Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
 
 ### Domain argument (`link` / `unlink`)
 

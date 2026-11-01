@@ -1,0 +1,32 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`autostart helpers > renders an idempotent LaunchAgent plist snapshot 1`] = `
+"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.github.arobertherz.stagepass</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/node</string>
+		<string>/Users/me/.nvm/versions/node/bin/stagepass</string>
+		<string>daemon</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/me</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/me/.stagepass/logs/daemon.stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/me/.stagepass/logs/daemon.stderr.log</string>
+</dict>
+</plist>
+"
+`;

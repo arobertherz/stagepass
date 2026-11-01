@@ -148,8 +148,13 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass unlink [domain]` - Unlink directory from .sp domain (domain optional, defaults to folder name)
 -   `stagepass reload` - Reload Caddy configuration
 -   `stagepass start` - Start background services (Caddy & PHP)
--   `stagepass stop` - Stop all background services
--   All commands support `-v, --verbose` flag for detailed output
+-   `stagepass stop` - Stop all background services (hints when autostart is enabled)
+-   `stagepass doctor` - Read-only diagnostics (never sudo); `--json`; exit 1 on fail
+-   `stagepass certs check` - Read-only Caddy local CA / trust / TLS checks
+-   `stagepass certs trust` - Run `caddy trust` after confirmation or `--yes`
+-   `stagepass autostart on|off|status` - Login LaunchAgent (`io.github.arobertherz.stagepass`)
+-   `stagepass daemon` - Foreground helper for LaunchAgent (`caddy run`; never sudo)
+-   All commands support `-v, --verbose` flag for detailed output where applicable
 
 ### CLI: Domain Handling
 -   If domain argument is omitted, defaults to current folder name
