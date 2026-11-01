@@ -1,0 +1,44 @@
+# {{NAME}}
+
+Local Stagepass project for Webflow.
+
+## Setup
+
+```bash
+npm install
+npm run build
+stagepass link {{NAME}} --origin my-project.webflow.io
+```
+
+Activate on your live site: `https://my-project.webflow.io/?stagepass={{NAME}}.sp`
+
+## Scripts
+
+| Script | Description |
+| :--- | :--- |
+| `npm run build` | Bundle JS/CSS into `dist/` with content hashes + `manifest.json` |
+| `npm run watch` | Rebuild on change |
+
+## Webflow Custom Code
+
+Prefer the major CDN pin `@2`. An exact pin is optional (see `data-stagepass-version`).
+
+### Head
+
+```html
+{{HEAD_SNIPPET}}
+```
+
+Optional exact pin (replace `@2` in the URL if you need a locked version): `@{{LOADER_VERSION}}`.
+
+### Footer
+
+```html
+{{FOOTER_SNIPPET}}
+```
+
+After each production upload, set `data-src` / `data-href` to your hosted URLs. For content-hashed uploads, read the filenames from `dist/manifest.json`. Local Stagepass swapping can keep using the stable `dist/main.js` and `dist/styles.css` copies.
+
+## PHP
+
+PHP helpers for this scaffolder are planned for a later Stagepass release. Linked `.sp` sites can still use PHP via the CLI when PHP is installed system-wide.

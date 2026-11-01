@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-import { createProgram } from '../src/cli.js';
+import { createProgram, rewriteArgvForUpgrade } from '../src/cli.js';
 
-createProgram().parse(process.argv);
+createProgram().parse(rewriteArgvForUpgrade(process.argv));

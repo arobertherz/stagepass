@@ -1,0 +1,67 @@
+/**
+ * Build recommended Webflow Custom Code snippets (jsDelivr major pin @2).
+ *
+ * @param {object} options
+ * @param {string} options.version Exact package version for data-stagepass-version / docs
+ * @param {boolean} [options.modules]
+ * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
+ */
+export function buildWebflowSnippets(options) {
+  const version = String(options.version || '2.0.0');
+  const modules = options.modules === true;
+  const majorPin = '@2';
+  const exactPin = `@${version}`;
+
+  const loaderLines = [
+    '<!-- Stagepass loader (major pin @2; optional exact pin shown in data-stagepass-version) -->',
+    '<script',
+    `  src="https://cdn.jsdelivr.net/npm/@stagepass/loader${majorPin}/dist/loader.min.js"`,
+    `  data-stagepass-version="${version}"`,
+    '></script>',
+  ];
+
+  if (modules) {
+    loaderLines.push(
+      `<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules${majorPin}/dist/inject.min.js"></script>`,
+      `<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules${majorPin}/dist/cookies.min.js"></script>`
+    );
+  }
+
+  const footerLines = [
+    '<!-- Project assets: production URLs in data-src / data-href; local paths for Stagepass -->',
+    '<!-- After `npm run build`, check dist/manifest.json for content-hashed filenames. -->',
+    '<script',
+    '  data-src="https://cdn.example.com/js/main.js"',
+    '  data-stagepass="true"',
+    '  data-stagepass-path="dist/main.js"',
+    '></script>',
+    '<link',
+    '  rel="stylesheet"',
+    '  data-href="https://cdn.example.com/css/styles.css"',
+    '  data-stagepass="true"',
+    '  data-stagepass-path="dist/styles.css"',
+    '>',
+  ];
+
+  return {
+    head: loaderLines.join('\n'),
+    footer: footerLines.join('\n'),
+    majorPin,
+    exactPin,
+  };
+}
+
+/**
+ * Print head/footer snippets with section labels.
+ * @param {{ head: string, footer: string }} snippets
+ * @param {(msg: string) => void} [log]
+ */
+export function printWebflowSnippets(snippets, log = console.log) {
+  log('\nWebflow Custom Code (Head):');
+  log(snippets.head);
+  log('\nWebflow Custom Code (Footer):');
+  log(snippets.footer);
+  log(
+    '\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @2.0.0).'
+  );
+}
