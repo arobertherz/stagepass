@@ -46,6 +46,8 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-stagepass-version` | Production default `?v=<version>` for swapped/tagged assets without a per-asset override. |
 | `data-stagepass-session-hours` | Session lifetime in hours (positive number; default `12`). |
 | `data-stagepass-mute-console="true"` | Opt-in legacy mute of `console.log/warn/error/info/debug` in production when no session. |
+| `data-stagepass-staging-hosts` | Comma-separated hostnames treated as staging (in addition to `*.webflow.io`). |
+| `data-stagepass-alias` | Optional custom global name (valid JS identifier). Assigned only when that global is free. |
 
 ## Asset attributes
 
@@ -83,28 +85,41 @@ Shown only while a session is active (including debug). Click clears the session
 
 ## Runtime API
 
-Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Types ship in `global.d.ts`. There are **no** custom DOM events.
+Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Optional custom alias via `data-stagepass-alias` when free. Types ship in `global.d.ts`.
 
 ```js
 sp.vars.isLocal     // boolean: session swap active or page on localhost
-sp.vars.env         // 'local' | 'staging' | 'production'
+sp.vars.env         // 'local' | 'staging' | 'production' (localhost counts as local)
 sp.vars.domain      // active .sp domain, or page hostname when no swap
 sp.vars.timestamp   // session start ms while swapping; otherwise 0
 sp.vars.version     // package version (build-time)
 sp.vars.client      // theme / browser / os / device / viewport / locale / capabilities
 
+// Flat helpers (additive)
+sp.env()            // 'local' | 'staging' | 'production'
+                    // local = active swap to a .sp domain
+                    // staging = *.webflow.io or data-stagepass-staging-hosts
+sp.is('staging')
+sp.can('localStorage') // also: sessionStorage, cookies, serviceWorker
+sp.client('theme')     // or sp.client() for the whole object
+const off = sp.on('theme', (t) => { /* prefers-color-scheme change */ })
+off()
+sp.use('my-module', '2.0.0', (api) => { /* register */ })
+
 sp.resolveLocalUrl('js/app.js')  // local HTTPS URL while swapping; '' otherwise
-sp.log('…') / sp.log('warn', '…') / sp.log('error', '…')
-sp.warn('…')
-sp.error('…')
+sp.log('...') / sp.log('warn', '...') / sp.log('error', '...')
+sp.warn('...')
+sp.error('...')
 ```
 
 Logging helpers only print while a Stagepass session is active. Deprecated globals `splog` / `spwarn` / `sperror` were removed in v2.
 
+With an active session (or debug), the loader warns when two tagged assets resolve to the same local filename without `data-stagepass-path`.
+
 ## Related Packages
 
 - `@stagepass/cli`: creates and manages `.sp` infrastructure.
-- `@stagepass/modules`: optional modules that extend the loader (`inject`, `cookies`).
+- `@stagepass/modules`: optional modules that extend the loader (`inject`, `cookies`, `maintenance`).
 
 ## Repository
 

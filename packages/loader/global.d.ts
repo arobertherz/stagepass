@@ -52,8 +52,22 @@ export interface StagepassVars {
   timestamp: number;
   /** Package version injected at build time. */
   version: string;
+  /** Client runtime info (theme listeners and viewport updates from boot). */
   client: StagepassClientInfo;
 }
+
+export type StagepassEnvName = 'local' | 'staging' | 'production';
+
+export type StagepassCapabilityName =
+  | 'localStorage'
+  | 'sessionStorage'
+  | 'cookies'
+  | 'serviceWorker'
+  | (string & {});
+
+export type StagepassEventName = 'theme' | 'session' | (string & {});
+
+export type StagepassModuleFactory = (api: StagepassAPI) => void;
 
 /**
  * Core Stagepass runtime API (loader). Modules extend this via declaration merging.
@@ -70,6 +84,28 @@ export interface StagepassAPI {
    * @returns Local URL, or empty string when no session
    */
   resolveLocalUrl: (relativePath: string) => string;
+
+  /**
+   * Flat env helper. `local` means an active swap session to a `.sp` domain.
+   * Staging: hostname ends with `.webflow.io` or matches `data-stagepass-staging-hosts`.
+   */
+  env: () => StagepassEnvName;
+  /** `true` when `env()` equals `name`. */
+  is: (name: StagepassEnvName | string) => boolean;
+  /** Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`, …). */
+  can: (capability: StagepassCapabilityName) => boolean;
+  /** Read a key from `vars.client`, or the whole client object when omitted. */
+  client: (key?: keyof StagepassClientInfo | string) => unknown;
+  /**
+   * Subscribe to runtime events. Returns an unsubscribe function.
+   * Supported: `theme` (prefers-color-scheme), `session` (boot / disconnect).
+   */
+  on: (event: StagepassEventName, fn: (payload: unknown) => void) => () => void;
+  /**
+   * Register a module after a major-version check against the loader.
+   * @returns whether registration succeeded
+   */
+  use: (name: string, version: string, factory: StagepassModuleFactory) => boolean;
 }
 
 declare global {

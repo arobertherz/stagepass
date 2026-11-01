@@ -3,7 +3,11 @@ import { defineConfig } from 'tsup';
 export default defineConfig([
   // Individual module builds
   {
-    entry: { inject: 'src/inject/index.ts', cookies: 'src/cookies/index.ts' },
+    entry: {
+      inject: 'src/inject/index.ts',
+      cookies: 'src/cookies/index.ts',
+      maintenance: 'src/maintenance/index.ts',
+    },
     format: ['iife'],
     globalName: 'StagepassInject',
     clean: true,

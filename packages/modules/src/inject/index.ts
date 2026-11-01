@@ -24,6 +24,14 @@
     version?: string;
     attributes?: Record<string, string>;
     position?: InjectPosition;
+    /** Subresource Integrity hash (scripts/styles). */
+    integrity?: string;
+    /** CORS mode for the element. */
+    crossorigin?: string;
+    /** CSP nonce. */
+    nonce?: string;
+    /** When set, reject src hosts outside this list (warning + skip). */
+    allowedHosts?: string[];
   }
 
   interface InjectBatchOptions {
@@ -31,22 +39,64 @@
     styles?: InjectOptions[];
   }
 
+  function getStagepassObject(): any | null {
+    const sp =
+      (window as any).stagepass ||
+      (globalThis as any).stagepass ||
+      (window as any).sp ||
+      (globalThis as any).sp;
+    if (!sp) return null;
+    return sp;
+  }
+
+  function warnMissingLoader(): void {
+    try {
+      console.warn(
+        '[Stagepass] Core loader should be loaded before the inject module.'
+      );
+    } catch (_) {}
+  }
+
   // Get Stagepass vars (must be available from core loader)
   function getVars() {
-    // Support window.stagepass, global stagepass, and sp alias
-    const sp = (window as any).stagepass || (globalThis as any).stagepass || (window as any).sp || (globalThis as any).sp;
+    const sp = getStagepassObject();
     if (!sp || !sp.vars) {
       throw new Error('Stagepass core loader must be loaded before modules');
     }
     return sp.vars;
   }
 
+  /** Attribute names that must not be overridden via `attributes` (allowlist / SRI safety). */
+  const RESERVED_ATTRS = new Set([
+    'src',
+    'href',
+    'rel',
+    'integrity',
+    'crossorigin',
+    'nonce',
+  ]);
+
   // Logging helper
   function log(message: string) {
-    const vars = getVars();
-    if (vars.env === 'local' || vars.env === 'staging') {
-      console.log(`[Stagepass] ${message}`);
-    }
+    try {
+      const vars = getVars();
+      if (vars.env === 'local' || vars.env === 'staging') {
+        console.log(`[Stagepass] ${message}`);
+      }
+    } catch (_) {}
+  }
+
+  function warn(message: string) {
+    try {
+      const sp = getStagepassObject();
+      if (sp && typeof sp.warn === 'function') {
+        sp.warn(message);
+        return;
+      }
+    } catch (_) {}
+    try {
+      console.warn(`[Stagepass] ${message}`);
+    } catch (_) {}
   }
 
   // Extract filename from URL
@@ -54,17 +104,14 @@
     if (!url || typeof url !== 'string') return 'file';
     try {
       const urlObj = new URL(url);
-      // pathname is always a string (empty string if no path)
       const pathname = urlObj.pathname || '';
       if (!pathname || pathname.length === 0) {
-        // Fallback to regex extraction if pathname is empty
         const match = url.match(/\/([^\/\?#]+)(?:\?|#|$)/);
         return match ? match[1] : 'file';
       }
       const pathParts = pathname.split('/');
       return pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || 'file';
     } catch (e) {
-      // If URL parsing fails, try regex fallback
       try {
         const match = url.match(/\/([^\/\?#]+)(?:\?|#|$)/);
         return match ? match[1] : 'file';
@@ -74,25 +121,16 @@
     }
   }
 
-  // Auto-detect type from extension
   function detectType(src: string | undefined, explicitType?: 'script' | 'style'): 'script' | 'style' {
     if (explicitType) return explicitType;
-    if (!src || typeof src !== 'string') return 'script'; // Default if src is missing or invalid
+    if (!src || typeof src !== 'string') return 'script';
     try {
       const ext = src.split('.').pop()?.toLowerCase();
       if (ext === 'css') return 'style';
-    } catch (e) {
-      // If split fails, default to script
-    }
-    return 'script'; // Default to script
+    } catch (e) {}
+    return 'script';
   }
 
-  /**
-   * Append a query parameter, preserving existing query and hash.
-   * @param url - Source URL
-   * @param key - Query key
-   * @param value - Query value
-   */
   function appendQueryParam(url: string, key: string, value: string): string {
     const encoded = encodeURIComponent(value);
     const hashIdx = url.indexOf('#');
@@ -102,25 +140,30 @@
     return `${base}${sep}${encodeURIComponent(key)}=${encoded}${hash}`;
   }
 
-  /**
-   * Resolve source URL (local vs production).
-   * @param options - Inject options
-   */
+  function hostAllowed(src: string, allowedHosts?: string[]): boolean {
+    if (!allowedHosts || allowedHosts.length === 0) return true;
+    try {
+      const host = new URL(src, window.location.href).hostname.toLowerCase();
+      const list = allowedHosts.map((h) => String(h).toLowerCase());
+      return list.includes(host);
+    } catch (_) {
+      return false;
+    }
+  }
+
   function resolveSource(options: InjectOptions): string {
     const vars = getVars();
     const { src, stagepass, localPath, path, version } = options;
 
-    // Ensure src is valid
     if (!src || typeof src !== 'string') {
       throw new Error('Invalid src: must be a non-empty string');
     }
 
-    // If stagepass is enabled and we're in local mode, use loader's resolver when available
     if (stagepass !== false && vars.isLocal) {
       const filename = localPath || path || extractFilename(src);
       if (!filename || typeof filename !== 'string') return src;
       const cleanPath = filename.startsWith('/') ? filename.substring(1) : filename;
-      const sp = (window as any).stagepass || (globalThis as any).stagepass || (window as any).sp || (globalThis as any).sp;
+      const sp = getStagepassObject();
       if (sp && typeof sp.resolveLocalUrl === 'function') {
         const localUrl = sp.resolveLocalUrl(cleanPath);
         if (localUrl) return localUrl;
@@ -128,19 +171,16 @@
       return `https://${vars.domain}/${cleanPath}?_cb=${vars.timestamp}`;
     }
 
-    // Production: version-based cache busting only (no per-view Date.now())
     if (version) {
       return appendQueryParam(src, 'v', version);
     }
     return src;
   }
 
-  // Check if element already exists (deduplication)
   function isAlreadyInjected(options: InjectOptions, resolvedSrc: string): boolean {
     const { id, type } = options;
     const detectedType = detectType(options.src, type);
 
-    // Check by ID first (most reliable)
     if (id) {
       const existing = document.getElementById(id);
       if (existing) {
@@ -149,21 +189,28 @@
       }
     }
 
-    // Check by src/href
-    const selector = detectedType === 'script' 
-      ? `script[src="${resolvedSrc}"]`
-      : `link[href="${resolvedSrc}"]`;
-    
-    const existing = document.querySelector(selector);
-    if (existing) {
-      log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
-      return true;
+    // Compare via DOM properties (avoid CSS selector injection from src)
+    if (detectedType === 'script') {
+      const scripts = document.getElementsByTagName('script');
+      for (let i = 0; i < scripts.length; i++) {
+        if (scripts[i].getAttribute('src') === resolvedSrc) {
+          log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
+          return true;
+        }
+      }
+    } else {
+      const links = document.getElementsByTagName('link');
+      for (let i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('href') === resolvedSrc) {
+          log(`Skipping injection: Resource "${resolvedSrc}" already loaded`);
+          return true;
+        }
+      }
     }
 
     return false;
   }
 
-  // Get insertion point based on position
   function getInsertionPoint(position: InjectPosition = 'body-end'): Node | null {
     if (typeof position === 'string') {
       switch (position) {
@@ -178,10 +225,9 @@
       }
     }
 
-    // Relative positioning
     const { target, action } = position;
     const targetEl = document.querySelector(target);
-    
+
     if (!targetEl) {
       log(`Warning: Target selector "${target}" not found, falling back to body-end`);
       return document.body;
@@ -190,10 +236,23 @@
     return action === 'before' ? targetEl : targetEl.nextSibling || targetEl.parentNode;
   }
 
-  // Inject a single resource
+  function applyPassThrough(
+    element: HTMLScriptElement | HTMLLinkElement,
+    options: InjectOptions
+  ) {
+    if (options.integrity) {
+      element.setAttribute('integrity', options.integrity);
+    }
+    if (options.crossorigin) {
+      element.setAttribute('crossorigin', options.crossorigin);
+    }
+    if (options.nonce) {
+      element.setAttribute('nonce', options.nonce);
+    }
+  }
+
   function injectSingle(options: InjectOptions): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Validate required fields
       if (!options.src) {
         const vars = getVars();
         const error = new Error('InjectOptions must have a "src" property');
@@ -203,27 +262,32 @@
         reject(error);
         return;
       }
-      
+
+      if (!hostAllowed(options.src, options.allowedHosts)) {
+        warn(
+          `inject: host not allowed for "${options.src}". Check allowedHosts.`
+        );
+        resolve();
+        return;
+      }
+
       const vars = getVars();
       const detectedType = detectType(options.src, options.type);
       const resolvedSrc = resolveSource(options);
 
-      // Deduplication check
       if (isAlreadyInjected(options, resolvedSrc)) {
         resolve();
         return;
       }
 
-      // Create element
-      const element = detectedType === 'script'
-        ? document.createElement('script')
-        : document.createElement('link');
+      const element =
+        detectedType === 'script'
+          ? document.createElement('script')
+          : document.createElement('link');
 
       if (detectedType === 'script') {
         const script = element as HTMLScriptElement;
-        script.src = resolvedSrc;
 
-        // Dynamically created scripts default to async=true; force order unless async requested
         if (options.async) {
           script.async = true;
         } else {
@@ -233,19 +297,21 @@
           }
         }
 
-        // Set ID if provided
         if (options.id) {
           script.id = options.id;
         }
 
-        // Add custom attributes
         if (options.attributes) {
           Object.entries(options.attributes).forEach(([key, value]) => {
+            if (RESERVED_ATTRS.has(String(key).toLowerCase())) return;
             script.setAttribute(key, value);
           });
         }
 
-        // Handle load/error
+        // Controlled props win over attributes (allowlist / SRI)
+        script.src = resolvedSrc;
+        applyPassThrough(script, options);
+
         script.onload = () => {
           log(`Injected: ${resolvedSrc}`);
           resolve();
@@ -259,8 +325,6 @@
         };
       } else {
         const link = element as HTMLLinkElement;
-        link.rel = 'stylesheet';
-        link.href = resolvedSrc;
 
         if (options.id) {
           link.id = options.id;
@@ -268,11 +332,15 @@
 
         if (options.attributes) {
           Object.entries(options.attributes).forEach(([key, value]) => {
+            if (RESERVED_ATTRS.has(String(key).toLowerCase())) return;
             link.setAttribute(key, value);
           });
         }
 
-        // Stylesheets don't have onload in all browsers, use a workaround
+        link.rel = 'stylesheet';
+        link.href = resolvedSrc;
+        applyPassThrough(link, options);
+
         const checkLoad = setInterval(() => {
           const sheet = link.sheet || (link as any).styleSheet;
           if (sheet) {
@@ -282,7 +350,6 @@
           }
         }, 10);
 
-        // Timeout after 5 seconds
         setTimeout(() => {
           clearInterval(checkLoad);
           const sheet = link.sheet || (link as any).styleSheet;
@@ -296,7 +363,6 @@
         }, 5000);
       }
 
-      // Insert element
       const insertionPoint = getInsertionPoint(options.position);
       if (!insertionPoint) {
         reject(new Error('Could not find insertion point'));
@@ -306,7 +372,6 @@
       if (insertionPoint === document.head || insertionPoint === document.body) {
         insertionPoint.appendChild(element);
       } else {
-        // Relative positioning
         const parent = insertionPoint.parentNode;
         if (parent) {
           if (typeof options.position === 'object' && options.position.action === 'before') {
@@ -321,61 +386,101 @@
 
   /**
    * Inject one or more scripts/styles into the document.
-   * Scripts keep insertion order (`async = false`) unless `async: true`.
-   *
-   * @param options - Single item, array, or `{ scripts, styles }` batch
    */
-  async function inject(options: InjectOptions | InjectOptions[] | InjectBatchOptions): Promise<void> {
+  async function inject(
+    options: InjectOptions | InjectOptions[] | InjectBatchOptions
+  ): Promise<void> {
     let items: InjectOptions[] = [];
-    
-    // Handle batch object: { scripts: [...], styles: [...] }
-    if (!Array.isArray(options) && typeof options === 'object' && ('scripts' in options || 'styles' in options)) {
+
+    if (
+      !Array.isArray(options) &&
+      typeof options === 'object' &&
+      ('scripts' in options || 'styles' in options)
+    ) {
       const batch = options as InjectBatchOptions;
       if (batch.scripts) {
-        // Filter out invalid items (must have src as non-empty string)
-        items.push(...batch.scripts
-          .filter((item): item is InjectOptions => {
-            return item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0;
-          })
-          .map(item => ({ ...item, type: 'script' as const })));
+        items.push(
+          ...batch.scripts
+            .filter((item): item is InjectOptions => {
+              return (
+                item &&
+                typeof item === 'object' &&
+                'src' in item &&
+                typeof item.src === 'string' &&
+                item.src.trim().length > 0
+              );
+            })
+            .map((item) => ({ ...item, type: 'script' as const }))
+        );
       }
       if (batch.styles) {
-        // Filter out invalid items (must have src as non-empty string)
-        items.push(...batch.styles
-          .filter((item): item is InjectOptions => {
-            return item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0;
-          })
-          .map(item => ({ ...item, type: 'style' as const })));
+        items.push(
+          ...batch.styles
+            .filter((item): item is InjectOptions => {
+              return (
+                item &&
+                typeof item === 'object' &&
+                'src' in item &&
+                typeof item.src === 'string' &&
+                item.src.trim().length > 0
+              );
+            })
+            .map((item) => ({ ...item, type: 'style' as const }))
+        );
       }
     } else {
-      // Handle single object or array
-      // Type guard: ensure options is InjectOptions (not InjectBatchOptions)
       if (Array.isArray(options)) {
-        items = options.filter((item): item is InjectOptions => 
-          item && typeof item === 'object' && 'src' in item && typeof item.src === 'string' && item.src.trim().length > 0
+        items = options.filter(
+          (item): item is InjectOptions =>
+            item &&
+            typeof item === 'object' &&
+            'src' in item &&
+            typeof item.src === 'string' &&
+            item.src.trim().length > 0
         );
-      } else if (options && typeof options === 'object' && 'src' in options && typeof (options as any).src === 'string' && (options as any).src.trim().length > 0) {
+      } else if (
+        options &&
+        typeof options === 'object' &&
+        'src' in options &&
+        typeof (options as any).src === 'string' &&
+        (options as any).src.trim().length > 0
+      ) {
         items = [options as InjectOptions];
       }
     }
-    
+
     for (const item of items) {
       try {
         await injectSingle(item);
       } catch (error) {
-        // Continue with other items even if one fails
-        const vars = getVars();
-        if (vars.env !== 'production') {
-          console.error('[Stagepass] Injection error:', error);
-        }
+        try {
+          const vars = getVars();
+          if (vars.env !== 'production') {
+            console.error('[Stagepass] Injection error:', error);
+          }
+        } catch (_) {}
       }
     }
   }
 
-  // Expose API
-  const sp = (window as any).stagepass = (window as any).stagepass || {};
-  sp.inject = inject;
-  // Also expose as global variable (without window prefix)
+  function register(api: any) {
+    api.inject = inject;
+  }
+
+  // 2.0.0 behaviour: always attach inject (even without loader vars)
+  const sp = getStagepassObject() || {};
+  if (!sp.vars) {
+    warnMissingLoader();
+  }
+
+  const MODULE_VERSION = '2.0.0';
+  if (sp.vars && typeof sp.use === 'function') {
+    sp.use('inject', MODULE_VERSION, register);
+  } else {
+    register(sp);
+  }
+
+  (window as any).stagepass = sp;
   (globalThis as any).stagepass = sp;
   (window as any).sp = sp;
   (globalThis as any).sp = sp;
