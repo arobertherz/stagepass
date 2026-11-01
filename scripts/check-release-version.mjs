@@ -87,8 +87,10 @@ function main() {
     process.exit(1);
   }
 
+  const distTag = distTagForVersion(result.version);
+  const kind = distTag === 'next' ? 'prerelease' : 'stable';
   console.log(`✅ All packages match ${result.version}`);
-  console.log(`   dist-tag: ${distTagForVersion(result.version)}`);
+  console.log(`   npm dist-tag: ${distTag} (${kind})`);
 }
 
 const isDirect =

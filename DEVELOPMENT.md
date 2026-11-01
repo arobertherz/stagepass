@@ -112,22 +112,7 @@ npm run dev
 
 ## Publishing
 
-### Publish Loader
-
-```bash
-cd packages/loader
-npm run build  # Ensure dist/ is up to date
-npm publish --access public
-```
-
-### Publish CLI
-
-```bash
-cd packages/cli
-npm publish --access public
-```
-
-**Note:** Both packages require `--access public` because they use the `@stagepass` scope.
+Do **not** run `npm publish` from a developer machine. Releases use the tag → `npm stage publish` flow documented in **[RELEASING.md](RELEASING.md)** (prerelease on `next`, then stable on `latest`, maintainer 2FA approval).
 
 ## Unlinking
 

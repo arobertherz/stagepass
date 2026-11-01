@@ -2,11 +2,11 @@
 
 This guide covers every breaking change in **2.0.0**. Sites that keep using `@1` / exact `1.x` CDN URLs are unaffected until you opt in.
 
-Pin 2.0.0 explicitly:
+Prefer the major pin `@2` (strict semver within v2; breaking changes only in a new major). Exact `@2.0.0` is optional for maximum control:
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
 ```
@@ -14,7 +14,11 @@ Pin 2.0.0 explicitly:
 Or unpkg:
 
 ```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<script src="https://unpkg.com/@stagepass/loader@2"></script>
+```
+
+```html
+<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
 ```
 
 ---
@@ -86,7 +90,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-mute-console="true"
 ></script>
 ```
@@ -103,7 +107,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-session-hours="24"
 ></script>
 ```
@@ -125,7 +129,7 @@ Both append `?v=<version>` (URL-encoded; existing query/hash preserved). Per-req
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2026-11-01"
 ></script>
 <script
@@ -174,17 +178,17 @@ sp.error('fail');
 ## CLI install
 
 ```bash
-npm install -g @stagepass/cli@2.0.0
+npm install -g @stagepass/cli@2
 ```
 
-`stagepass --version` should print `2.0.0`.
+`stagepass --version` should print a 2.x version (e.g. `2.0.0`).
 
 ## Modules
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
 ```
 
 Injector option `cacheBust: true` no longer appends timestamps in production; use `version: '…'` instead.

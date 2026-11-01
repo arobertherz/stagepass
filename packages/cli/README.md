@@ -9,13 +9,13 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 Requires Node.js **18+** (`engines.node`: `>=18.0.0`) on **macOS** with Homebrew.
 
 ```bash
-npm install -g @stagepass/cli@2.0.0
+npm install -g @stagepass/cli@2
 ```
 
 Or without a global install:
 
 ```bash
-npx @stagepass/cli@2.0.0 setup
+npx @stagepass/cli@2 setup
 ```
 
 ## Requirements

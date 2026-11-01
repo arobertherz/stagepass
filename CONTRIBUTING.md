@@ -32,6 +32,10 @@ Also verify on Node 20 (`node:20-bookworm-slim`). If you change `package-lock.js
 - Do not commit secrets, tokens, or local machine paths.
 - Do not push tags or publish to npm unless you are a maintainer following [RELEASING.md](RELEASING.md).
 
+## Releasing
+
+Maintainers only. See **[RELEASING.md](RELEASING.md)**: every release starts as a prerelease (`--tag next`), is verified on a Webflow staging site with an exact beta pin, then ships stable on `latest`. Breaking changes only in a new major (v3).
+
 ## Pull requests
 
 1. Branch from the relevant release/development branch.

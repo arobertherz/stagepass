@@ -85,16 +85,16 @@ Stagepass enables **instant local development** on live Webflow sites without to
 
 ## 📦 Installation
 
-Stagepass CLI is distributed via npm (`engines.node`: `>=18.0.0`). Pin the exact version in production tooling:
+Stagepass CLI is distributed via npm (`engines.node`: `>=18.0.0`). Prefer the major pin `@2` (exact pin optional):
 
 ```bash
-npm install -g @stagepass/cli@2.0.0
+npm install -g @stagepass/cli@2
 ```
 
 Or run once without a global install:
 
 ```bash
-npx @stagepass/cli@2.0.0 setup
+npx @stagepass/cli@2 setup
 ```
 
 ### System Requirements
@@ -106,23 +106,37 @@ npx @stagepass/cli@2.0.0 setup
 
 ## 📌 Version pinning
 
-For production Webflow sites (and any long-lived CDN `<script>` tags), pin **exact** package versions instead of a major-only range like `@1` or `@2`:
+Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production CDN embeds, pin the **major** (`@2`).
 
-### Current 2.x
+### Recommended (`@2`)
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
 
 ```html
-<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<!-- unpkg short form (package `main`) -->
+<script src="https://unpkg.com/@stagepass/loader@2"></script>
+
+<!-- unpkg full path -->
+<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
 ```
 
+Same pattern for modules, e.g. `https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js`.
+
 See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
+
+### Optional exact pin
+
+For maximum control (freeze one publish), use an exact version such as `@2.0.0`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+```
 
 ### Legacy 1.x (still valid if you pin it)
 
@@ -133,11 +147,10 @@ Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
 ```
 
-Why pin exact versions:
-* **Reproducible behaviour**: every visitor gets the same loader/modules build you tested.
-* **No silent upgrades**: `@1` / `@2` float to the newest publish on that major; a new minor/patch can change runtime behaviour on live sites without an intentional deploy.
-* **CDN caching**: exact versions cache stably; floating tags can surprise you after a publish.
-* **Deliberate updates**: bump the version in the script URL, test, then roll out.
+Why `@2`:
+* **Compatible updates**: minor/patch releases within v2 stay backward compatible under strict semver.
+* **One intentional major bump**: breaking changes require a new major (v3) and a deliberate URL change.
+* **Exact pin when needed**: use `@2.0.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.1.0-beta.1`).
 
 ---
 
@@ -164,19 +177,20 @@ stagepass link my-project --origin www.example.com --origin my-project.webflow.i
 * Default CORS allowlist is local only (`*.sp`, `localhost`, `127.0.0.1`). Live/Webflow hosts are **not** included until you pass `--origin` (repeatable). See [CLI Reference](#-cli-reference).
 
 ### 3. Integrate with Webflow
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~9.7 KB (~4.0 KB gzipped) and safe for production. Prefer exact version pins (see [Version pinning](#-version-pinning)).
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~9.7 KB (~4.0 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
 
 **Option 1 - CDN (jsDelivr & unpkg):**
 
 ```html
-<!-- Core loader only (pin exact version in production) -->
+<!-- Core loader only (major pin @2) -->
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
 
-<!-- Or using unpkg: -->
-<script src="https://unpkg.com/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
+<!-- Or using unpkg (short form or full path): -->
+<!-- <script src="https://unpkg.com/@stagepass/loader@2"></script> -->
+<!-- <script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script> -->
 ```
 
 **Option 2 - Local** (to avoid cross-domain issues):
@@ -202,18 +216,18 @@ Modules extend the core loader with additional features (e.g., programmatic inje
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.0.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/cookies.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
 ```
 
 Or load the combined modules bundle:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.0.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.0.0/dist/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js"></script>
 ```
 
 ### 4. Tag Your Scripts & Stylesheets
