@@ -5,6 +5,8 @@ function parseArgv(argv) {
   /** @type {object|undefined} */
   let captured;
   const program = createProgram({
+    // Linux CI/Docker: skip macOS guard so option parsing can be tested anywhere.
+    assertPlatform: () => {},
     doctor: async (options) => {
       captured = { cmd: 'doctor', options };
       return 0;

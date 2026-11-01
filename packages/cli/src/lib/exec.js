@@ -20,12 +20,14 @@ const execFileAsync = promisify(nodeExecFile);
  */
 export async function defaultExec(file, args = [], options = {}) {
   const inheritStdio = options.stdio === 'inherit';
+  // Always force shell:false after spreading options so callers cannot enable a shell.
   const opts = inheritStdio
-    ? { ...options }
+    ? { ...options, shell: false }
     : {
         encoding: 'utf8',
         maxBuffer: 4 * 1024 * 1024,
         ...options,
+        shell: false,
       };
   try {
     const result = await execFileAsync(file, args, opts);

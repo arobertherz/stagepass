@@ -67,7 +67,7 @@ All commands support `-v, --verbose` where applicable.
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
 - Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
-- Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` exits with a clear error. Use interactive `stagepass start` to resolve conflicts.
+- Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
 
 ### Domain argument (`link` / `unlink`)

@@ -47,7 +47,7 @@ export async function autostart(action, options = {}) {
       );
       console.log(
         chalk.dim(
-          'If port 443 bind fails, daemon exits with an error instead of silent no-op. Use stagepass start for interactive recovery.'
+          'If port 443 bind fails, daemon logs the error and exits 0 so launchd KeepAlive does not restart-loop. Use stagepass start for interactive recovery.'
         )
       );
     }

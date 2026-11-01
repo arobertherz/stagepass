@@ -70,7 +70,7 @@ export function buildLaunchctlPrintArgs(uid, label = LAUNCH_AGENT_LABEL) {
  * Port 443: existing `stagepass start` runs `caddy start` as the user (sudo is
  * only used for conflict detection / kill). A user LaunchAgent therefore has the
  * same bind privileges as interactive `start` on macOS. If bind fails at
- * runtime, `daemon` exits with a clear error (see daemon command).
+ * runtime, `daemon` logs a clear error and exits 0 so KeepAlive does not loop.
  *
  * @param {object} opts
  * @param {string} opts.nodePath
@@ -123,21 +123,65 @@ ${argXml}
 }
 
 /**
+ * Require an absolute path that exists on disk (LaunchAgent ProgramArguments).
+ * @param {string|null|undefined} candidate
+ * @param {string} label
+ * @param {(p: string) => Promise<boolean>} pathExists
+ * @returns {Promise<{ ok: true, path: string } | { ok: false, error: string }>}
+ */
+async function requireAbsoluteExistingPath(candidate, label, pathExists) {
+  if (typeof candidate !== 'string' || candidate.length === 0) {
+    return { ok: false, error: `Could not resolve absolute path to ${label}.` };
+  }
+  if (!path.isAbsolute(candidate)) {
+    return {
+      ok: false,
+      error: `${label} path must be absolute (got: ${candidate}).`,
+    };
+  }
+  if (!(await pathExists(candidate))) {
+    return {
+      ok: false,
+      error: `${label} path does not exist: ${candidate}`,
+    };
+  }
+  return { ok: true, path: candidate };
+}
+
+/**
  * Resolve absolute node + CLI entry paths for the LaunchAgent.
  * @param {object} [opts]
  * @param {string} [opts.execPath]
  * @param {string} [opts.argv1]
  * @param {import('./exec.js').ExecFn} [opts.exec]
  * @param {(p: string) => Promise<string>} [opts.realpath]
+ * @param {(p: string) => Promise<boolean>} [opts.pathExists]
  */
 export async function resolveAutostartPaths(opts = {}) {
   const execPath = opts.execPath || process.execPath;
-  const argv1 = opts.argv1 || process.argv[1];
+  // Nullish coalescing so tests can inject '' / null without falling back to process.argv[1].
+  const argv1 = opts.argv1 !== undefined ? opts.argv1 : process.argv[1];
   const realpath =
     opts.realpath || ((p) => fs.realpath(p).then((r) => String(r)));
   const exec = opts.exec || defaultExec;
+  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
 
-  const nodePath = path.resolve(execPath);
+  const nodeResolved = path.resolve(execPath);
+  const nodeCheck = await requireAbsoluteExistingPath(
+    nodeResolved,
+    'node',
+    pathExists
+  );
+  if (!nodeCheck.ok) {
+    return {
+      ok: false,
+      error: nodeCheck.error,
+      nodePath: nodeResolved,
+      cliPath: null,
+    };
+  }
+  const nodePath = nodeCheck.path;
+
   let cliPath = null;
 
   if (argv1) {
@@ -159,16 +203,21 @@ export async function resolveAutostartPaths(opts = {}) {
     }
   }
 
-  if (!cliPath) {
+  const cliCheck = await requireAbsoluteExistingPath(
+    cliPath,
+    'stagepass CLI entrypoint',
+    pathExists
+  );
+  if (!cliCheck.ok) {
     return {
       ok: false,
-      error: 'Could not resolve absolute path to the stagepass CLI entrypoint.',
+      error: cliCheck.error,
       nodePath,
-      cliPath: null,
+      cliPath: cliPath || null,
     };
   }
 
-  return { ok: true, nodePath, cliPath, error: null };
+  return { ok: true, nodePath, cliPath: cliCheck.path, error: null };
 }
 
 /**
@@ -222,10 +271,26 @@ export async function enableAutostart(opts = {}) {
       argv1: opts.argv1,
       exec,
       realpath: opts.realpath,
+      pathExists: opts.pathExists,
     }));
 
   if (!paths.ok) {
     return { ok: false, error: paths.error };
+  }
+
+  // Defense in depth when callers inject `paths` directly.
+  if (!path.isAbsolute(paths.nodePath) || !path.isAbsolute(paths.cliPath)) {
+    return {
+      ok: false,
+      error: 'Autostart nodePath and cliPath must be absolute.',
+    };
+  }
+  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
+  if (!(await pathExists(paths.nodePath)) || !(await pathExists(paths.cliPath))) {
+    return {
+      ok: false,
+      error: 'Autostart nodePath or cliPath does not exist on disk.',
+    };
   }
 
   const plistPath = opts.plistPath || getLaunchAgentPlistPath();

@@ -75,10 +75,34 @@ describe('autostart helpers', () => {
       execPath: '/usr/local/bin/node',
       argv1: '/opt/cli/bin/index.js',
       realpath: async (p) => p,
+      pathExists: async () => true,
     });
     expect(result.ok).toBe(true);
     expect(result.nodePath).toBe('/usr/local/bin/node');
     expect(result.cliPath).toBe('/opt/cli/bin/index.js');
+  });
+
+  it('rejects missing or unresolved autostart paths', async () => {
+    const missing = await resolveAutostartPaths({
+      execPath: '/usr/local/bin/node',
+      argv1: '/opt/cli/bin/index.js',
+      realpath: async (p) => p,
+      pathExists: async (p) => p === '/usr/local/bin/node',
+    });
+    expect(missing.ok).toBe(false);
+    expect(missing.error).toMatch(/does not exist/);
+
+    const noCli = await resolveAutostartPaths({
+      execPath: '/usr/local/bin/node',
+      argv1: null,
+      realpath: async (p) => p,
+      pathExists: async () => true,
+      exec: async () => {
+        throw Object.assign(new Error('not found'), { code: 1 });
+      },
+    });
+    expect(noCli.ok).toBe(false);
+    expect(noCli.error).toMatch(/Could not resolve absolute path/);
   });
 
   it('enableAutostart writes plist and bootstraps via exec arrays', async () => {
@@ -93,6 +117,7 @@ describe('autostart helpers', () => {
         nodePath: '/usr/local/bin/node',
         cliPath: '/opt/cli/bin/index.js',
       },
+      pathExists: async () => true,
       ensureDir: async () => {},
       writeFile: async (p, c) => {
         writes.push({ path: p, content: c });
@@ -109,6 +134,29 @@ describe('autostart helpers', () => {
     expect(calls.some((c) => c.args[0] === 'bootout')).toBe(true);
     expect(calls.some((c) => c.args[0] === 'bootstrap')).toBe(true);
     expect(calls.every((c) => c.file === 'launchctl')).toBe(true);
+  });
+
+  it('enableAutostart refuses when injected paths are missing', async () => {
+    const result = await enableAutostart({
+      uid: 501,
+      plistPath: '/tmp/io.github.arobertherz.stagepass.plist',
+      logsDir: '/tmp/stagepass-logs',
+      paths: {
+        ok: true,
+        nodePath: '/usr/local/bin/node',
+        cliPath: '/opt/cli/bin/index.js',
+      },
+      pathExists: async () => false,
+      ensureDir: async () => {},
+      writeFile: async () => {
+        throw new Error('should not write');
+      },
+      exec: async () => {
+        throw new Error('should not exec');
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not exist/);
   });
 
   it('disableAutostart boots out and removes plist without shell strings', async () => {

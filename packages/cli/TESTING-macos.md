@@ -32,7 +32,7 @@ stagepass start
 - [ ] `stagepass certs check` reports root path under `~/Library/Application Support/Caddy/pki/authorities/local/root.crt`
 - [ ] Warns when root expires in under 90 days (use a lab machine or mock if needed)
 - [ ] Reports System keychain trust status for "Caddy Local Authority"
-- [ ] Orphaned old Caddy roots are listed with SHA-1 only (never deleted by the CLI)
+- [ ] Orphaned old Caddy roots are listed with SHA-1 and SHA-256 (never deleted by the CLI)
 - [ ] Optional TLS handshake lines appear for each linked `.sp` domain while Caddy is running
 - [ ] `stagepass certs check --json` works
 - [ ] `stagepass certs trust` asks for confirmation; declining does nothing
@@ -49,7 +49,8 @@ stagepass start
 - [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
 - [ ] `stagepass stop` still stops services; when autostart is on it prints a hint that login may restart Caddy
 - [ ] `stagepass autostart off` boots out the agent and removes the plist
-- [ ] If port 443 cannot be bound, daemon exits with a clear message (no silent success)
+- [ ] If port 443 cannot be bound, daemon logs a clear message and exits `0` (no KeepAlive restart-loop; not a silent success)
+- [ ] Cold-start daemon logs cert root/trust only (no TLS handshake attempts before `caddy run`)
 
 ## Regression (must stay unchanged)
 
