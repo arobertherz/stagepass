@@ -40,7 +40,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Standalone Architecture
 **Decision:** The Loader must have zero dependencies on the CLI package.  
-**Rationale:** The Loader is hosted on jsDelivr and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~12.0 KB minified for `loader.min.js` after Runtime API helpers).  
+**Rationale:** The Loader is hosted on jsDelivr and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~11.8 KB minified for `loader.min.js` after Runtime API helpers).  
 **Constraint:** No Node.js dependencies, browser APIs only.
 
 ### Session Persistence: localStorage with expiry
@@ -148,7 +148,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   **Important:** Core loader should be loaded first. Without it, `inject`/`cookies` still attach APIs and warn; `maintenance` skips registration.
 -   **Module Registration:** Modules register via `stagepass.use(...)` when available (e.g. `sp.inject`, `sp.cookies` / `sp.cookie`, `sp.maintenance`)
 -   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available; optional `data-stagepass-alias`
--   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.0.0`) is optional for maximum control. jsDelivr may cache `@2` briefly; purge via `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See README "Version pinning".
+-   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.1.0`) is optional for maximum control. jsDelivr may cache `@2` briefly; purge via `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See README "Version pinning".
 
 ### CLI: Commands
 -   `stagepass setup` - Install dependencies and configure .sp domain

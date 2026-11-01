@@ -111,11 +111,195 @@ var Stagepass = (() => {
     }
   }
 
+  // src/env.ts
+  function parseStagingHosts(value) {
+    if (!value || typeof value !== "string") return [];
+    return value.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  }
+  function detectRuntimeEnv(hostname, swapDomain, stagingHosts = []) {
+    if (swapDomain && swapDomain.endsWith(".sp")) return "local";
+    const host = (hostname || "").toLowerCase();
+    if (host.endsWith(".webflow.io")) return "staging";
+    if (stagingHosts.some((h) => h === host)) return "staging";
+    return "production";
+  }
+
+  // src/alias.ts
+  function isValidJsIdentifier(name) {
+    if (!name || typeof name !== "string") return false;
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
+  }
+  function isGlobalFree(target, name) {
+    try {
+      return typeof target[name] === "undefined";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // src/client.ts
+  function getBrowserInfo(ua) {
+    let family = "unknown";
+    let major = null;
+    let m = null;
+    if (/Edg\/(\d+)/.test(ua)) {
+      family = "edge";
+      m = ua.match(/Edg\/(\d+)/);
+    } else if (/OPR\/(\d+)/.test(ua)) {
+      family = "opera";
+      m = ua.match(/OPR\/(\d+)/);
+    } else if (/Firefox\/(\d+)/.test(ua)) {
+      family = "firefox";
+      m = ua.match(/Firefox\/(\d+)/);
+    } else if (/Chrome\/(\d+)/.test(ua)) {
+      family = "chrome";
+      m = ua.match(/Chrome\/(\d+)/);
+    } else if (/Version\/(\d+).+Safari\//.test(ua)) {
+      family = "safari";
+      m = ua.match(/Version\/(\d+)/);
+    }
+    if (m && m[1]) major = Number(m[1]);
+    return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+  }
+  function getOsInfo(ua) {
+    if (/Android/i.test(ua)) return { family: "android" };
+    if (/iPhone|iPad|iPod/i.test(ua)) return { family: "ios" };
+    if (/Mac OS X|Macintosh/i.test(ua)) return { family: "macos" };
+    if (/Windows NT/i.test(ua)) return { family: "windows" };
+    if (/Linux/i.test(ua)) return { family: "linux" };
+    return { family: "unknown" };
+  }
+  function getDeviceInfo(ua) {
+    const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
+    let type = "desktop";
+    if (/iPad|Tablet/i.test(ua)) type = "tablet";
+    else if (/Mobi|Android.+Mobile|iPhone/i.test(ua)) type = "mobile";
+    else if (/Android/i.test(ua) && touch) type = "tablet";
+    return { type, touch };
+  }
+  function getThemeInfo() {
+    let preferred = "no-preference";
+    let current = "unknown";
+    try {
+      if (window.matchMedia) {
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          preferred = "dark";
+          current = "dark";
+        } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+          preferred = "light";
+          current = "light";
+        }
+      }
+    } catch (_) {
+    }
+    return { preferred, current };
+  }
+  function hasStorage(type) {
+    try {
+      const storage = window[type];
+      const key = "__stagepass_test__";
+      storage.setItem(key, "1");
+      storage.removeItem(key);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+  function hasServiceWorker() {
+    try {
+      return typeof navigator !== "undefined" && "serviceWorker" in navigator;
+    } catch (_) {
+      return false;
+    }
+  }
+  function getClientInfo() {
+    const ua = navigator.userAgent || "";
+    let timezone = null;
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch (_) {
+    }
+    return {
+      theme: getThemeInfo(),
+      browser: getBrowserInfo(ua),
+      os: getOsInfo(ua),
+      device: getDeviceInfo(ua),
+      viewport: {
+        width: window.innerWidth || 0,
+        height: window.innerHeight || 0,
+        dpr: window.devicePixelRatio || 1
+      },
+      locale: {
+        language: navigator.language || "unknown",
+        timezone
+      },
+      capabilities: {
+        cookiesEnabled: navigator.cookieEnabled === true,
+        localStorage: hasStorage("localStorage"),
+        sessionStorage: hasStorage("sessionStorage")
+      }
+    };
+  }
+  function canCapability(client, capability) {
+    const caps = client.capabilities;
+    switch (capability) {
+      case "localStorage":
+        return caps.localStorage === true;
+      case "sessionStorage":
+        return caps.sessionStorage === true;
+      case "cookies":
+        return caps.cookiesEnabled === true;
+      case "serviceWorker":
+        return hasServiceWorker();
+      default:
+        return false;
+    }
+  }
+
+  // src/registry.ts
+  function majorFromVersion(version) {
+    if (!version || typeof version !== "string") return null;
+    const m = version.trim().match(/^(\d+)/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  function createModuleRegistry(loaderVersion, warn) {
+    const loaderMajor = majorFromVersion(loaderVersion);
+    const registered = /* @__PURE__ */ new Map();
+    function use(name, version, factory, api) {
+      if (!name || typeof name !== "string") {
+        warn("stagepass.use: invalid module name");
+        return false;
+      }
+      const modMajor = majorFromVersion(version);
+      if (loaderMajor == null || modMajor == null) {
+        warn(`stagepass.use: cannot parse version for module "${name}"`);
+        return false;
+      }
+      if (modMajor !== loaderMajor) {
+        warn(
+          `Module "${name}" major ${modMajor} does not match loader major ${loaderMajor}. Skipping.`
+        );
+        return false;
+      }
+      try {
+        factory(api);
+        registered.set(name, version);
+        return true;
+      } catch (err) {
+        warn(`Module "${name}" failed to register:`, err);
+        return false;
+      }
+    }
+    return { use, registered };
+  }
+
   // src/index.ts
   (function() {
     const K = SESSION_KEY;
     const P = "stagepass";
-    const PKG_VERSION = true ? "2.0.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.1.0" : "0.0.0";
     function getLoaderScript() {
       try {
         if (document.currentScript instanceof HTMLScriptElement) {
@@ -139,6 +323,10 @@ var Stagepass = (() => {
       loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-session-hours")
     );
     const loaderVersionAttr = loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-version");
+    const stagingHosts = parseStagingHosts(
+      loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-staging-hosts")
+    );
+    const aliasName = loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-alias");
     const p = new URLSearchParams(window.location.search);
     function getCallerLocation() {
       var _a;
@@ -266,7 +454,7 @@ var Stagepass = (() => {
     const hostname = window.location.hostname;
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("localhost:") || hostname.startsWith("127.0.0.1:");
     const isLocal = swap || isLocalhost;
-    const env = isLocal ? "local" : hostname.endsWith(".webflow.io") ? "staging" : "production";
+    const env = isLocal ? "local" : hostname.endsWith(".webflow.io") || stagingHosts.includes(hostname.toLowerCase()) ? "staging" : "production";
     if (muteConsole && env === "production" && !hasActiveSession) {
       try {
         const noop = () => {
@@ -275,103 +463,61 @@ var Stagepass = (() => {
       } catch (_) {
       }
     }
-    function getBrowserInfo(ua) {
-      let family = "unknown";
-      let major = null;
-      let m = null;
-      if (/Edg\/(\d+)/.test(ua)) {
-        family = "edge";
-        m = ua.match(/Edg\/(\d+)/);
-      } else if (/OPR\/(\d+)/.test(ua)) {
-        family = "opera";
-        m = ua.match(/OPR\/(\d+)/);
-      } else if (/Firefox\/(\d+)/.test(ua)) {
-        family = "firefox";
-        m = ua.match(/Firefox\/(\d+)/);
-      } else if (/Chrome\/(\d+)/.test(ua)) {
-        family = "chrome";
-        m = ua.match(/Chrome\/(\d+)/);
-      } else if (/Version\/(\d+).+Safari\//.test(ua)) {
-        family = "safari";
-        m = ua.match(/Version\/(\d+)/);
-      }
-      if (m && m[1]) major = Number(m[1]);
-      return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+    const listeners = {
+      theme: /* @__PURE__ */ new Set(),
+      session: /* @__PURE__ */ new Set()
+    };
+    function emit(event, payload) {
+      listeners[event].forEach((fn) => {
+        try {
+          fn(payload);
+        } catch (_) {
+        }
+      });
     }
-    function getOsInfo(ua) {
-      if (/Android/i.test(ua)) return { family: "android" };
-      if (/iPhone|iPad|iPod/i.test(ua)) return { family: "ios" };
-      if (/Mac OS X|Macintosh/i.test(ua)) return { family: "macos" };
-      if (/Windows NT/i.test(ua)) return { family: "windows" };
-      if (/Linux/i.test(ua)) return { family: "linux" };
-      return { family: "unknown" };
+    let clientInfo = getClientInfo();
+    function ensureClient() {
+      return clientInfo;
     }
-    function getDeviceInfo(ua) {
-      const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
-      let type = "desktop";
-      if (/iPad|Tablet/i.test(ua)) type = "tablet";
-      else if (/Mobi|Android.+Mobile|iPhone/i.test(ua)) type = "mobile";
-      else if (/Android/i.test(ua) && touch) type = "tablet";
-      return { type, touch };
-    }
-    function getThemeInfo() {
-      let preferred = "no-preference";
-      let current = "unknown";
-      try {
-        if (window.matchMedia) {
-          if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-            preferred = "dark";
-            current = "dark";
-          } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-            preferred = "light";
-            current = "light";
+    try {
+      if (window.matchMedia) {
+        const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+        const lightMq = window.matchMedia("(prefers-color-scheme: light)");
+        const updateTheme = () => {
+          const c = clientInfo;
+          if (!(c == null ? void 0 : c.theme)) return;
+          if (darkMq.matches) {
+            c.theme.current = "dark";
+            c.theme.preferred = "dark";
+          } else if (lightMq.matches) {
+            c.theme.current = "light";
+            c.theme.preferred = "light";
+          } else {
+            c.theme.current = "unknown";
+            c.theme.preferred = "no-preference";
           }
+          emit("theme", { ...c.theme });
+        };
+        if (typeof darkMq.addEventListener === "function") {
+          darkMq.addEventListener("change", updateTheme);
+          lightMq.addEventListener("change", updateTheme);
+        } else if (typeof darkMq.addListener === "function") {
+          darkMq.addListener(updateTheme);
+          lightMq.addListener(updateTheme);
         }
-      } catch (_) {
       }
-      return { preferred, current };
+    } catch (_) {
     }
-    function hasStorage(type) {
-      try {
-        const storage = window[type];
-        const key = "__stagepass_test__";
-        storage.setItem(key, "1");
-        storage.removeItem(key);
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
-    function getClientInfo() {
-      const ua = navigator.userAgent || "";
-      let timezone = null;
-      try {
-        timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-      } catch (_) {
-      }
-      return {
-        theme: getThemeInfo(),
-        browser: getBrowserInfo(ua),
-        os: getOsInfo(ua),
-        device: getDeviceInfo(ua),
-        viewport: {
-          width: window.innerWidth || 0,
-          height: window.innerHeight || 0,
-          dpr: window.devicePixelRatio || 1
-        },
-        locale: {
-          language: navigator.language || "unknown",
-          timezone
-        },
-        capabilities: {
-          cookiesEnabled: navigator.cookieEnabled === true,
-          localStorage: hasStorage("localStorage"),
-          sessionStorage: hasStorage("sessionStorage")
-        }
-      };
-    }
+    const updateViewport = () => {
+      const c = clientInfo;
+      if (!(c == null ? void 0 : c.viewport)) return;
+      c.viewport.width = window.innerWidth || 0;
+      c.viewport.height = window.innerHeight || 0;
+      c.viewport.dpr = window.devicePixelRatio || 1;
+    };
+    window.addEventListener("resize", updateViewport);
     const stagepassObj = window.stagepass || {};
-    const clientInfo = getClientInfo();
+    const registry = createModuleRegistry(PKG_VERSION, spWarn);
     stagepassObj.vars = Object.freeze({
       isLocal,
       env,
@@ -388,46 +534,44 @@ var Stagepass = (() => {
       if (!swap || !dom || !relativePath) return "";
       return buildLocalAssetUrl(dom, relativePath, v.timestamp || Date.now());
     };
+    stagepassObj.env = () => detectRuntimeEnv(hostname, dom, stagingHosts);
+    stagepassObj.is = (name) => stagepassObj.env() === name;
+    stagepassObj.can = (capability) => canCapability(ensureClient(), capability);
+    stagepassObj.client = (key) => {
+      const c = ensureClient();
+      if (key == null || key === "") return c;
+      return c[key];
+    };
+    stagepassObj.on = (event, fn) => {
+      if (event !== "theme" && event !== "session") {
+        return () => {
+        };
+      }
+      const set = listeners[event];
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+      };
+    };
+    stagepassObj.use = (name, version, factory) => registry.use(name, version, factory, stagepassObj);
     window.stagepass = stagepassObj;
     globalThis.stagepass = stagepassObj;
     window.sp = stagepassObj;
     globalThis.sp = stagepassObj;
-    try {
-      if (window.matchMedia) {
-        const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
-        const lightMq = window.matchMedia("(prefers-color-scheme: light)");
-        const updateTheme = () => {
-          var _a, _b;
-          if (!((_b = (_a = stagepassObj.vars) == null ? void 0 : _a.client) == null ? void 0 : _b.theme)) return;
-          if (darkMq.matches) {
-            stagepassObj.vars.client.theme.current = "dark";
-            stagepassObj.vars.client.theme.preferred = "dark";
-          } else if (lightMq.matches) {
-            stagepassObj.vars.client.theme.current = "light";
-            stagepassObj.vars.client.theme.preferred = "light";
-          } else {
-            stagepassObj.vars.client.theme.current = "unknown";
-            stagepassObj.vars.client.theme.preferred = "no-preference";
-          }
-        };
-        if (typeof darkMq.addEventListener === "function") {
-          darkMq.addEventListener("change", updateTheme);
-          lightMq.addEventListener("change", updateTheme);
-        } else if (typeof darkMq.addListener === "function") {
-          darkMq.addListener(updateTheme);
-          lightMq.addListener(updateTheme);
-        }
+    if (aliasName && isValidJsIdentifier(aliasName) && aliasName !== "sp" && aliasName !== "stagepass") {
+      if (isGlobalFree(window, aliasName)) {
+        window[aliasName] = stagepassObj;
       }
-    } catch (_) {
+      if (isGlobalFree(globalThis, aliasName)) {
+        globalThis[aliasName] = stagepassObj;
+      }
     }
-    const updateViewport = () => {
-      var _a, _b;
-      if (!((_b = (_a = stagepassObj.vars) == null ? void 0 : _a.client) == null ? void 0 : _b.viewport)) return;
-      stagepassObj.vars.client.viewport.width = window.innerWidth || 0;
-      stagepassObj.vars.client.viewport.height = window.innerHeight || 0;
-      stagepassObj.vars.client.viewport.dpr = window.devicePixelRatio || 1;
-    };
-    window.addEventListener("resize", updateViewport);
+    emit("session", {
+      active: hasActiveSession,
+      domain: sv,
+      swap,
+      debug: sv === "debug"
+    });
     let lnaState = "unknown";
     let lnaHint = null;
     function resolveAssetUrl(el, productionSrc, localPath) {
@@ -441,21 +585,35 @@ var Stagepass = (() => {
       }
       return productionSrc;
     }
-    function swapEl(sel, pathAttr, srcAttr, type, skipAttrs) {
+    function extractLocalFilename(ps) {
+      try {
+        const urlObj = new URL(ps);
+        const pathParts = urlObj.pathname.split("/");
+        return pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || null;
+      } catch (e) {
+        const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+        return match ? match[1] : null;
+      }
+    }
+    function swapEl(sel, pathAttr, srcAttr, type, skipAttrs, seenLocalNames) {
       document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
         try {
           el.setAttribute("data-stagepass-processed", "true");
           let lp = el.getAttribute(pathAttr);
+          const hadExplicitPath = !!lp;
           const ps = el.getAttribute(srcAttr);
           if (!ps) return;
           if (!lp && ps && swap && dom) {
-            try {
-              const urlObj = new URL(ps);
-              const pathParts = urlObj.pathname.split("/");
-              lp = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
-            } catch (e) {
-              const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
-              if (match) lp = match[1];
+            lp = extractLocalFilename(ps);
+          }
+          if (swap && lp && !hadExplicitPath && hasActiveSession) {
+            const key = lp;
+            const count = (seenLocalNames.get(key) || 0) + 1;
+            seenLocalNames.set(key, count);
+            if (count === 2) {
+              spWarn(
+                `Multiple assets resolve to local file "${key}" without data-stagepass-path. Set unique paths to avoid collisions.`
+              );
             }
           }
           const url = resolveAssetUrl(el, ps, lp);
@@ -488,13 +646,21 @@ var Stagepass = (() => {
     }
     const process = () => {
       try {
-        swapEl("script[data-stagepass]", "data-stagepass-path", "data-src", "script", [
-          "data-src",
-          "data-stagepass",
+        const seenLocalNames = /* @__PURE__ */ new Map();
+        swapEl(
+          "script[data-stagepass]",
           "data-stagepass-path",
-          "data-stagepass-cachebust",
-          "data-stagepass-v"
-        ]);
+          "data-src",
+          "script",
+          [
+            "data-src",
+            "data-stagepass",
+            "data-stagepass-path",
+            "data-stagepass-cachebust",
+            "data-stagepass-v"
+          ],
+          seenLocalNames
+        );
         swapEl(
           'link[rel="stylesheet"][data-stagepass]',
           "data-stagepass-path",
@@ -507,7 +673,8 @@ var Stagepass = (() => {
             "data-stagepass-path",
             "data-stagepass-cachebust",
             "data-stagepass-v"
-          ]
+          ],
+          seenLocalNames
         );
       } catch (_) {
       }
@@ -533,6 +700,7 @@ var Stagepass = (() => {
           clearSession();
           hasActiveSession = true;
           log("log", "\u{1F50C} Stagepass disconnected.");
+          emit("session", { active: false, domain: null, swap: false, debug: false });
           window.location.reload();
         });
         const mount = () => {

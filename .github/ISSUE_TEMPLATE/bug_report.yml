@@ -13,8 +13,8 @@ body:
     id: package-versions
     attributes:
       label: Package versions
-      description: Versions of `@stagepass/cli`, `@stagepass/loader`, and/or `@stagepass/modules` (e.g. 2.0.0, or the CDN pin you use).
-      placeholder: "cli 2.0.0, loader@2, modules@2"
+      description: Versions of `@stagepass/cli`, `@stagepass/loader`, and/or `@stagepass/modules` (e.g. 2.1.0, or the CDN pin you use).
+      placeholder: "cli 2.1.0, loader@2, modules@2"
     validations:
       required: true
 
