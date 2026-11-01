@@ -59,6 +59,10 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
 | `stagepass daemon` | Non-interactive foreground helper for the LaunchAgent (certs check log-only, then `caddy run`). Never uses sudo. |
+| `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
+| `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
+| `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). |
+| `stagepass upgrade` | Bump `@stagepass/*` in the current `package.json` and print Webflow snippets. |
 
 All commands support `-v, --verbose` where applicable.
 
@@ -69,6 +73,34 @@ All commands support `-v, --verbose` where applicable.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
+
+### `new` options
+
+Scaffold a project with flags for every choice (interactive prompts only on a TTY without `--yes`):
+
+| Option | Behaviour |
+| :--- | :--- |
+| `--dir <dir>` | Target directory (default: `./<name>`). |
+| `--author <name>` | `package.json` author (default: `git config user.name`). |
+| `--lang ts\|js` | Language (default: `ts`). |
+| `--styles scss\|css` | Styles (default: `scss`). |
+| `--modules` / `--no-modules` | Include `@stagepass/modules` (default: yes). |
+| `--git` / `--no-git` | `git init` (default: yes). |
+| `--remote <url>` | Set `origin` after git init (rejects URLs with embedded credentials). |
+| `--install` / `--no-install` | Run `npm install` (default: no). |
+| `-y, --yes` | Non-interactive; use defaults for omitted flags. |
+| `--dry-run` | Print the file plan without writing. |
+
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`), and an `AGENTS.md` with safe development rules.
+
+### `upgrade` options
+
+| Option | Behaviour |
+| :--- | :--- |
+| `--version <x>` | Target version (default: this CLI version from its `package.json`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
+| `--dry-run` | Show changes without writing `package.json`. |
+
+Only `package.json` is modified. `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 
 ### Domain argument (`link` / `unlink`)
 

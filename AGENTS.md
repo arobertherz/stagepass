@@ -162,6 +162,9 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass certs trust` - Run `caddy trust` after confirmation or `--yes`
 -   `stagepass autostart on|off|status` - Login LaunchAgent (`io.github.arobertherz.stagepass`)
 -   `stagepass daemon` - Foreground helper for LaunchAgent (`caddy run`; never sudo)
+-   `stagepass new [name]` - Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive)
+-   `stagepass build` / `stagepass watch` - Thin wrappers around `npm run build` / `npm run watch`
+-   `stagepass upgrade` - Bump `@stagepass/*` in the current package.json and print Webflow snippets
 -   All commands support `-v, --verbose` flag for detailed output where applicable
 
 ### CLI: Domain Handling

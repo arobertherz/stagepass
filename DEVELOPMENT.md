@@ -6,7 +6,7 @@ This guide explains how to set up Stagepass for local development.
 
 - Node.js **22 or 24** for development and CI (Vitest 5 and related tooling need Node `>=22.12`). The published CLI still declares `engines.node`: `>=18.0.0` for consumers; do not bump that field casually.
 - npm (comes with Node.js)
-- macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`, `doctor`, `certs`, `autostart`, `daemon`). Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
+- macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`, `doctor`, `certs`, `autostart`, `daemon`). Project helpers (`new`, `build`, `watch`, `upgrade`) are also available. Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
 - Homebrew (for dependency management)
 
 ## Local Development Setup
@@ -49,6 +49,12 @@ stagepass link my-project
 stagepass doctor
 stagepass certs check
 stagepass autostart status
+
+# Optional project helpers (2.1+)
+stagepass new my-project --yes
+stagepass build
+stagepass watch
+stagepass upgrade
 ```
 
 Full command set (keep in sync with the root README, `packages/cli/README.md`, and `AGENTS.md`):
