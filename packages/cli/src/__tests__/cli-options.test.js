@@ -8,6 +8,8 @@ import { createProgram } from '../cli.js';
 function parseLinkArgv(argvAfterLink) {
   let captured;
   const program = createProgram({
+    // Linux CI/Docker: skip macOS guard so option parsing can be tested anywhere.
+    assertPlatform: () => {},
     link: async (domain, options) => {
       captured = { domain, options };
     },

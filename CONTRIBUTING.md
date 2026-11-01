@@ -23,7 +23,7 @@ docker run --rm -v "$PWD":/w \
   'npm ci && npm run build && npm test --workspaces --if-present'
 ```
 
-Also verify on Node 20 (`node:20-bookworm-slim`). If you change `package-lock.json`, generate it inside Docker and commit it.
+Also verify on Node 24 (`node:24-bookworm-slim`) to match CI. Development and CI use Node 22 or 24; do not change published `engines` fields (CLI stays `>=18.0.0`) without a deliberate compatibility decision. If you change `package-lock.json`, generate it inside Docker and commit it.
 
 ## Commit style
 
@@ -40,7 +40,7 @@ Maintainers only. See **[RELEASING.md](RELEASING.md)**: every release starts as 
 
 1. Branch from the relevant release/development branch.
 2. Keep changes focused; update docs/tests when behaviour changes.
-3. Ensure the Docker test recipe passes on Node 20 and 22.
+3. Ensure the Docker test recipe passes on Node 22 and 24.
 4. Describe what changed and how you verified it.
 
 ## Security
