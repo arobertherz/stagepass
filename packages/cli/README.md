@@ -75,10 +75,11 @@ Stagepass reflects `Access-Control-Allow-Origin` for **allowed** browser `Origin
 
 **Default allowlist (always on):**
 
-- `https://*.webflow.io` and `https://*.webflow.com` (any subdomain depth; lookalikes like `evilwebflow.example` / `webflow.io.attacker.example` do **not** match)
 - `https://*.sp`
 - `http(s)://localhost[:port]` and `http(s)://127.0.0.1[:port]`
 - Per-project live domains from `--origin` / `~/.stagepass/projects.json`
+
+Webflow staging/live hosts are **not** included by default. Add them per project, e.g. `--origin my-project.webflow.io`. An explicit `--origin *.webflow.io` is accepted but prints a warning (any Webflow user's site would then be allowed).
 
 Matching responses also send `Vary: Origin`. Preflight (`OPTIONS`) returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
 
