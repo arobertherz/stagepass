@@ -310,6 +310,10 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`); non-interactive; never sudo. |
+| `stagepass new [name]` | Scaffold a lean Webflow project (flags for every option; `--yes` for non-interactive). |
+| `stagepass build` | Run `npm run build` in the current project. |
+| `stagepass watch` | Run `npm run watch` in the current project. |
+| `stagepass upgrade` | Bump `@stagepass/*` in the project `package.json` and print Webflow snippets. |
 
 ### `link` details
 

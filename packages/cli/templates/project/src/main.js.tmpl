@@ -1,0 +1,29 @@
+/**
+ * Webflow-safe entry: runs once, waits for DOM and window.Webflow when present.
+ * No globals leaked; no eval.
+ */
+(() => {
+  const run = () => {
+    // Your project code here.
+    // Prefer `sp` when Stagepass loader is present (session-aware logging, vars, etc.).
+    const sp = window.sp;
+    if (sp && typeof sp.log === 'function') {
+      sp.log('{{NAME}}: ready');
+    }
+  };
+
+  const start = () => {
+    const w = window;
+    if (w.Webflow && typeof w.Webflow.push === 'function') {
+      w.Webflow.push(run);
+      return;
+    }
+    run();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();

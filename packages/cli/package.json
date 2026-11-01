@@ -12,6 +12,7 @@
     "src/cli.js",
     "src/commands/*.js",
     "src/lib/*.js",
+    "templates",
     "README.md",
     "TESTING-macos.md",
     "LICENSE"
