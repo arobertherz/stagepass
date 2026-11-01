@@ -9,7 +9,9 @@
   },
   "files": [
     "bin",
-    "src",
+    "src/cli.js",
+    "src/commands/*.js",
+    "src/lib/*.js",
     "README.md",
     "LICENSE"
   ],

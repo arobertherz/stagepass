@@ -82,7 +82,7 @@ stagepass/
 
 ## Testing Changes
 
-Prefer running the full suite in Docker (host `node_modules` may be macOS-native):
+Prefer running the full test run in Docker (host `node_modules` may be macOS-native):
 
 ```bash
 docker run --rm -v "$PWD":/w \
