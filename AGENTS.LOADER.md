@@ -16,13 +16,7 @@ Prefer the major pin `@2` in production. Stagepass follows strict semver: no bre
 ></script>
 ```
 
-```html
-<script src="https://unpkg.com/@stagepass/loader@2"></script>
-```
-
-```html
-<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
-```
+unpkg serves the same paths if you need an alternative CDN.
 
 ## Capability Profile
 - Profile: `loader-only`

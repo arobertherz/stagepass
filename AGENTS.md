@@ -20,7 +20,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   **Purpose:** Runs in the browser (Webflow) to inject local scripts and stylesheets.
 -   **Tech:** TypeScript, tsup (bundled to IIFE).
 -   **Package Name:** `@stagepass/loader`
--   **Key Trait:** **Standalone.** This package must have NO dependencies on the CLI. It is built to be hosted on a CDN (e.g., jsDelivr, unpkg) and works as long as *any* local server is running (created by Stagepass CLI or otherwise).
+-   **Key Trait:** **Standalone.** This package must have NO dependencies on the CLI. It is built to be hosted on jsDelivr and works as long as *any* local server is running (created by Stagepass CLI or otherwise).
 
 ### 3. `packages/modules` (Browser Environment)
 -   **Purpose:** Modular feature extensions (Injector, Cookies, etc.) that extend the core loader functionality.
@@ -40,7 +40,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Loader: Standalone Architecture
 **Decision:** The Loader must have zero dependencies on the CLI package.  
-**Rationale:** The Loader is hosted on CDNs (jsDelivr, unpkg) and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~9.7 KB minified / ~4.0 KB gzipped for `loader.min.js`).  
+**Rationale:** The Loader is hosted on jsDelivr and must work independently. It can be used with any local server, not just Stagepass CLI. This decoupling allows flexibility and keeps the Loader small (~9.7 KB minified / ~4.0 KB gzipped for `loader.min.js`).  
 **Constraint:** No Node.js dependencies, browser APIs only.
 
 ### Session Persistence: localStorage with expiry
@@ -84,7 +84,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Build Strategy: Commit dist Files to Git
 **Decision:** Both `loader.js` (unminified) and `loader.min.js` (minified) are committed to Git.  
-**Rationale:** CDNs (jsDelivr, unpkg) serve files directly from the repository. This is necessary for CDN availability without requiring separate npm installs.  
+**Rationale:** jsDelivr serves files directly from the repository. This is necessary for CDN availability without requiring separate npm installs.  
 **Trade-off:** Build artifacts in Git (acceptable for CDN distribution model).
 
 ### CLI: Silent by Default

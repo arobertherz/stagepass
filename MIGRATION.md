@@ -11,15 +11,7 @@ Prefer the major pin `@2` (strict semver within v2; breaking changes only in a n
 ></script>
 ```
 
-Or unpkg:
-
-```html
-<script src="https://unpkg.com/@stagepass/loader@2"></script>
-```
-
-```html
-<script src="https://unpkg.com/@stagepass/loader@2/dist/loader.min.js"></script>
-```
+unpkg serves the same paths if you need an alternative CDN.
 
 ---
 
