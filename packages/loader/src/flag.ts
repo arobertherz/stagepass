@@ -5,9 +5,15 @@
  * handlers, no eval). Styles use a constructable stylesheet, so a strict
  * `style-src` CSP does not block them (`<style>` fallback on old browsers).
  */
+// The glow is a radial gradient on a pseudo-element (no blurred box-shadow): it fades to 0 inside its own box,
+// so no layer/tile/viewport clip can cut it into a hard edge. The entry animation only fades and scales in
+// place (no slide from above the viewport), so nothing is rasterised off-screen.
 const CSS =
-  ':host{all:initial!important;position:fixed!important;top:10px!important;right:10px!important;z-index:2147483647!important;display:block!important}' +
-  'button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border-radius:99px;background:linear-gradient(90deg,#FF453A,#FF8A3D);color:#fff;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none;box-shadow:0 0 14px 2px rgba(255,138,61,.55),0 0 36px 6px rgba(255,69,58,.28),inset 0 1px 0 rgba(255,255,255,.22)}' +
+  ':host{all:initial!important;position:fixed!important;top:12px!important;right:12px!important;z-index:2147483647!important;display:block!important}' +
+  'button{all:unset;position:relative;isolation:isolate;box-sizing:border-box;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border-radius:99px;color:#fff;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}' +
+  'button:before,button:after{content:"";position:absolute;z-index:-1;pointer-events:none}' +
+  'button:before{top:0;right:0;bottom:0;left:0;border-radius:inherit;background:linear-gradient(90deg,#FF453A,#FF8A3D);box-shadow:inset 0 1px #fff3}' +
+  'button:after{top:-16px;right:-34px;bottom:-24px;left:-34px;z-index:-2;background:radial-gradient(closest-side,#ff783ccc,#ff603a66 50%,#ff503a29 70%,#ff453a0d 86%,#ff453a00)}' +
   'button:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
   'i{position:relative;width:9px;height:13px;border-radius:2.5px;background:#fff}' +
   'i:before,i:after{content:"";position:absolute;left:2px;border-radius:1px}' +
@@ -18,7 +24,7 @@ const CSS =
   '.e:before{width:8px;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}' +
   '[hidden]{display:none}' +
   '@media (prefers-reduced-motion:no-preference){button{animation:a .45s cubic-bezier(.2,.9,.3,1.2)}i:before{animation:b 1s .15s both}}' +
-  '@keyframes a{from{opacity:0;transform:translateY(-30px)}}' +
+  '@keyframes a{from{opacity:0;transform:scale(.8)}}' +
   '@keyframes b{0%{opacity:0}60%{opacity:1;transform:scale(1.4)}}';
 
 /** Counter state owned by the loader: `n[0]` warnings, `n[1]` errors, `tip` extra hint. */
