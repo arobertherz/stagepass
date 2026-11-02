@@ -19,6 +19,14 @@ export interface StagepassCookieWriteOptions {
   category?: string;
 }
 
+/** Payload for `sp.cookies.on('bake' | 'throw', fn)`. */
+export interface StagepassCookieEventPayload {
+  name: string;
+  category?: string;
+}
+
+export type StagepassCookieEventName = 'bake' | 'throw';
+
 export interface StagepassCookiesAPI {
   /** Write a cookie. */
   bake: (name: string, value: unknown, options?: StagepassCookieWriteOptions) => void;
@@ -36,6 +44,14 @@ export interface StagepassCookiesAPI {
   jar: () => Record<string, unknown>;
   /** Known cookie names starting with `prefix`. */
   crumbs: (prefix: string) => string[];
+  /**
+   * Subscribe to successful bake/throw (including queued bakes flushed by consent, and each cookie in throwAll).
+   * Returns an unsubscribe function. Listener errors do not break the cookie operation.
+   */
+  on: (
+    event: StagepassCookieEventName,
+    fn: (payload: StagepassCookieEventPayload) => void
+  ) => () => void;
 }
 
 /**

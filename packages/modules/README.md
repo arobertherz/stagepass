@@ -117,6 +117,7 @@ sp.consent.update(); // flushes queue
 | Method | Description |
 | :--- | :--- |
 | `bake(name, value, options?)` | Write/update a cookie. Optional `category` remembers the category and may queue when consent rejects. |
+| `on('bake' \| 'throw', fn)` | Subscribe after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Returns unsubscribe. Listener errors do not break the operation. |
 | `eat(name, options?)` | Read a cookie; `null` if missing. |
 | `throw(name, options?)` | Delete via `Max-Age=0` + expired date. |
 | `has(name)` | Existence check. |

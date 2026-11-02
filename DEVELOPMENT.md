@@ -134,6 +134,17 @@ Templates under `packages/cli/templates/` must not start with a dot (npm pack dr
 
 Also verify on Node 24 (`node:24-bookworm-slim`) to match CI (matrix: 22.x and 24.x). See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute. See `MIGRATION.md`.
 
+### Browser E2E (Playwright)
+
+Isolated package under `e2e/` (not an npm workspace). Fixtures are fulfilled with `page.route` (no real network). Requires a prior loader build (`packages/loader/dist`).
+
+```bash
+docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
+  'npm ci && npm run build && cd e2e && npm ci && npm run e2e'
+```
+
+Projects: Chromium, Firefox, WebKit (`npm run e2e` in `e2e/`). Not part of the GitHub Actions workflow yet.
+
 ### CLI Changes
 
 After modifying CLI code, the changes are immediately available if you used `npm link`. No rebuild needed.

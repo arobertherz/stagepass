@@ -1,0 +1,15 @@
+{
+  "name": "stagepass-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Headless Playwright E2E for @stagepass/loader (not an npm workspace package)",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:chromium": "playwright test --project=chromium",
+    "e2e:firefox": "playwright test --project=firefox",
+    "e2e:webkit": "playwright test --project=webkit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

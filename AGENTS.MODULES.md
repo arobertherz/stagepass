@@ -78,6 +78,7 @@ This profile is a **superset** and already includes the full Loader contract.
   - `sp.cookies` and singular alias `sp.cookie`
   - `bake` / `eat` / `throw` / `has` / `list`
   - `throwAll({ category? })` / `jar()` / `crumbs(prefix)`
+  - `on('bake' | 'throw', fn)` → unsubscribe (after successful write/delete; queued bakes fire on flush)
   - Optional `category` on `bake`; consent queue via `sp.consent`
 - Consent hook (tool only, not legal compliance):
   - `sp.consent.allows(category)` (default true)
