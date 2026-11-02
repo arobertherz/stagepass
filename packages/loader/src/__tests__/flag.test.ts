@@ -75,7 +75,7 @@ describe('dev flag (Tally Pass)', () => {
     expect(s.src).toBe('https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/flag.min.js');
   });
 
-  it('draws the glow without blurred box-shadows and never slides in from off-screen', async () => {
+  it('has no glow, shadow or filter in any state', async () => {
     startSession('my-project.sp');
     await boot();
     const root = flagParts().root as ShadowRoot & { adoptedStyleSheets?: CSSStyleSheet[] };
@@ -83,16 +83,9 @@ describe('dev flag (Tally Pass)', () => {
     const css = sheets.length
       ? sheets.map((s) => Array.from(s.cssRules, (r) => r.cssText).join('')).join('')
       : root.querySelector('style')?.textContent || '';
-    expect(css).toContain('radial-gradient(');
-    // Only small, sharp shadows are allowed (inset highlight, 1-3px icon accents)
-    const shadows = css.match(/box-shadow:[^;}]*/g) || [];
-    expect(shadows.length).toBeGreaterThan(0);
-    for (const m of shadows) {
-      for (const layer of m.slice(11).split(/,(?![^(]*\))/)) {
-        const lengths = layer.trim().split(/\s+/).filter((t) => /^-?(\d*\.)?\d+(px)?$/.test(t));
-        expect(parseFloat(lengths[2] || '0'), m).toBeLessThanOrEqual(3);
-      }
-    }
+    expect(css).toContain('linear-gradient(90deg');
+    expect(css).not.toMatch(/box-shadow|text-shadow|filter|drop-shadow|radial-gradient|blur\(/);
+    expect(css).not.toMatch(/button:{1,2}(before|after)/);
     expect(css).not.toMatch(/@keyframes[^}]*translate/);
   });
 
