@@ -7,7 +7,7 @@ Last updated: 2026-11-02
 This profile is for projects that use Stagepass Loader only (no `@stagepass/modules`).
 
 ## CDN (version pinning)
-Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
+Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.3.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
 
 ```html
 <script
