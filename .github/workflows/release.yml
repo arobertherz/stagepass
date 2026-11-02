@@ -52,17 +52,6 @@ jobs:
         id: versions
         run: node scripts/check-release-version.mjs "${GITHUB_REF_NAME}"
 
-      - name: Determine dist-tag
-        id: disttag
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "$VERSION" == *-* ]]; then
-            echo "tag=next" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Staging with dist-tag: $( [[ "$VERSION" == *-* ]] && echo next || echo latest )"
-
       # npm provenance (--provenance) requires a supported cloud CI OIDC
       # environment. Self-hosted runners are not supported, so we omit it.
       - name: Stage @stagepass/modules
@@ -70,21 +59,21 @@ jobs:
         working-directory: packages/modules
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
 
       - name: Stage @stagepass/loader
         if: steps.versions.outputs.stage_loader == 'true'
         working-directory: packages/loader
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
 
       - name: Stage @stagepass/cli
         if: steps.versions.outputs.stage_cli == 'true'
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
+        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
 
       - name: List staged packages
         env:

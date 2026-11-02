@@ -19,7 +19,7 @@ describe('check-release-version', () => {
 
   it('picks next for prereleases and latest otherwise', () => {
     expect(distTagForVersion('2.0.0-beta.1')).toBe('next');
-    expect(distTagForVersion('2.0.0')).toBe('latest');
+    expect(distTagForVersion('2.2.0')).toBe('next');
   });
 
   it('passes when all package versions match the tag', () => {

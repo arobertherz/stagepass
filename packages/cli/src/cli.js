@@ -197,6 +197,7 @@ export function createProgram(deps = {}) {
     .description('Diagnose the local Stagepass stack (read-only; never uses sudo)')
     .option('-v, --verbose', 'Show extra detail for ok checks')
     .option('--json', 'Machine-readable JSON output')
+    .option('--skip-site', 'Do not fetch the live site of the current project')
     .action(async (options) => {
       const code = await doctor(options);
       process.exitCode = code;
@@ -257,12 +258,16 @@ export function createProgram(deps = {}) {
   program
     .command('upgrade')
     .description(
-      'Bump @stagepass/* in the current package.json and print Webflow snippets'
+      'Bump @stagepass/*, sync modules, AGENTS.md, Cursor rule and types, print Webflow snippets'
     )
-    .option('--dry-run', 'Show changes without writing package.json')
+    .option('--dry-run', 'Show changes without writing any file')
+    .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
+    .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
+    .option('--skip-site', 'Do not fetch the live site')
+    .option('-y, --yes', 'Non-interactive; accept detected or existing modules')
     .option(
       '--target <version>',
-      'Target version (default: this CLI version; dist-tags use npm view)'
+      'Target loader/modules version (default: the version this CLI targets; dist-tags use npm view)'
     )
     // Public docs use `--version`; rewriteArgvForUpgrade maps it to `--target`
     // so it does not collide with the root `stagepass --version` handler.
@@ -301,8 +306,10 @@ export function createProgram(deps = {}) {
     .option('--author <author>', 'Author for package.json (default: git user.name)')
     .option('--lang <lang>', 'ts or js (default: ts)')
     .option('--styles <styles>', 'scss or css (default: scss)')
-    .option('--modules', 'Include @stagepass/modules')
+    .option('--modules', 'Include @stagepass/modules (npm, types)')
     .option('--no-modules', 'Skip @stagepass/modules')
+    .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
+    .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
     .option('--git', 'Initialize a git repository')
     .option('--no-git', 'Do not initialize git')
     .option('--remote <url>', 'Git remote URL (requires git)')

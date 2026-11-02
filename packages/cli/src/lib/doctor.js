@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import { runProjectSiteChecks } from './doctor-site.js';
 import path from 'node:path';
 import { defaultExec, resolveCommand } from './exec.js';
 import {
@@ -483,6 +484,23 @@ export async function runDoctor(opts = {}) {
   }
 
   hints.push(CHROME_LNA_HINT);
+
+  // Current project folder: declared modules vs. live site (read-only GET)
+  if (opts.projectChecks !== false) {
+    try {
+      const projectChecks = await runProjectSiteChecks({
+        cwd: opts.cwd,
+        skipSite: opts.skipSite === true,
+        detectSite: opts.detectSite,
+        loadProjects: opts.loadProjects,
+      });
+      for (const c of projectChecks) checks.push(check(c.id, c.status, c.message, c.detail));
+    } catch (error) {
+      checks.push(
+        check('project', 'warn', 'Project check failed', error instanceof Error ? error.message : String(error))
+      );
+    }
+  }
 
   const summary = { ok: 0, warn: 0, fail: 0, info: 0 };
   for (const c of checks) {

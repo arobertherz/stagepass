@@ -1,0 +1,65 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'fs-extra';
+import { runProjectSiteChecks } from '../doctor-site.js';
+
+const live = (list, version = '2') =>
+  vi.fn(async () => ({
+    ok: true,
+    url: 'https://s.webflow.io/',
+    loader: { version, cdn: 'jsdelivr' },
+    modules: list.map((id) => ({ id, version, cdn: 'jsdelivr' })),
+    list,
+  }));
+
+describe('runProjectSiteChecks', () => {
+  let dir;
+  const noProjects = async () => ({ projects: {} });
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-doc-'));
+  });
+  afterEach(async () => fs.remove(dir));
+  const write = (data) => fs.writeJson(path.join(dir, 'stagepass.json'), data);
+
+  it('returns nothing outside a project', async () => {
+    expect(await runProjectSiteChecks({ cwd: dir })).toEqual([]);
+  });
+
+  it('reports the loaded version when everything matches', async () => {
+    await write({ modules: ['cookies'], origin: 's.webflow.io' });
+    const checks = await runProjectSiteChecks({ cwd: dir, detectSite: live(['cookies']), loadProjects: noProjects });
+    expect(checks.map((c) => c.status)).toEqual(['ok', 'ok']);
+    expect(checks[1].message).toBe('Live site s.webflow.io loads @stagepass/loader@2');
+  });
+
+  it('warns on a mismatch', async () => {
+    await write({ modules: [], origin: 's.webflow.io' });
+    const checks = await runProjectSiteChecks({ cwd: dir, detectSite: live(['all'], '2.0.0'), loadProjects: noProjects });
+    const mismatch = checks.find((c) => c.id === 'project.site.modules');
+    expect(mismatch.status).toBe('warn');
+    expect(mismatch.message).toContain('stagepass.json none, live site all');
+    expect(checks.find((c) => c.id === 'project.site').message).toContain('@2.0.0');
+  });
+
+  it('warns on unreachable site and legacy modules boolean', async () => {
+    await write({ modules: true, origin: 's.webflow.io' });
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
+    const checks = await runProjectSiteChecks({ cwd: dir, detectSite, loadProjects: noProjects });
+    expect(checks.map((c) => [c.id, c.status])).toEqual([
+      ['project.modules', 'warn'],
+      ['project.site', 'warn'],
+    ]);
+  });
+
+  it('info without origin; skipSite never fetches', async () => {
+    await write({ modules: [] });
+    const detectSite = vi.fn();
+    let checks = await runProjectSiteChecks({ cwd: dir, detectSite, loadProjects: noProjects });
+    expect(checks[1]).toMatchObject({ id: 'project.site', status: 'info' });
+    await write({ modules: [], origin: 's.webflow.io' });
+    checks = await runProjectSiteChecks({ cwd: dir, detectSite, skipSite: true });
+    expect(checks).toHaveLength(1);
+    expect(detectSite).not.toHaveBeenCalled();
+  });
+});

@@ -54,7 +54,7 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
 | `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent). Never uses sudo. `--json` available. Exit `1` if any fail. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, plus the current project's declared modules vs. its live site). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
@@ -62,7 +62,7 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
 | `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
 | `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). |
-| `stagepass upgrade` | Bump `@stagepass/*` in the current `package.json` and print Webflow snippets. |
+| `stagepass upgrade` | Bump `@stagepass/*`, sync declared modules, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. |
 
 All commands support `-v, --verbose` where applicable.
 
@@ -84,23 +84,56 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `--author <name>` | `package.json` author (default: `git config user.name`). |
 | `--lang ts\|js` | Language (default: `ts`). |
 | `--styles scss\|css` | Styles (default: `scss`). |
-| `--modules` / `--no-modules` | Include `@stagepass/modules` (default: yes). |
+| `--modules` / `--no-modules` | Include `@stagepass/modules` as npm dependency (default: yes; forced on when `--site-modules` lists a module). |
+| `--site <host>` | Live Webflow site (https) to detect the loaded modules from. Stored as the project origin. |
+| `--site-modules <list>` | Modules the site loads: `none`, `all`, or a comma list of `inject`, `cookies`, `maintenance`. Takes precedence over `--site`. |
 | `--git` / `--no-git` | `git init` (default: yes). |
 | `--remote <url>` | Set `origin` after git init (rejects URLs with embedded credentials). |
 | `--install` / `--no-install` | Run `npm install` (default: no). |
 | `-y, --yes` | Non-interactive; use defaults for omitted flags. |
 | `--dry-run` | Print the file plan without writing. |
 
-The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2` with `loader/dist/loader.min.js` and optional `modules/dist/{inject,cookies}.min.js`; also document `all` / `maintenance`), an `AGENTS.md` with safe development rules, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2.0.0` (same major as the CDN pin `@2`).
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2.2.0` (same major as the CDN pin `@2`, minor that ships the per-module types).
+
+Interactively, `new` asks for the live site after the styles question, shows the detected modules and asks for confirmation; otherwise it asks for the list directly. Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint.
+
+### Declared modules (`stagepass.json`)
+
+```json
+{ "name": "my-project", "modules": ["cookies"] }
+```
+
+`modules` is `[]` (loader only), a list of `inject`, `cookies`, `maintenance`, or `["all"]`. It must match what your Webflow site loads. From it the CLI generates:
+
+- the managed block in `AGENTS.md` (between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`): loader API always, full sections for declared modules, a "not available; enable by …" line for the others, and the rule never to use undeclared `sp.<module>`;
+- `.cursor/rules/stagepass.mdc` (globs `src/**`) with the same content;
+- `compilerOptions.types` in `tsconfig.json` / `jsconfig.json`: `@stagepass/loader` plus `@stagepass/modules/<module>` for each declared module (`@stagepass/modules` for `all`), so undeclared modules are type errors.
+
+The legacy boolean `"modules": true|false` is still read; `upgrade` replaces it with a list.
+
+### Live site detection
+
+`new --site`, `upgrade` and `doctor` read the modules from the live site: one public `GET` of the origin, https only, no cookies or auth headers, about 5 s timeout, a size cap, at most 3 redirects (all https). Only `<script src>` attributes are parsed with a regex (HTML comments ignored); nothing is executed. Recognised: `@stagepass/loader` and `@stagepass/modules` `dist/{inject,cookies,maintenance,all}` files on `cdn.jsdelivr.net/npm/` or `unpkg.com/`, any version (`@2`, `@2.0.0`, none). The npm dependency in `package.json` is only a hint.
 
 ### `upgrade` options
 
 | Option | Behaviour |
 | :--- | :--- |
-| `--version <x>` | Target version (default: the `@stagepass/loader` / `@stagepass/modules` version this CLI targets, currently `2.1.0`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
-| `--dry-run` | Show changes without writing `package.json`. |
+| `--version <x>` | Target loader/modules version (default: the version this CLI targets, currently `2.2.0`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
+| `--site <host>` | Live site to detect modules from (default: the origin linked in `~/.stagepass/projects.json` for this folder). Stored in `stagepass.json` when given. |
+| `--site-modules <list>` | Set the modules list directly (`none`, `all`, or a comma list). |
+| `--skip-site` | Do not fetch the live site. |
+| `-y, --yes` | Accept the detected or existing list without asking. |
+| `--dry-run` | Print every planned change; write no file. |
 
-Only `package.json` is modified. `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
+`upgrade` bumps `@stagepass/*` in `package.json`, then resolves the modules list (`--site-modules`, else live detection, confirmed interactively; if the site is unreachable or no origin is known it asks; without a TTY it keeps the existing list or `[]` and prints a hint). It then syncs the project:
+
+- `stagepass.json`: writes the `modules` list.
+- `AGENTS.md`: created if missing, otherwise only the managed block is replaced (or appended when there is none). Your own text stays. Broken markers are left alone with a hint.
+- `.cursor/rules/stagepass.mdc`: created if missing, otherwise only its managed block is refreshed.
+- `tsconfig.json` / `jsconfig.json`: only `compilerOptions.types` changes, the rest of the JSON is preserved. Files with comments, or without a `types` array, are skipped with a hint.
+
+Every change is printed as `file: action` (unchanged files are not listed; skipped files appear as hints). `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 
 ### Domain argument (`link` / `unlink`)
 

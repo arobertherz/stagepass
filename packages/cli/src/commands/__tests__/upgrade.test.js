@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import fsx from 'fs-extra';
 import {
   applyStagepassVersions,
   findStagepassDeps,
@@ -61,75 +64,196 @@ describe('upgrade helpers', () => {
 });
 
 describe('upgrade command', () => {
-  function mockFs(initialPkg) {
-    let written = null;
-    return {
-      fs: {
-        pathExists: async () => true,
-        readFile: async () => JSON.stringify(initialPkg, null, 2) + '\n',
-        writeFile: async (_p, body) => {
-          written = body;
-        },
-      },
-      getWritten: () => written,
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-'));
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  const noProjects = async () => ({ projects: {} });
+  const baseDeps = (logs, extra = {}) => ({
+    cwd: dir,
+    cliVersion: '2.2.0',
+    log: (m) => logs.push(String(m ?? '')),
+    isTTY: false,
+    loadProjects: noProjects,
+    detectSite: vi.fn(async () => {
+      throw new Error('detectSite must not be called');
+    }),
+    ...extra,
+  });
+
+  async function oldStyleProject({ tsconfigTypes = ['@stagepass/loader'], agents = '# app\n\nNotes by me.\n', modulesDep = false } = {}) {
+    const pkg = {
+      name: 'app',
+      devDependencies: { '@stagepass/loader': '^2.0.0', ...(modulesDep ? { '@stagepass/modules': '^2.0.0' } : {}) },
     };
+    await fsx.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+    await fsx.writeFile(path.join(dir, 'stagepass.json'), JSON.stringify({ name: 'app', modules: modulesDep, version: 1 }, null, 2) + '\n');
+    await fsx.writeFile(
+      path.join(dir, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true, types: tsconfigTypes }, include: ['src'] }, null, 2) + '\n'
+    );
+    if (agents != null) await fsx.writeFile(path.join(dir, 'AGENTS.md'), agents);
   }
 
-  it('writes updated package.json and does not call install', async () => {
-    const { fs, getWritten } = mockFs({
-      name: 'app',
-      dependencies: { '@stagepass/loader': '1.0.0' },
-    });
+  it('writes package.json, stagepass.json, AGENTS.md, rule and types; never installs', async () => {
+    await oldStyleProject({ modulesDep: true });
+    const logs = [];
+    const exec = vi.fn();
+    const code = await upgrade({ siteModules: 'cookies' }, baseDeps(logs, { exec }));
+    expect(code).toBe(0);
+    expect(exec).not.toHaveBeenCalled();
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('2.2.0');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('2.2.0');
+    const sp = await fsx.readJson(path.join(dir, 'stagepass.json'));
+    expect(sp.modules).toEqual(['cookies']);
+    const agents = await fsx.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(agents.startsWith('# app\n\nNotes by me.\n')).toBe(true);
+    expect(agents).toContain('<!-- stagepass:begin -->');
+    expect(agents).toContain('sp.cookies');
+    const rule = await fsx.readFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'utf8');
+    expect(rule).toContain('globs: src/**');
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
+    expect(ts.compilerOptions.strict).toBe(true);
+    expect(ts.include).toEqual(['src']);
+    const out = logs.join('\n');
+    expect(out).toContain('npm install');
+    expect(out).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(out).not.toContain('inject.min.js');
+  });
+
+  it('--dry-run prints the plan and writes nothing', async () => {
+    await oldStyleProject();
+    const before = await snapshot(dir);
+    const logs = [];
+    const code = await upgrade({ dryRun: true, siteModules: 'none' }, baseDeps(logs));
+    expect(code).toBe(0);
+    expect(await snapshot(dir)).toEqual(before);
+    const out = logs.join('\n');
+    expect(out).toContain('AGENTS.md: managed block added');
+    expect(out).toContain('.cursor/rules/stagepass.mdc: created');
+    expect(out).toContain('Dry run');
+  });
+
+  it('refreshes only the managed block on a second run', async () => {
+    await oldStyleProject();
+    await upgrade({ siteModules: 'all' }, baseDeps([]));
+    const p = path.join(dir, 'AGENTS.md');
+    const edited = (await fsx.readFile(p, 'utf8')) + '\nMy footer.\n';
+    await fsx.writeFile(p, edited);
+    await upgrade({ siteModules: 'none' }, baseDeps([]));
+    const after = await fsx.readFile(p, 'utf8');
+    expect(after).toContain('Notes by me.');
+    expect(after).toContain('My footer.');
+    expect(after.match(/<!-- stagepass:begin -->/g)).toHaveLength(1);
+    expect(after).toContain('`sp.cookies`: not available');
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader']);
+  });
+
+  it('creates AGENTS.md when missing', async () => {
+    await oldStyleProject({ agents: null });
+    await upgrade({ siteModules: 'none' }, baseDeps([]));
+    const agents = await fsx.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('<!-- stagepass:end -->');
+  });
+
+  it('skips a tsconfig with comments and prints a hint', async () => {
+    await oldStyleProject();
+    const raw = '{\n  // my comment\n  "compilerOptions": { "types": ["@stagepass/loader"] }\n}\n';
+    await fsx.writeFile(path.join(dir, 'tsconfig.json'), raw);
+    const logs = [];
+    await upgrade({ siteModules: 'cookies' }, baseDeps(logs));
+    expect(await fsx.readFile(path.join(dir, 'tsconfig.json'), 'utf8')).toBe(raw);
+    expect(logs.join('\n')).toMatch(/tsconfig\.json.*comments/);
+  });
+
+  it('non-TTY without site or list keeps the existing list', async () => {
+    await oldStyleProject();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: ['maintenance'], version: 1 });
+    const logs = [];
+    await upgrade({}, baseDeps(logs));
+    expect((await fsx.readJson(path.join(dir, 'stagepass.json'))).modules).toEqual(['maintenance']);
+    expect(logs.join('\n')).toContain('inferred from stagepass.json');
+  });
+
+  it('non-TTY without anything falls back to [] with a hint', async () => {
+    await oldStyleProject({ modulesDep: true });
+    const logs = [];
+    await upgrade({}, baseDeps(logs));
+    expect((await fsx.readJson(path.join(dir, 'stagepass.json'))).modules).toEqual([]);
+    const out = logs.join('\n');
+    expect(out).toContain('Pass --site-modules');
+    expect(out).toContain('does not show which module tags run');
+  });
+
+  it('uses live detection from the stagepass.json origin', async () => {
+    await oldStyleProject();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], origin: 'app.webflow.io', version: 1 });
+    const detectSite = vi.fn(async () => ({
+      ok: true,
+      url: 'https://app.webflow.io/',
+      loader: { version: '2', cdn: 'jsdelivr' },
+      modules: [{ id: 'inject', version: '2', cdn: 'jsdelivr' }],
+      list: ['inject'],
+    }));
+    const logs = [];
+    await upgrade({}, baseDeps(logs, { detectSite }));
+    expect(detectSite).toHaveBeenCalledWith('app.webflow.io');
+    const sp = await fsx.readJson(path.join(dir, 'stagepass.json'));
+    expect(sp.modules).toEqual(['inject']);
+    expect(sp.origin).toBe('app.webflow.io');
+  });
+
+  it('asks interactively when the site is unreachable', async () => {
+    await oldStyleProject();
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
+    const answers = ['cookies, maintenance'];
+    const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const logs = [];
     const code = await upgrade(
-      {},
-      {
-        fs,
-        cwd: '/tmp/app',
-        cliVersion: '2.0.0',
-        log: (m) => logs.push(String(m)),
-      }
+      { site: 'app.webflow.io' },
+      baseDeps(logs, { detectSite, isTTY: true, createReadline: () => rl })
     );
     expect(code).toBe(0);
-    const pkg = JSON.parse(getWritten());
-    expect(pkg.dependencies['@stagepass/loader']).toBe('2.0.0');
-    expect(logs.join('\n')).toContain('npm install');
-    expect(logs.join('\n')).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2');
+    expect(rl.question).toHaveBeenCalledTimes(1);
+    expect(rl.close).toHaveBeenCalled();
+    const sp = await fsx.readJson(path.join(dir, 'stagepass.json'));
+    expect(sp.modules).toEqual(['cookies', 'maintenance']);
+    expect(sp.origin).toBe('app.webflow.io');
+    expect(logs.join('\n')).toContain('did not answer');
   });
 
-  it('--dry-run does not write', async () => {
-    const { fs, getWritten } = mockFs({
-      dependencies: { '@stagepass/loader': '1.0.0' },
-    });
-    const code = await upgrade(
-      { dryRun: true },
-      { fs, cwd: '/tmp/app', cliVersion: '2.0.0', log: () => {} }
-    );
-    expect(code).toBe(0);
-    expect(getWritten()).toBeNull();
+  it('rejects an unknown module name', async () => {
+    await oldStyleProject();
+    const logs = [];
+    const code = await upgrade({ siteModules: 'cookies,evil' }, baseDeps(logs));
+    expect(code).toBe(1);
   });
 
-  it('only touches package.json path', async () => {
-    const paths = [];
-    const fs = {
-      pathExists: async (p) => {
-        paths.push(['exists', p]);
-        return true;
-      },
-      readFile: async (p) => {
-        paths.push(['read', p]);
-        return JSON.stringify({
-          dependencies: { '@stagepass/loader': '1.0.0' },
-        });
-      },
-      writeFile: async (p) => {
-        paths.push(['write', p]);
-      },
-    };
-    await upgrade(
-      {},
-      { fs, cwd: '/proj', cliVersion: '2.0.0', log: () => {} }
-    );
-    expect(paths.every(([, p]) => p === '/proj/package.json')).toBe(true);
+  it('rejects an http or credential site', async () => {
+    await oldStyleProject();
+    expect(await upgrade({ site: 'http://app.webflow.io' }, baseDeps([]))).toBe(1);
+    expect(await upgrade({ site: 'https://u:p@app.webflow.io' }, baseDeps([]))).toBe(1);
   });
 });
+
+async function snapshot(root) {
+  const out = {};
+  const walk = async (d) => {
+    for (const name of await fsx.readdir(d)) {
+      const abs = path.join(d, name);
+      const st = await fsx.stat(abs);
+      if (st.isDirectory()) await walk(abs);
+      else out[path.relative(root, abs)] = await fsx.readFile(abs, 'utf8');
+    }
+  };
+  await walk(root);
+  return out;
+}

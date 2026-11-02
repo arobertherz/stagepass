@@ -10,6 +10,7 @@ import { runDoctor } from '../lib/doctor.js';
 export async function doctor(options = {}) {
   const result = await runDoctor({
     skipHandshake: options.skipHandshake === true,
+    skipSite: options.skipSite === true,
   });
 
   if (options.json) {

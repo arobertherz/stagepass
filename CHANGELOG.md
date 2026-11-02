@@ -15,21 +15,30 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.1.1] - 2026-11-02
+### [2.2.0] - 2026-11-02
 
-Patch release. No breaking changes; `@stagepass/loader` and `@stagepass/modules` stay at 2.1.0.
+Non-breaking minor release, together with `@stagepass/loader` and `@stagepass/modules` 2.2.0. Includes the 2.1.0 packaging fix (2.1.0 and the planned 2.1.1 were never published as `latest`). Existing commands, flags and defaults keep working.
 
 #### Fixed
 
-- `stagepass new` failed with `ENOENT … templates/project/.gitignore` when installed from npm: npm pack drops `.gitignore` files, so the template never shipped. Dotfile templates are now stored without the leading dot (`templates/project/gitignore`) and written as `.gitignore`.
+- `stagepass new` failed with `ENOENT … templates/project/.gitignore` when installed from npm (for example after answering y to "Run npm install now?"): npm pack drops `.gitignore` files, so the template never shipped. Dotfile templates are now stored without the leading dot (`templates/project/gitignore`) and written as `.gitignore`.
 - A missing template now fails with a clear message ("reinstall the CLI") before anything is written.
-- Generated projects no longer pin `@stagepass/loader` / `@stagepass/modules` to the CLI's own version (a CLI-only patch such as 2.1.1 would make `npm install` fail). They use the major range `^2.0.0`, matching the CDN default `@2`.
-- `stagepass upgrade` without `--version` and the `data-stagepass-version` in printed snippets use the loader/modules version this CLI targets (2.1.0), not the CLI version.
+- Generated projects no longer pin `@stagepass/loader` / `@stagepass/modules` to the CLI's own version. They use `^<major>.<minor>.0` of the loader/modules version this CLI targets (`^2.2.0`).
+- `stagepass upgrade` without `--version` and the `data-stagepass-version` in printed snippets use the loader/modules version this CLI targets, not the CLI version.
+
+#### Added
+
+- Declared modules: `stagepass.json` has `"modules": []`, `["cookies"]` (any of `inject`, `cookies`, `maintenance`) or `["all"]`. `stagepass new` asks for it (or takes `--site-modules`), `stagepass upgrade` infers and confirms it. The legacy boolean `"modules": true|false` is still read.
+- Live site detection: `stagepass new --site <host>` and `stagepass upgrade` (using `--site` or the project's linked origin) fetch the public page once (https only, no cookies or auth, about 5 s timeout, size cap, at most 3 redirects) and read `<script src>` tags of `@stagepass/loader` / `@stagepass/modules` on jsDelivr or unpkg (any version). Nothing from the page is executed. When the site is unreachable the CLI asks; without a TTY it keeps the existing list (or `[]`) and prints a hint.
+- AI guide: generated projects get `AGENTS.md` with a full `sp` API reference between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`, plus `.cursor/rules/stagepass.mdc` (globs `src/**`). Declared modules get full sections; undeclared ones get a "not available; enable by …" line and an explicit rule never to use them.
+- `stagepass upgrade` syncs existing projects: adds `AGENTS.md` if missing or refreshes only the managed block, adds the Cursor rule if missing, updates `types` in `tsconfig.json` / `jsconfig.json` (rest of the JSON preserved; files with comments or without a `types` array are skipped with a hint), and prints every change. New flags `--dry-run` (writes nothing), `--site`, `--site-modules`, `--skip-site`, `-y, --yes`.
+- `stagepass doctor` checks the project in the current directory: `stagepass.json` modules list, the live site's loaded loader version, and a warning when the live site loads other modules than declared. `--skip-site` skips the network check.
+- `tsconfig.json` / `jsconfig.json` in new projects list per-module types (`@stagepass/modules/cookies`, …) for the declared modules only.
 
 #### Changed
 
-- CI and the release workflow run a packed-tarball smoke test (`scripts/test-cli-packed.mjs`): `npm pack`, global install into a temp prefix, `stagepass new` for ts and js with `--install`, then `npm run build`.
-- The release workflow supports partial releases: a tag stages only the packages whose version matches it.
+- CI and the release workflow run a packed-tarball smoke test (`scripts/test-cli-packed.mjs`): packs cli, loader and modules, scaffolds ts and js projects with `--install` from the local tarballs, type checks `sp`, builds, and runs `upgrade` on an old-style project.
+- The release workflow stages every version (also stable) under the `next` dist-tag; promotion to `latest` is an explicit `npm dist-tag add` after approval. Partial releases stage only the packages whose version matches the tag.
 
 ### [2.1.0] - 2026-11-02
 
@@ -130,6 +139,14 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.2.0] - 2026-11-02
+
+Non-breaking minor release. No runtime behaviour change (only the embedded version string).
+
+#### Added
+
+- Complete TypeScript declarations for `sp` / `window.stagepass` in `global.d.ts` with JSDoc and examples, including typed `sp.on(...)` overloads for the built-in events. Verified by type check fixtures.
+
 ### [2.1.0] - 2026-11-02
 
 Non-breaking minor release. 2.0.0 behaviour is preserved (`vars.env`, eager `vars.client`, session/swap contracts unchanged).
@@ -229,6 +246,19 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/modules`
+
+### [2.2.0] - 2026-11-02
+
+Non-breaking minor release. Runtime files in `dist/` are unchanged.
+
+#### Added
+
+- Per-module type entries: `@stagepass/modules/inject`, `@stagepass/modules/cookies`, `@stagepass/modules/maintenance` (shipped as `inject.d.ts`, `cookies.d.ts`, `maintenance.d.ts`). Add only the modules your site loads to `compilerOptions.types`, so undeclared `sp.<module>` is a type error.
+- Full JSDoc with examples for `sp.inject`, `sp.cookies` and `sp.maintenance`.
+
+#### Changed
+
+- `@stagepass/modules` (the package types entry, `global.d.ts`) still declares all modules, so existing `types: ["@stagepass/modules"]` setups keep working.
 
 ### [2.1.0] - 2026-11-02
 

@@ -82,12 +82,15 @@ export function releasePlan(tag, root = ROOT) {
 }
 
 /**
- * Choose npm dist-tag from a semver string (prerelease → next, else latest).
- * @param {string} version
- * @returns {'next' | 'latest'}
+ * npm dist-tag for staging. Every staged release (stable or prerelease) goes
+ * to `next`; promoting a verified stable release to `latest` is a separate,
+ * explicit `npm dist-tag add` step (see RELEASING.md). This keeps existing
+ * `npm install` / `^2` users on the current latest until the release is checked.
+ * @param {string} _version
+ * @returns {'next'}
  */
-export function distTagForVersion(version) {
-  return version.includes('-') ? 'next' : 'latest';
+export function distTagForVersion(_version) {
+  return 'next';
 }
 
 function main() {
@@ -109,7 +112,7 @@ function main() {
   }
 
   const distTag = distTagForVersion(plan.version);
-  const kind = distTag === 'next' ? 'prerelease' : 'stable';
+  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote to latest after verification';
   if (plan.skip.length === 0) {
     console.log(`✅ All packages match ${plan.version}`);
   } else {
@@ -122,6 +125,7 @@ function main() {
   if (process.env.GITHUB_OUTPUT) {
     const staged = new Set(plan.stage.map((p) => p.dir));
     const lines = PACKAGES.map((dir) => `stage_${dir}=${staged.has(dir)}`);
+    lines.push(`dist_tag=${distTag}`);
     appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
   }
 }

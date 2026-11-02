@@ -34,7 +34,7 @@ Also verify on Node 24 (`node:24-bookworm-slim`) to match CI. Development and CI
 
 ## Releasing
 
-Maintainers only. See **[RELEASING.md](RELEASING.md)**: every release starts as a prerelease (`--tag next`), is verified on a Webflow staging site with an exact beta pin, then ships stable on `latest`. Breaking changes only in a new major (v3).
+Maintainers only. See **[RELEASING.md](RELEASING.md)**: every release starts as a prerelease (`--tag next`), is verified on a Webflow staging site with an exact beta pin, then ships stable (also staged on `next`) and is promoted to `latest` with an explicit `npm dist-tag add`. Breaking changes only in a new major (v3).
 
 ## Pull requests
 

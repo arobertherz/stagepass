@@ -14,12 +14,14 @@ Every release ships **first as a prerelease**, then as a stable version after st
 
 Workflow: `.github/workflows/release.yml` (and `scripts/check-release-version.mjs`):
 
-| Version shape | Example tag | npm dist-tag |
+| Version shape | Example tag | npm dist-tag at staging |
 | :--- | :--- | :--- |
-| Prerelease (contains `-`) | `v2.1.0-beta.1` | `next` |
-| Stable | `v2.1.0` | `latest` |
+| Prerelease (contains `-`) | `v2.2.0-beta.1` | `next` |
+| Stable | `v2.2.0` | `next` |
 
-CDN majors such as `@2` resolve the newest **stable** 2.x on `latest`. They do **not** resolve prereleases. Always test betas with an **exact** version pin.
+Since 2.2.0 **every** release is staged under `next`. Approving a stage therefore never moves `latest`, so `npm install @stagepass/cli` keeps installing the previous version until a maintainer promotes the new one explicitly (section 3). This keeps a bad build from reaching `latest` by a single approval click.
+
+Always test betas with an **exact** version pin.
 
 ## 1. Prerelease first
 
@@ -40,7 +42,7 @@ The tag **without** the leading `v` must equal the `version` of the packages you
 
 **Partial release** (e.g. a CLI-only patch): bump only that package (e.g. `@stagepass/cli` to `2.1.1`), tag `v2.1.1`. The other packages are skipped and keep their staged/published version. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
 
-Before staging, CI runs `scripts/test-cli-packed.mjs` (packs the CLI, installs the tarball globally into a temp prefix, runs `stagepass new` for ts and js with `--install`, then `npm run build`). Run it locally with `node scripts/test-cli-packed.mjs`.
+Before staging, CI runs `scripts/test-cli-packed.mjs`: it packs the CLI, loader and modules, checks the tarball contents (templates, `global.d.ts`, per-module `*.d.ts`, dist files), installs the CLI tarball globally into a temp prefix, runs `stagepass new` (ts with modules `none` and `cookies`, js with `all`) with `--install` (an `npm` shim adds the local loader/modules tarballs, so unpublished versions resolve), runs `tsc --noEmit` to check that `sp` and only the declared modules are typed, runs `npm run build`, and finally runs `stagepass upgrade` on an old-style project. Run it locally with `node scripts/test-cli-packed.mjs` after `npm run build`.
 
 ### 1c. CI stages with `--tag next`
 
@@ -89,18 +91,30 @@ Test on a generic Webflow staging host such as `my-project.webflow.io` (never a 
 
 After the beta looks good:
 
-1. Bump all three packages to the final version (e.g. `2.1.0`).
+1. Bump all three packages to the final version (e.g. `2.2.0`).
 2. Update `CHANGELOG.md`. Commit.
 3. Tag and push:
 
 ```bash
-git tag v2.1.0
-git push origin v2.1.0
+git tag v2.2.0
+git push origin v2.2.0
 ```
 
-CI stages with `--tag latest`. Approve with 2FA as above.
+CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
 
-## 3. Verify dist-tags
+Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). Until loader and modules of that minor are approved, `npm install` in a freshly scaffolded project fails with `ETARGET`. Approve loader and modules together with the CLI.
+
+## 3. Promote to `latest` (2FA)
+
+After approval and a check on a Webflow staging site:
+
+```bash
+npm dist-tag add @stagepass/modules@2.2.0 latest
+npm dist-tag add @stagepass/loader@2.2.0 latest
+npm dist-tag add @stagepass/cli@2.2.0 latest
+```
+
+Verify:
 
 ```bash
 npm view @stagepass/loader dist-tags
@@ -108,19 +122,4 @@ npm view @stagepass/modules dist-tags
 npm view @stagepass/cli dist-tags
 ```
 
-For a stable 2.x release, `latest` should point at the version you just published (e.g. `2.1.0`). Sites that pin `@1` stay on 1.x. Sites that pin `@2` pick up the newest stable 2.x.
-
-If needed:
-
-```bash
-npm dist-tag add @stagepass/loader@2.1.0 latest
-npm dist-tag add @stagepass/modules@2.1.0 latest
-npm dist-tag add @stagepass/cli@2.1.0 latest
-```
-
-## Notes
-
-- Prerelease versions **require** an explicit `--tag` on `npm stage publish` (the workflow sets `next`).
-- The stage tag is immutable for a staged package; changing dist-tags after approval uses `npm dist-tag`.
-- Do not use `workflow_dispatch` for releases; tags only.
-- Breaking changes only in a new major (v3). Within v2, keep changes backward compatible.
+`latest` should point at the version you just promoted. Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg can pick up a new stable 2.x as soon as it is published (CDN range resolution is not tied to `latest`), so only approve stable stages that are ready for live sites.
