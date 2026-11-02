@@ -118,14 +118,47 @@ describe('live-src zero-cost mode', () => {
     expect(document.querySelector('script[data-src]')).toBeNull();
   });
 
-  it('warns on duplicate live-src filenames without data-stagepass-path', async () => {
+  it('swapEl never copies a production src onto the replacement script', async () => {
     startSession('my-project.sp');
-    const warn = console.warn as unknown as ReturnType<typeof vi.fn>;
+    // Legacy tag that still has a production src (Firefox live-src converts to this shape)
     document.body.innerHTML =
-      '<script data-stagepass src="https://cdn.example.com/a/main.js"></script>' +
-      '<script data-stagepass src="https://cdn.example.com/b/main.js"></script>';
-    await bootAs(loaderTag({ 'data-stagepass-live-src': 'true' }));
+      '<script data-stagepass data-src="https://cdn.example.com/js/main.js" src="https://cdn.example.com/js/main.js" integrity="sha256-abc"></script>';
+    await bootAs(loaderTag());
     await new Promise((r) => setTimeout(r, 0));
-    expect(warn.mock.calls.flat().join(' ')).toMatch(/Multiple assets resolve to local file "main\.js"/);
+    const local = document.querySelector('script[src^="https://my-project.sp/"]') as HTMLScriptElement;
+    expect(local).toBeTruthy();
+    expect(local.src).toMatch(/main\.js\?_cb=\d+$/);
+    expect(local.src).not.toContain('cdn.example.com');
+    expect(local.getAttribute('integrity')).toBeNull();
+    expect(document.querySelector('script[data-src]')).toBeNull();
+  });
+
+  it('Firefox live-src path swaps via beforescriptexecute → data-src → swapEl', async () => {
+    startSession('my-project.sp');
+    Object.defineProperty(Document.prototype, 'onbeforescriptexecute', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: null,
+    });
+    try {
+      document.body.innerHTML =
+        '<script data-stagepass src="https://cdn.example.com/js/main.js" integrity="sha256-abc"></script>';
+      await bootAs(loaderTag({ 'data-stagepass-live-src': 'true' }));
+      const pending = document.querySelector(
+        'script[data-stagepass][src*="cdn.example.com"]:not([data-stagepass-processed])'
+      ) as HTMLScriptElement | null;
+      // jsdom may already have fired beforescriptexecute; if not, drive the handler
+      if (pending) {
+        pending.dispatchEvent(new Event('beforescriptexecute', { cancelable: true, bubbles: true }));
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      const local = document.querySelector('script[src^="https://my-project.sp/"]') as HTMLScriptElement;
+      expect(local).toBeTruthy();
+      expect(local.src).toMatch(/main\.js\?_cb=\d+$/);
+      expect(document.querySelector('script[src*="cdn.example.com"]')).toBeNull();
+    } finally {
+      delete (Document.prototype as any).onbeforescriptexecute;
+    }
   });
 });

@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createSession, serializeSession, SESSION_KEY } from '../session.js';
 import {
   isSafeLiveUrl,
   parseLivePayload,
   swapLocalStylesheets,
   startLiveReload,
   LIVE_PATH,
+  LIVE_HOOK,
 } from '../live.js';
 
 describe('live reload helpers', () => {
@@ -146,5 +151,79 @@ describe('startLiveReload with fake EventSource', () => {
     });
     expect(FakeES.instances).toHaveLength(0);
     stop();
+  });
+});
+
+describe('live hook placement (flag chunk, not core)', () => {
+  const LIVE = Symbol.for(LIVE_HOOK);
+  const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist');
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    delete (window as any).stagepass;
+    delete (window as any).sp;
+    vi.stubGlobal('location', {
+      hostname: 'www.example.com',
+      href: 'https://www.example.com/',
+      search: '',
+      pathname: '/',
+      hash: '',
+      reload: vi.fn(),
+    });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('core loader.min.js does not embed the live hook or SSE path', () => {
+    const src = readFileSync(path.join(dist, 'loader.min.js'), 'utf-8');
+    expect(src).not.toContain('stagepass.live.v1');
+    expect(src).not.toContain('__stagepass/live');
+  });
+
+  it('without a session: no extra script requests beyond the loader itself', async () => {
+    vi.resetModules();
+    await import('../index.js');
+    expect(document.querySelectorAll('script').length).toBe(0);
+    expect((window as any).stagepass[LIVE]).toBeUndefined();
+  });
+
+  it('core alone does not define the live hook or request live.min.js', async () => {
+    localStorage.setItem(SESSION_KEY, serializeSession(createSession('demo.sp')));
+    vi.resetModules();
+    await import('../index.js');
+    expect((window as any).stagepass[LIVE]).toBeUndefined();
+    expect(document.querySelector('script[src*="live.min.js"]')).toBeNull();
+    expect(document.querySelector('script[src*="flag.min.js"]')).toBeTruthy();
+  });
+
+  it('flag chunk defines the live hook and appends live.min.js during a swap session', async () => {
+    localStorage.setItem(SESSION_KEY, serializeSession(createSession('demo.sp')));
+    const loader = document.createElement('script');
+    loader.src = 'https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js';
+    document.head.appendChild(loader);
+    vi.resetModules();
+    await import('../index.js');
+    await import('../flag-entry.js');
+    expect(typeof (window as any).stagepass[LIVE]).toBe('function');
+    const live = document.querySelector('script[src*="live.min.js"]') as HTMLScriptElement;
+    expect(live).toBeTruthy();
+    expect(live.src).toBe('https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/live.min.js');
+    expect(live.async).toBe(true);
+  });
+
+  it('debug session: flag chunk does not load live.min.js', async () => {
+    localStorage.setItem(SESSION_KEY, serializeSession(createSession('debug')));
+    vi.resetModules();
+    await import('../index.js');
+    await import('../flag-entry.js');
+    expect((window as any).stagepass[LIVE]).toBeUndefined();
+    expect(document.querySelector('script[src*="live.min.js"]')).toBeNull();
   });
 });

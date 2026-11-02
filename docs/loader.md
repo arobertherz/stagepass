@@ -163,7 +163,7 @@ Opt-in so production visitors load normal `src` / `href` tags (and optional SRI)
 
 **Limitations**
 
-* The loader must appear synchronously before tagged assets. If a script is already executing when seen, Stagepass warns and skips the rewrite.
+* The loader must appear synchronously before tagged assets. If a script is already executing when seen, Stagepass skips the rewrite silently.
 * Firefox may remove `beforescriptexecute` in a future release; watch release notes if you rely on live-src there.
 * Mixed pages can keep legacy `data-src` tags alongside live-src tags; both work when the opt-in is on.
 
@@ -199,7 +199,7 @@ sp.vars.client      // object - Client runtime info (theme/browser/os/device/vie
 
 Optional loader attributes: `data-stagepass-staging-hosts`, `data-stagepass-alias` (custom global when free), `data-stagepass-live-src="true"` (zero-cost mode).
 
-`sp` and `stagepass` are always assigned (2.x compatibility). Prefer the flat helpers below for new code. In `?stagepass=debug`, reading `sp.vars` once logs a one-time hint: prefer `sp.env()` / `is()` / `can()` / `client()` / `on()` over reading `sp.vars` directly. `vars` stays frozen. Client detection stays eager (2.0.0 behaviour).
+`sp` and `stagepass` are always assigned (2.x compatibility). Prefer the flat helpers below for new code. In `?stagepass=debug`, after the flag chunk has loaded, reading `sp.vars` once logs a one-time hint: prefer `sp.env()` / `is()` / `can()` / `client()` / `on()` over reading `sp.vars` directly. Reads before the flag chunk loads simply do not hint. `vars` stays frozen. Client detection stays eager (2.0.0 behaviour).
 
 ### Flat helpers
 
@@ -272,7 +272,7 @@ sp.error('This is an error');
 
 `sp.log` automatically prefixes messages with a timestamp and (if available) the calling file and line, e.g. `[🎫 11:58:02 | app.js:830]`. Logging is only active when a Stagepass session is enabled; otherwise the helper functions are effectively no-ops. The deprecated globals `splog` / `spwarn` / `sperror` were **removed in v2**.
 
-With an active session or debug mode, the loader warns when two tagged assets resolve to the same local filename without `data-stagepass-path`.
+With an active session or debug mode, after the flag chunk loads, the loader warns when two tagged assets resolve to the same local filename without `data-stagepass-path`.
 
 ## Security Architecture
 
@@ -290,4 +290,4 @@ More CLI security notes: [`packages/cli/README.md`](../packages/cli/README.md).
 
 ## Dev chunks
 
-While a **swap** session is active, the loader loads `flag.min.js` and `live.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. See [dev.md](./dev.md) for live reload behaviour.
+While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), the flag chunk then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. See [dev.md](./dev.md) for live reload behaviour.
