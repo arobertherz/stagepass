@@ -46,9 +46,9 @@ Open `https://your-site/?stagepass=demo.sp`. Details: [docs/getting-started.md](
 
 | Guide | Contents |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Install, first project, sessions |
-| [CLI](docs/cli.md) | Commands and flags |
-| [Loader](docs/loader.md) | Attributes, API, version pinning |
+| [Getting started](docs/getting-started.md) | Problem, solution, features, install, quick start |
+| [CLI](docs/cli.md) | Commands, flags, AGENTS.md templates |
+| [Loader](docs/loader.md) | Version pinning, attributes, Runtime API, security |
 | [Modules](docs/modules.md) | inject, cookies, maintenance |
 | [Live reload](docs/dev.md) | `stagepass dev` (no Vite) |
 | [Migration](docs/migration.md) | 1.x → 2.x ([full guide](MIGRATION.md)) |
