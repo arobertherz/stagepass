@@ -438,6 +438,39 @@ declare const __STAGEPASS_VERSION__: string;
       s.async = true;
       s.onerror = () => spWarn('Stagepass flag could not be loaded: ' + s.src);
       (d.head || d.documentElement).appendChild(s);
+
+      // Live reload: same folder as the flag, only during a swap session (not debug).
+      // Always probe while swapping; EventSource closes on first error when `stagepass dev` is off.
+      // Keeps the core small (no new URL param); the chunk is lazy and never loads without a session.
+      if (swap && dom) {
+        const LIVE = Symbol.for('stagepass.live.v1');
+        const liveUrl = 'https://' + dom + '/__stagepass/live';
+        const localBase = 'https://' + dom;
+        Object.defineProperty(stagepassObj, LIVE, {
+          configurable: true,
+          value: (start: (opts: {
+            url: string;
+            localBase: string;
+            debug?: boolean;
+            log?: (...a: unknown[]) => void;
+          }) => void) => {
+            delete stagepassObj[LIVE];
+            try {
+              start({
+                url: liveUrl,
+                localBase,
+                debug,
+                log: (...a: unknown[]) => spLog(...a),
+              });
+            } catch (_) {}
+          },
+        });
+        const live = d.createElement('script');
+        live.src = base + 'live.min.js';
+        live.async = true;
+        // Silent onerror: missing chunk or offline CDN must not spam production consoles
+        (d.head || d.documentElement).appendChild(live);
+      }
     } catch (_) {}
   }
 

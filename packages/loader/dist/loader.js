@@ -322,6 +322,7 @@ var Stagepass = (() => {
     const loaderVersionAttr = attr("version");
     const stagingHosts = parseStagingHosts(attr("staging-hosts"));
     const aliasName = attr("alias");
+    const liveSrc = attr("live-src") === "true";
     const p = new URLSearchParams(loc.search);
     let hasActiveSession = false;
     const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION };
@@ -520,7 +521,7 @@ var Stagepass = (() => {
     });
     const stagepassObj = W.stagepass || {};
     const registry = createModuleRegistry(PKG_VERSION, spWarn);
-    stagepassObj.vars = Object.freeze({
+    const varsFrozen = Object.freeze({
       isLocal,
       env,
       domain: dom || hostname,
@@ -528,10 +529,22 @@ var Stagepass = (() => {
       version: PKG_VERSION,
       client: clientInfo
     });
+    let varsHinted = false;
+    Object.defineProperty(stagepassObj, "vars", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        if (debug && !varsHinted) {
+          varsHinted = true;
+          spWarn("Prefer sp.env()/is()/can()/client()/on() over reading sp.vars directly.");
+        }
+        return varsFrozen;
+      }
+    });
     stagepassObj.log = spLog;
     stagepassObj.warn = spWarn;
     stagepassObj.error = spError;
-    stagepassObj.resolveLocalUrl = (relativePath) => swap && dom && relativePath ? buildLocalAssetUrl(dom, relativePath, stagepassObj.vars.timestamp || Date.now()) : "";
+    stagepassObj.resolveLocalUrl = (relativePath) => swap && dom && relativePath ? buildLocalAssetUrl(dom, relativePath, varsFrozen.timestamp || Date.now()) : "";
     stagepassObj.env = () => detectRuntimeEnv(hostname, dom, stagingHosts);
     stagepassObj.is = (name) => stagepassObj.env() === name;
     stagepassObj.can = (capability) => canCapability(clientInfo, capability);
@@ -623,6 +636,30 @@ var Stagepass = (() => {
         s.async = true;
         s.onerror = () => spWarn("Stagepass flag could not be loaded: " + s.src);
         (d.head || d.documentElement).appendChild(s);
+        if (swap && dom) {
+          const LIVE = /* @__PURE__ */ Symbol.for("stagepass.live.v1");
+          const liveUrl = "https://" + dom + "/__stagepass/live";
+          const localBase = "https://" + dom;
+          Object.defineProperty(stagepassObj, LIVE, {
+            configurable: true,
+            value: (start) => {
+              delete stagepassObj[LIVE];
+              try {
+                start({
+                  url: liveUrl,
+                  localBase,
+                  debug,
+                  log: (...a) => spLog(...a)
+                });
+              } catch (_) {
+              }
+            }
+          });
+          const live = d.createElement("script");
+          live.src = base + "live.min.js";
+          live.async = true;
+          (d.head || d.documentElement).appendChild(live);
+        }
       } catch (_) {
       }
     }
@@ -680,24 +717,105 @@ var Stagepass = (() => {
       "data-stagepass-cachebust",
       "data-stagepass-v"
     ];
+    const DUP = 'Multiple assets resolve to local file "%s" without data-stagepass-path. Set unique paths to avoid collisions.';
+    function noteDup(lp, explicit, seen) {
+      if (!swap || !lp || explicit || !hasActiveSession) return;
+      const n = (seen.get(lp) || 0) + 1;
+      seen.set(lp, n);
+      if (n === 2) spWarn(DUP.replace("%s", lp));
+    }
+    const LIVE_SEL = 'script[data-stagepass]:not([data-stagepass-processed]),link[rel="stylesheet"][data-stagepass]:not([data-stagepass-processed])';
+    function isLiveAsset(el) {
+      var _a;
+      if (!((_a = el == null ? void 0 : el.hasAttribute) == null ? void 0 : _a.call(el, "data-stagepass")) || el.hasAttribute("data-stagepass-processed")) return false;
+      const t = el.tagName;
+      if (t === "SCRIPT") return el.hasAttribute("src") && !el.hasAttribute("data-src");
+      return t === "LINK" && (el.getAttribute("rel") || "").toLowerCase() === "stylesheet" && el.hasAttribute("href") && !el.hasAttribute("data-href");
+    }
+    const ff = "onbeforescriptexecute" in d;
+    function rewriteLive(el, seen) {
+      try {
+        if (!swap || !dom || !isLiveAsset(el)) return;
+        const js = el.tagName === "SCRIPT";
+        if (js && ff) return;
+        if (js && d.currentScript === el) {
+          spWarn("Live-src script already executing; put the loader sync in <head> before tagged assets.");
+          return;
+        }
+        const ps = el.getAttribute(js ? "src" : "href");
+        if (!ps) return;
+        el.setAttribute("data-stagepass-processed", "true");
+        let lp = el.getAttribute("data-stagepass-path");
+        const ex = !!lp;
+        if (!lp) lp = extractLocalFilename(ps);
+        noteDup(lp || "", ex, seen);
+        if (!lp) return;
+        const url = buildLocalAssetUrl(dom, lp, now);
+        el.removeAttribute("integrity");
+        if (!el.hasAttribute("crossorigin")) el.setAttribute("crossorigin", "anonymous");
+        if (js) el.src = url;
+        else el.href = url;
+        track(el, ps, url, js, null);
+      } catch (_) {
+      }
+    }
+    function scanLive(root, seen) {
+      var _a;
+      if (root.nodeType === 1 && isLiveAsset(root)) rewriteLive(root, seen);
+      try {
+        (_a = root.querySelectorAll) == null ? void 0 : _a.call(root, LIVE_SEL).forEach((el) => rewriteLive(el, seen));
+      } catch (_) {
+      }
+    }
+    const liveSeen = /* @__PURE__ */ new Map();
+    if (swap && liveSrc) {
+      try {
+        new MutationObserver((ms) => {
+          for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) scanLive(n, liveSeen);
+        }).observe(d.documentElement, { childList: true, subtree: true });
+        d.addEventListener(
+          "beforescriptexecute",
+          (e) => {
+            const el = e.target;
+            if (!el || el.tagName !== "SCRIPT" || !dom) return;
+            if (!el.hasAttribute("data-stagepass") || el.hasAttribute("data-src")) return;
+            const ps = el.getAttribute("src");
+            if (!ps || ps.indexOf("https://" + dom + "/") === 0) return;
+            e.preventDefault();
+            let lp = el.getAttribute("data-stagepass-path");
+            const ex = !!lp;
+            if (!lp) lp = extractLocalFilename(ps);
+            noteDup(lp || "", ex, liveSeen);
+            if (!lp) return;
+            el.setAttribute("data-stagepass-processed", "true");
+            const url = buildLocalAssetUrl(dom, lp, now);
+            const n = d.createElement("script");
+            n.src = url;
+            n.setAttribute("data-stagepass-processed", "true");
+            n.crossOrigin = el.getAttribute("crossorigin") || "anonymous";
+            applyScriptLoadOrder(n, el);
+            if (el.parentNode) {
+              el.parentNode.insertBefore(n, el);
+              el.remove();
+            }
+            track(n, ps, url, true, null);
+          },
+          true
+        );
+        scanLive(d, liveSeen);
+      } catch (_) {
+      }
+    }
     function swapEl(sel, srcAttr, type, seen) {
       d.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
         try {
-          el.setAttribute("data-stagepass-processed", "true");
           let lp = el.getAttribute("data-stagepass-path");
           const hadExplicitPath = !!lp;
           const ps = el.getAttribute(srcAttr);
           if (!ps) return;
+          el.setAttribute("data-stagepass-processed", "true");
           if (!lp && swap && dom) lp = extractLocalFilename(ps);
-          if (swap && lp && !hadExplicitPath && hasActiveSession) {
-            const count = (seen.get(lp) || 0) + 1;
-            seen.set(lp, count);
-            if (count === 2) {
-              spWarn(
-                `Multiple assets resolve to local file "${lp}" without data-stagepass-path. Set unique paths to avoid collisions.`
-              );
-            }
-          }
+          noteDup(lp || "", hadExplicitPath, seen);
           const url = resolveAssetUrl(el, ps, lp);
           if (!url) return;
           const local = swap && lp && dom;
@@ -715,6 +833,7 @@ var Stagepass = (() => {
                 n2.setAttribute(a.name, a.value);
               }
             }
+            if (local) n2.removeAttribute("integrity");
             if (isScript) applyScriptLoadOrder(n2, el);
             if (local) track(n2, ps, url, isScript, cors ? make : null);
             return n2;
@@ -735,6 +854,7 @@ var Stagepass = (() => {
         const seen = /* @__PURE__ */ new Map();
         swapEl("script[data-stagepass]", "data-src", "script", seen);
         swapEl('link[rel="stylesheet"][data-stagepass]', "data-href", "link", seen);
+        if (swap && liveSrc) scanLive(d, liveSeen);
         if (renderFlag) renderFlag();
       } catch (_) {
       }

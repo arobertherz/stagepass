@@ -2,9 +2,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import { getProjectsPath } from './paths.js';
 import { validateOriginList } from './origins.js';
+import { isPidAlive, isValidDevPort, normalizeDevPort } from './dev-port.js';
 
 /**
- * Per-project CORS / PHP settings stored in ~/.stagepass/projects.json
+ * Per-project CORS / PHP / live-reload settings stored in ~/.stagepass/projects.json
  *
  * Shape:
  * {
@@ -14,12 +15,15 @@ import { validateOriginList } from './origins.js';
  *       "root": "/absolute/path",
  *       "origins": ["example.com", "*.example.org"],
  *       "allowAllOrigins": false,
- *       "php": true
+ *       "php": true,
+ *       "devPort": 34567,
+ *       "devPid": 12345
  *     }
  *   }
  * }
  *
  * `php` is optional: missing means PHP on (legacy linked projects keep php_fastcgi).
+ * `devPort` / `devPid` are set only while `stagepass dev` is running for that project.
  */
 
 const DEFAULT_DOC = { version: 1, projects: {} };
@@ -60,13 +64,99 @@ export async function saveProjects(doc, filePath = getProjectsPath()) {
 
 /**
  * @param {string} domain
- * @returns {Promise<{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean }|null>}
+ * @returns {Promise<{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean, devPort?: number, devPid?: number }|null>}
  */
 export async function getProject(domain, filePath = getProjectsPath()) {
   const doc = await loadProjects(filePath);
   const entry = doc.projects[domain];
   if (!entry) return null;
   return normalizeProjectEntry(entry);
+}
+
+/**
+ * Find a linked project whose root matches cwd (realpath when possible).
+ * @param {string} cwd
+ * @param {string} [filePath]
+ * @returns {Promise<{ domain: string, project: ReturnType<typeof normalizeProjectEntry> }|null>}
+ */
+export async function findProjectByRoot(cwd, filePath = getProjectsPath()) {
+  const doc = await loadProjects(filePath);
+  let target;
+  try {
+    target = fs.realpathSync(path.resolve(cwd));
+  } catch {
+    target = path.resolve(cwd);
+  }
+  for (const [domain, raw] of Object.entries(doc.projects || {})) {
+    if (!raw || typeof raw.root !== 'string') continue;
+    let root;
+    try {
+      root = fs.realpathSync(path.resolve(raw.root));
+    } catch {
+      root = path.resolve(raw.root);
+    }
+    if (root === target) {
+      return { domain, project: normalizeProjectEntry(raw) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Persist live-reload port/pid for a domain (or clear when port is null).
+ * @param {string} domain
+ * @param {{ port: number|null, pid?: number|null }} update
+ * @param {string} [filePath]
+ */
+export async function setProjectDevPort(domain, update, filePath = getProjectsPath()) {
+  const doc = await loadProjects(filePath);
+  const existing = doc.projects[domain];
+  if (!existing) {
+    throw new Error(`No projects.json entry for ${domain}. Run stagepass link first.`);
+  }
+  const next = { ...existing };
+  if (update.port == null) {
+    delete next.devPort;
+    delete next.devPid;
+  } else {
+    if (!isValidDevPort(update.port)) {
+      throw new Error(`Invalid devPort ${String(update.port)} (must be an integer 1024..65535).`);
+    }
+    next.devPort = update.port;
+    if (typeof update.pid === 'number' && Number.isInteger(update.pid) && update.pid > 0) {
+      next.devPid = update.pid;
+    } else {
+      delete next.devPid;
+    }
+  }
+  doc.projects[domain] = next;
+  await saveProjects(doc, filePath);
+  return normalizeProjectEntry(next);
+}
+
+/**
+ * Drop stale devPort/devPid when the recorded PID is dead.
+ * @param {string} [filePath]
+ * @returns {Promise<string[]>} domains that were cleaned
+ */
+export async function clearStaleDevPorts(filePath = getProjectsPath()) {
+  const doc = await loadProjects(filePath);
+  const cleaned = [];
+  let changed = false;
+  for (const [domain, raw] of Object.entries(doc.projects || {})) {
+    if (!raw || (raw.devPort == null && raw.devPid == null)) continue;
+    const port = normalizeDevPort(raw.devPort);
+    const pid = raw.devPid;
+    const alive = isPidAlive(pid);
+    if (!port || !alive) {
+      delete raw.devPort;
+      delete raw.devPid;
+      cleaned.push(domain);
+      changed = true;
+    }
+  }
+  if (changed) await saveProjects(doc, filePath);
+  return cleaned;
 }
 
 /**
@@ -142,6 +232,16 @@ export async function upsertProject(domain, update, filePath = getProjectsPath()
   if (php === true || php === false) {
     next.php = php;
   }
+  // Preserve live-reload fields across link/upsert unless explicitly cleared elsewhere.
+  const prevDevPort = normalizeDevPort(existing.devPort);
+  if (prevDevPort) next.devPort = prevDevPort;
+  if (
+    typeof existing.devPid === 'number' &&
+    Number.isInteger(existing.devPid) &&
+    existing.devPid > 0
+  ) {
+    next.devPid = existing.devPid;
+  }
 
   doc.projects[domain] = next;
 
@@ -188,7 +288,7 @@ export async function removeProject(domain, filePath = getProjectsPath()) {
 
 function normalizeProjectEntry(entry) {
   const originsResult = validateOriginList(entry.origins || []);
-  /** @type {{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean }} */
+  /** @type {{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean, devPort?: number, devPid?: number }} */
   const out = {
     root: entry.root,
     origins: originsResult.ok ? originsResult.origins : [],
@@ -196,5 +296,14 @@ function normalizeProjectEntry(entry) {
   };
   if (entry.php === true) out.php = true;
   if (entry.php === false) out.php = false;
+  const devPort = normalizeDevPort(entry.devPort);
+  if (devPort) out.devPort = devPort;
+  if (
+    typeof entry.devPid === 'number' &&
+    Number.isInteger(entry.devPid) &&
+    entry.devPid > 0
+  ) {
+    out.devPid = entry.devPid;
+  }
   return out;
 }

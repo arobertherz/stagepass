@@ -1,6 +1,7 @@
 import { escapeRegExp } from './domain.js';
 import { escapeCaddyQuotedString, validateRoot } from './paths.js';
 import { buildOriginAllowlistRegex, validateOriginList } from './origins.js';
+import { isValidDevPort, normalizeDevPort } from './dev-port.js';
 
 /** Marker written inside every Stagepass-managed site block. */
 export const BLOCK_VERSION = 'v2';
@@ -24,6 +25,7 @@ export const SENSITIVE_BLOCK_DOCS = Object.freeze({
  * @property {boolean} [allowAllOrigins]
  * @property {string[]} [origins]
  * @property {boolean} [php] When false, omit php_fastcgi. Missing/undefined keeps PHP on (2.x backcompat).
+ * @property {number|null|undefined} [devPort] Live-reload SSE reverse_proxy port (1024..65535), only while `stagepass dev` runs.
  */
 
 /**
@@ -55,9 +57,15 @@ export function renderSiteBlock(domain, root, options = {}) {
   }
   const origins = originsResult.origins;
   const php = isPhpEnabled(options.php);
+  const devPort = normalizeDevPort(options.devPort);
+  if (options.devPort != null && options.devPort !== '' && !devPort) {
+    throw new Error(
+      `Invalid devPort ${String(options.devPort)} (must be an integer 1024..65535).`
+    );
+  }
 
   const quotedRoot = `"${escapeCaddyQuotedString(rootResult.path)}"`;
-  const optionsComment = formatOptionsComment({ allowAllOrigins, origins, php });
+  const optionsComment = formatOptionsComment({ allowAllOrigins, origins, php, devPort });
 
   const lines = [
     `# START: ${domain}`,
@@ -80,6 +88,11 @@ export function renderSiteBlock(domain, root, options = {}) {
     lines.push(...allowlistCorsLines(origins));
   }
 
+  // Live-reload SSE must be before file_server so the path is not served from disk.
+  if (devPort && isValidDevPort(devPort)) {
+    lines.push(...liveReloadHandleLines(devPort, allowAllOrigins));
+  }
+
   lines.push('', '    handle {', `        root * ${quotedRoot}`);
   if (php) {
     lines.push('        php_fastcgi 127.0.0.1:9000');
@@ -100,7 +113,7 @@ export function renderSiteBlock(domain, root, options = {}) {
   return lines.join('\n');
 }
 
-function formatOptionsComment({ allowAllOrigins, origins, php }) {
+function formatOptionsComment({ allowAllOrigins, origins, php, devPort }) {
   const parts = [
     `allowAllOrigins=${allowAllOrigins ? 'true' : 'false'}`,
     `php=${php ? 'true' : 'false'}`,
@@ -108,7 +121,35 @@ function formatOptionsComment({ allowAllOrigins, origins, php }) {
   if (origins.length > 0) {
     parts.push(`origins=${origins.join(',')}`);
   }
+  if (devPort && isValidDevPort(devPort)) {
+    parts.push(`devPort=${devPort}`);
+  }
   return `# stagepass-options: ${parts.join(' ')}`;
+}
+
+/**
+ * reverse_proxy for /__stagepass/live with the same CORS / LNA policy as assets.
+ * Port is validated before call; still interpolated only as a decimal integer.
+ * @param {number} port
+ * @param {boolean} allowAllOrigins
+ */
+function liveReloadHandleLines(port, allowAllOrigins) {
+  const lines = [
+    '    handle /__stagepass/live {',
+    '        reverse_proxy 127.0.0.1:' + String(port) + ' {',
+    '            flush_interval -1',
+    '        }',
+  ];
+  if (allowAllOrigins) {
+    lines.push('        header Access-Control-Allow-Origin *');
+  } else {
+    lines.push(
+      '        header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"',
+      '        header @cors_origin Vary Origin'
+    );
+  }
+  lines.push('    }', '');
+  return lines;
 }
 
 function allowAllCorsLines() {
@@ -182,12 +223,12 @@ export function parseBlocks(content) {
  * @param {string} blockText
  */
 export function parseOptionsFromBlock(blockText) {
-  const defaults = { allowAllOrigins: false, origins: [], php: undefined };
+  const defaults = { allowAllOrigins: false, origins: [], php: undefined, devPort: undefined };
   const line = blockText.match(/^# stagepass-options:\s*(.+)$/m);
   if (!line) {
     if (!/# stagepass-block:/m.test(blockText)) {
       // Legacy pre-marker blocks always had PHP.
-      return { allowAllOrigins: true, origins: [], php: true };
+      return { allowAllOrigins: true, origins: [], php: true, devPort: undefined };
     }
     return defaults;
   }
@@ -203,7 +244,9 @@ export function parseOptionsFromBlock(blockText) {
     const list = validateOriginList(originsMatch[1].split(',').filter(Boolean));
     origins = list.ok ? list.origins : [];
   }
-  return { allowAllOrigins, origins, php };
+  const devPortMatch = text.match(/(?:^|\s)devPort=(\d+)(?:\s|$)/);
+  const devPort = devPortMatch ? normalizeDevPort(Number(devPortMatch[1])) : undefined;
+  return { allowAllOrigins, origins, php, devPort: devPort || undefined };
 }
 
 /**

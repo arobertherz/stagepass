@@ -26,12 +26,28 @@ function read(file: string): Buffer {
   return fs.readFileSync(file);
 }
 
+export type LiveSseMode = 'css' | 'reload' | 'hang' | 'none';
+
+export type InstallRoutesOptions = {
+  /** What /__stagepass/live should return while a session is active. Default: hang (open comment only). */
+  liveSse?: LiveSseMode;
+};
+
 /**
  * Intercept all requests and fulfill from fixtures / built loader dist.
  * No real network. Page origin is https://site.test/
  */
-export async function installRoutes(page: Page): Promise<{ requests: string[] }> {
+export async function installRoutes(
+  page: Page,
+  opts: InstallRoutesOptions = {}
+): Promise<{ requests: string[]; setLiveSse: (mode: LiveSseMode) => void }> {
   const requests: string[] = [];
+  let liveSse: LiveSseMode = opts.liveSse ?? 'hang';
+  let reloadEventsSent = 0;
+  const setLiveSse = (mode: LiveSseMode) => {
+    liveSse = mode;
+    if (mode !== 'reload') reloadEventsSent = 0;
+  };
 
   await page.route('**/*', async (route: Route) => {
     const req = route.request();
@@ -40,7 +56,7 @@ export async function installRoutes(page: Page): Promise<{ requests: string[] }>
 
     const cors = { 'Access-Control-Allow-Origin': '*' };
 
-    // Loader + flag chunks (any host; path ends with the file name)
+    // Loader + flag / live chunks (any host; path ends with the file name)
     const base = path.basename(url.pathname);
     if (base === 'loader.min.js' || base === 'loader.js') {
       const file = path.join(LOADER_DIST, base === 'loader.js' ? 'loader.js' : 'loader.min.js');
@@ -51,8 +67,11 @@ export async function installRoutes(page: Page): Promise<{ requests: string[] }>
         body: read(file),
       });
     }
-    if (base === 'flag.min.js' || base === 'flag-card.min.js') {
+    if (base === 'flag.min.js' || base === 'flag-card.min.js' || base === 'live.min.js') {
       const file = path.join(LOADER_DIST, base);
+      if (!fs.existsSync(file)) {
+        return route.fulfill({ status: 404, headers: cors, body: 'missing chunk' });
+      }
       return route.fulfill({
         status: 200,
         contentType: mime(file),
@@ -61,8 +80,47 @@ export async function installRoutes(page: Page): Promise<{ requests: string[] }>
       });
     }
 
-    // Local .sp assets
+    // Local .sp assets + live-reload SSE
     if (url.hostname.endsWith('.sp')) {
+      if (url.pathname === '/__stagepass/live') {
+        if (liveSse === 'none') {
+          return route.fulfill({ status: 404, headers: cors, body: 'off' });
+        }
+        const headers = {
+          ...cors,
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        };
+        if (liveSse === 'hang') {
+          return route.fulfill({
+            status: 200,
+            headers,
+            body: ': connected\n\n',
+          });
+        }
+        if (liveSse === 'reload') {
+          // Only one reload event so the page does not loop after location.reload().
+          if (reloadEventsSent > 0) {
+            return route.fulfill({
+              status: 200,
+              headers,
+              body: ': connected\n\n',
+            });
+          }
+          reloadEventsSent += 1;
+          return route.fulfill({
+            status: 200,
+            headers,
+            body: `: connected\n\ndata: ${JSON.stringify({ type: 'reload', paths: ['/a.js'] })}\n\n`,
+          });
+        }
+        return route.fulfill({
+          status: 200,
+          headers,
+          body: `: connected\n\ndata: ${JSON.stringify({ type: 'css', paths: ['/main.css'] })}\n\n`,
+        });
+      }
       const name = path.basename(url.pathname);
       const local = path.join(FIX, 'local', name);
       if (fs.existsSync(local)) {
@@ -103,7 +161,7 @@ export async function installRoutes(page: Page): Promise<{ requests: string[] }>
     return route.fulfill({ status: 404, body: `unmocked ${url.href}` });
   });
 
-  return { requests };
+  return { requests, setLiveSse };
 }
 
 export async function gotoPage(

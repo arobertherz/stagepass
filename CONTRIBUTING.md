@@ -13,42 +13,49 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for more detail.
 
 ## Docker test recipe
 
-Host `node_modules` may be platform-native. Run installs, builds, and tests inside Docker:
+Host `node_modules` may be platform-native. Run installs, builds, and tests inside Docker. Anonymous volumes keep container-built modules off the host:
 
 ```bash
 docker run --rm -v "$PWD":/w \
   -v /w/node_modules -v /w/packages/cli/node_modules \
   -v /w/packages/loader/node_modules -v /w/packages/modules/node_modules \
-  -w /w node:22-bookworm-slim bash -lc \
-  'npm ci && npm run build && npm test --workspaces --if-present'
+  -w /w node:22 bash -lc \
+  'npm ci && npm run build && npm test --workspaces --if-present && node scripts/test-cli-packed.mjs'
 ```
 
-Also verify on Node 24 (`node:24-bookworm-slim`) to match CI. Development and CI use Node 22 or 24; do not change published `engines` fields (CLI stays `>=18.0.0`) without a deliberate compatibility decision. If you change `package-lock.json`, generate it inside Docker and commit it.
+Also verify on Node 24 (`node:24` with the same volume flags) to match CI. Development and CI use Node 22 or 24; do not change published `engines` fields without a deliberate compatibility decision. If you change `package-lock.json`, generate it inside Docker and commit it.
+
+After a loader/modules build that rewrites `dist/`, restore committed artifacts unless you intend to ship them:
+
+```bash
+git checkout -- packages/loader/dist packages/modules/dist
+```
 
 ## Browser E2E (Playwright)
 
-Headless tests live under `e2e/` (own `package.json`, not part of the npm workspaces). They serve fixture pages via Playwright routing (no real network) and cover zero-cost live-src, legacy `data-src`, and flag chunk resolution. Run inside the Playwright Docker image (Chromium, Firefox, and WebKit):
+Headless tests live under `e2e/` (own `package.json`, not part of the npm workspaces). They serve fixture pages via Playwright routing (no real network) and cover zero-cost live-src, legacy `data-src`, flag chunks, and live-reload CSS/JS behaviour.
+
+**Local (all browsers):** use the Playwright Docker image with Chromium, Firefox, and WebKit:
 
 ```bash
-docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
-  'npm ci && npm run build && cd e2e && npm ci && npm run e2e'
+docker run --rm --ipc=host -v "$PWD":/w \
+  -v /w/node_modules -v /w/packages/cli/node_modules \
+  -v /w/packages/loader/node_modules -v /w/packages/modules/node_modules \
+  -v /w/e2e/node_modules \
+  -w /w mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
+  'npm ci && npm run build && cd e2e && npm ci && npx playwright test'
 ```
 
-Or, if dependencies and `packages/loader/dist` are already built:
+**CI:** the `e2e` job on the self-hosted `cerebro` runner installs Chromium only (`npx playwright install --with-deps chromium`) and runs `npx playwright test --project=chromium`. Firefox and WebKit stay for the local Docker run above. The runner has no Docker socket, so CI does not use the Playwright image.
 
-```bash
-docker run --rm -v "$PWD":/w -w /w/e2e mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
-  'npm ci && npm run e2e'
-```
-
-These E2E tests are not wired into GitHub Actions yet.
+A full HTTPS page on a real `.sp` domain (Caddy + trusted local CA) is not covered in CI; the routed fixture suite covers loader behaviour instead. Validate `.sp` TLS manually on a Mac when changing Caddy or certs.
 
 ## Commit style
 
-- Prefer small, logical commits.
-- Use concise messages that explain **why** (e.g. `fix(cli): …`, `docs: …`, `chore: …`).
-- Do not commit secrets, tokens, or local machine paths.
-- Do not push tags or publish to npm unless you are a maintainer following [RELEASING.md](RELEASING.md).
+* Prefer small, logical commits.
+* Use concise messages that explain **why** (e.g. `fix(cli): …`, `docs: …`, `chore: …`).
+* Do not commit secrets, tokens, or local machine paths.
+* Do not push tags or publish to npm unless you are a maintainer following [RELEASING.md](RELEASING.md).
 
 ## Releasing
 
@@ -58,7 +65,7 @@ Maintainers only. See **[RELEASING.md](RELEASING.md)**: every release starts as 
 
 1. Branch from the relevant release/development branch.
 2. Keep changes focused; update docs/tests when behaviour changes.
-3. Ensure the Docker test recipe passes on Node 22 and 24.
+3. Ensure the Docker test recipe passes on Node 22 and 24, and Chromium E2E (or the full Playwright Docker run) is green.
 4. Describe what changed and how you verified it.
 
 ## Security

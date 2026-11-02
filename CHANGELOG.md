@@ -24,12 +24,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - `stagepass new`: interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY). Optional `link` at the end (`--link` or interactive ask, macOS only).
 - Generated projects: `npm run dev` aliases `watch`; `scripts/build.mjs` writes SRI `integrity` (sha384) per file in `dist/manifest.json`.
 - `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
+- `stagepass dev` (#11): project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (no Vite). Caddy `reverse_proxy` with `flush_interval -1`, same CORS / LNA policy as assets; `devPort` stored in `projects.json` only while running and cleared when the PID is dead.
 
 ### `@stagepass/loader`
 
 - Opt-in **zero-cost production mode** via `data-stagepass-live-src="true"` on the loader tag: tagged assets keep a normal `src` / `href` (optional `integrity`); without a session the loader does not touch them; with an active swap session they are rewritten to the local `.sp` URL before classic scripts run (MutationObserver; Firefox uses `beforescriptexecute`). Legacy `data-src` / `data-href` is unchanged and remains the default.
 - One-time debug hint when reading `sp.vars` in `?stagepass=debug`, pointing at the flat helpers. `vars` stays frozen. Client detection stays eager (2.0.0 behaviour).
 - `sp` and `stagepass` remain always assigned (2.x compatibility; custom `data-stagepass-alias` still only when free).
+- Lazy `live.min.js` chunk (#11): during an active swap session the loader opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; closes after the first error when `stagepass dev` is not running. Never loaded without a session.
 
 ### `@stagepass/modules`
 
@@ -39,7 +41,8 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 ### Repo
 
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does.
-- Headless Playwright E2E under `e2e/` (Chromium, Firefox, WebKit; not wired into CI yet).
+- Docs split under `docs/` (#11): getting started, CLI, loader, modules, migration pointer, troubleshooting, live reload. README keeps a short intro and index.
+- Headless Playwright E2E under `e2e/` (Chromium, Firefox, WebKit locally). CI `e2e` job on `[self-hosted, cerebro]` runs Chromium only (#11).
 
 ---
 

@@ -177,9 +177,10 @@ describe('createProgram scaffold commands (commander)', () => {
     expect(captured.options.link).toBe(false);
   });
 
-  it('registers watch and build handlers', () => {
+  it('registers watch, build and dev handlers', () => {
     let watchCalled = false;
     let buildCalled = false;
+    let devCalled = false;
     const program = createProgram({
       assertPlatform: () => {},
       watch: async () => {
@@ -190,11 +191,17 @@ describe('createProgram scaffold commands (commander)', () => {
         buildCalled = true;
         return 0;
       },
+      dev: async () => {
+        devCalled = true;
+        return 0;
+      },
     });
     program.exitOverride();
     program.parse(['node', 'stagepass', 'watch']);
     program.parse(['node', 'stagepass', 'build']);
+    program.parse(['node', 'stagepass', 'dev', '-v']);
     expect(watchCalled).toBe(true);
     expect(buildCalled).toBe(true);
+    expect(devCalled).toBe(true);
   });
 });

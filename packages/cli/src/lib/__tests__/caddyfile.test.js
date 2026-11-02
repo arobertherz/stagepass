@@ -98,6 +98,47 @@ describe('renderSiteBlock', () => {
     );
     expect(block).toContain('root * "/Users/dev/Sites/My \\"Cool\\" App"');
   });
+
+  it('omits live-reload proxy without a valid devPort', () => {
+    const block = renderSiteBlock('app.sp', '/Users/dev/Sites/app', {
+      allowAllOrigins: false,
+      origins: [],
+      php: false,
+    });
+    expect(block).not.toContain('/__stagepass/live');
+    expect(block).not.toContain('reverse_proxy');
+    expect(block).not.toContain('devPort=');
+  });
+
+  it('inserts reverse_proxy for a valid devPort before file_server', () => {
+    const block = renderSiteBlock('app.sp', '/Users/dev/Sites/app', {
+      allowAllOrigins: false,
+      origins: ['example.com'],
+      php: false,
+      devPort: 34567,
+    });
+    expect(block).toContain('devPort=34567');
+    expect(block).toContain('handle /__stagepass/live');
+    expect(block).toContain('reverse_proxy 127.0.0.1:34567');
+    expect(block).toContain('flush_interval -1');
+    const liveIdx = block.indexOf('handle /__stagepass/live');
+    const fileIdx = block.indexOf('file_server');
+    expect(liveIdx).toBeGreaterThan(-1);
+    expect(fileIdx).toBeGreaterThan(liveIdx);
+    expect(block).toContain('header @cors_origin Access-Control-Allow-Origin');
+  });
+
+  it('rejects invalid devPort before writing Caddyfile text', () => {
+    expect(() =>
+      renderSiteBlock('app.sp', '/Users/dev/Sites/app', { devPort: 80 })
+    ).toThrow(/devPort/);
+    expect(() =>
+      renderSiteBlock('app.sp', '/Users/dev/Sites/app', { devPort: 70000 })
+    ).toThrow(/devPort/);
+    expect(() =>
+      renderSiteBlock('app.sp', '/Users/dev/Sites/app', { devPort: 3000.5 })
+    ).toThrow(/devPort/);
+  });
 });
 
 describe('parseBlocks / migrateLegacyContent', () => {

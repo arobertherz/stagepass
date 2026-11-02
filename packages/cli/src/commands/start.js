@@ -17,7 +17,8 @@ import { defaultExec } from '../lib/exec.js';
 import { confirm as defaultConfirm } from '../lib/prompts.js';
 import { parseLsofListenOutput } from '../lib/doctor.js';
 import { runCertsCheck, domainsNeedingSiteCertRenewal } from '../lib/certs.js';
-import { loadProjects } from '../lib/projects.js';
+import { loadProjects, clearStaleDevPorts, getProject } from '../lib/projects.js';
+import { applySiteBlock } from '../lib/apply-site-block.js';
 import {
   getAutostartStatus,
   buildLaunchctlKickstartArgs,
@@ -286,10 +287,17 @@ export async function start(options = {}) {
     console.log(chalk.green(`Port freed (${resolved.detail}).`));
   }
 
-  // 3. Migrate legacy Caddyfile blocks before boot
+  // 3. Migrate legacy Caddyfile blocks before boot; drop dead live-reload ports
   await fs.ensureDir(caddyDir);
   if (await fs.pathExists(caddyFile)) {
     await ensureCaddyfileMigrated({ caddyfilePath: caddyFile, projectsPath });
+    const stale = await clearStaleDevPorts(projectsPath);
+    for (const domain of stale) {
+      const project = await getProject(domain, projectsPath);
+      if (project) {
+        await applySiteBlock(domain, project, { caddyfilePath: caddyFile });
+      }
+    }
     await warnIfAllowAllOriginsActive({ caddyfilePath: caddyFile });
   }
 

@@ -7,6 +7,9 @@ import {
   getProject,
   ensureMigratedProject,
   loadProjects,
+  setProjectDevPort,
+  findProjectByRoot,
+  clearStaleDevPorts,
 } from '../projects.js';
 
 describe('projects', () => {
@@ -154,5 +157,29 @@ describe('projects', () => {
 
     const doc = await loadProjects(projectsPath);
     expect(doc.projects['legacy.sp'].origins).toEqual(['example.com']);
+  });
+
+  it('stores and clears devPort / finds by root / drops stale pid', async () => {
+    await upsertProject(
+      'app.sp',
+      { root: '/Users/dev/Sites/app', isNew: true },
+      projectsPath
+    );
+    await setProjectDevPort('app.sp', { port: 34567, pid: process.pid }, projectsPath);
+    const withDev = await getProject('app.sp', projectsPath);
+    expect(withDev?.devPort).toBe(34567);
+    expect(withDev?.devPid).toBe(process.pid);
+
+    const found = await findProjectByRoot('/Users/dev/Sites/app', projectsPath);
+    expect(found?.domain).toBe('app.sp');
+
+    await setProjectDevPort('app.sp', { port: 34567, pid: 999999999 }, projectsPath);
+    const cleaned = await clearStaleDevPorts(projectsPath);
+    expect(cleaned).toContain('app.sp');
+    expect((await getProject('app.sp', projectsPath))?.devPort).toBeUndefined();
+
+    await expect(
+      setProjectDevPort('app.sp', { port: 80 }, projectsPath)
+    ).rejects.toThrow(/devPort/);
   });
 });
