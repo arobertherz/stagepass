@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { defaultTemplatesRoot, scaffoldTemplateMap } from '../scaffold.js';
+import {
+  defaultTemplatesRoot,
+  scaffoldPhpTemplateMap,
+  scaffoldTemplateMap,
+} from '../scaffold.js';
 
 function walk(dir, prefix = '') {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
@@ -32,5 +36,23 @@ describe('scaffold templates', () => {
       expect(fs.existsSync(path.join(root, template)), template).toBe(true);
     }
     expect(map.map((m) => m.out)).toContain('.gitignore');
+  });
+
+  it('php templates exist when enabled', () => {
+    expect(scaffoldPhpTemplateMap({ php: false })).toEqual([]);
+    const withApi = scaffoldPhpTemplateMap({ php: true });
+    expect(withApi.map((m) => m.out)).toEqual(['api/README.md']);
+    const withExamples = scaffoldPhpTemplateMap({ php: true, phpExamples: true });
+    for (const { template } of withExamples) {
+      expect(fs.existsSync(path.join(root, template)), template).toBe(true);
+    }
+    expect(withExamples.map((m) => m.out)).toEqual(
+      expect.arrayContaining([
+        'api/README.md',
+        'examples/php/form.php',
+        'examples/php/proxy.php',
+        'examples/php/README.md',
+      ])
+    );
   });
 });

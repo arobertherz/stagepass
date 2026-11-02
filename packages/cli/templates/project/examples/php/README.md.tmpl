@@ -1,0 +1,18 @@
+# PHP examples
+
+Sample handlers for Stagepass projects with `"php": true`. Copy into `api/` (or another path under the project root) before calling them on `https://{{NAME}}.sp`.
+
+| File | Purpose |
+| :--- | :--- |
+| `form.php` | POST form handler with length limits and `htmlspecialchars` output |
+| `proxy.php` | HTTPS proxy with an exact-host allowlist (no redirect following) |
+
+## Proxy environment
+
+```bash
+export STAGEPASS_PROXY_ALLOWLIST=api.example.com
+# optional:
+export STAGEPASS_PROXY_TOKEN=...
+```
+
+Never commit tokens. Keep allowlists exact hosts only (no wildcards, https only).

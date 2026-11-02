@@ -20,20 +20,21 @@ Profile for AI coding agents and humans working on this Webflow + Stagepass proj
 5. **Review before publishing.** Read the diff for asset tags, CORS origins, and anything that touches live Webflow Custom Code.
 6. **Keep Stagepass tags intact.** Use `data-src` / `data-href` + `data-stagepass` (+ optional `data-stagepass-path`) so production users keep production URLs.
 7. **Do not commit secrets.** Keep `.env*` out of git (see `.gitignore`).
+8. **PHP (if enabled):** never hard-code secrets; read them from the environment. Keep proxy allowlists exact-host and https-only.
 
 ## Local workflow
 
 ```bash
 npm run watch
+# or: npm run dev  (alias of watch)
 stagepass start
-stagepass link {{NAME}} --origin my-project.webflow.io
+stagepass link {{NAME}}
 ```
 
-Then open `https://my-project.webflow.io/?stagepass={{NAME}}.sp`.
+`stagepass.json` stores staging as `origin` ({{STAGING_HOST}}) and optional `production`. `link` without `--origin` uses those hosts. Then open `https://{{STAGING_HOST}}/?stagepass={{NAME}}.sp`.
 
 ## Types
 
 `{{CONFIG_FILE}}` lists `types: {{TYPES_INLINE}}`, generated from `stagepass.json`. Modules that are not declared have no types, so the editor flags `sp.<module>` calls that would fail on the live site. After enabling a module (Webflow script tag + `stagepass.json`), run `stagepass upgrade`.
 
 {{STAGEPASS_BLOCK}}
-

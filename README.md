@@ -324,7 +324,7 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 | `stagepass certs renew` | Repair failing site certs; `--root` (move CA to backup); `--remove-orphans` (delete by SHA-1 after confirm). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications); never sudo. |
-| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules`; `--yes` for non-interactive). |
+| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules` / `--staging` / `--production`, `--php` / `--php-examples`, `--link`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project. |
 | `stagepass watch` | Run `npm run watch` in the current project. |
 | `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. |

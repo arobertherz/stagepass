@@ -173,7 +173,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass certs renew` - Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)
 -   `stagepass autostart on|off|status` - Login LaunchAgent (`io.github.arobertherz.stagepass`)
 -   `stagepass daemon` - Foreground helper (PHP-FPM, certs log-only, `caddy run`, notifications; never sudo)
--   `stagepass new [name]` - Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive)
+-   `stagepass new [name]` - Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP (`--php`, `--php-examples`), optional `--link`, and `npm run dev` as a watch alias.
 -   `stagepass build` / `stagepass watch` - Thin wrappers around `npm run build` / `npm run watch`
 -   `stagepass upgrade` - Bump `@stagepass/*` in the current package.json and print Webflow snippets
 -   All commands support `-v, --verbose` flag for detailed output where applicable

@@ -27,10 +27,21 @@ import {
   rangeHasPerModuleTypes,
 } from '../lib/registry.js';
 import { updateConfigTypes } from '../lib/project-sync.js';
+import { validateOriginEntry, isBroadWebflowWildcard } from '../lib/origins.js';
+import { isMacOS } from '../lib/platform.js';
+import { runDoctor } from '../lib/doctor.js';
+import { setup as defaultSetup } from './setup.js';
+import { link as defaultLink } from './link.js';
 
 const PER_MODULE_TYPES_HINT =
   '@stagepass/modules on npm has no per-module types yet (needs 2.2.0); ' +
   'types use "@stagepass/modules" for now. Run `stagepass upgrade` once it is published to narrow them.';
+
+const PRODUCTION_HINT =
+  'Production domain skipped. Add it later with: stagepass link --origin example.com';
+
+/** Core stack check ids that mean setup is likely needed. */
+const SETUP_CHECK_IDS = new Set(['homebrew', 'caddy', 'dnsmasq', 'resolver']);
 
 /**
  * Resolve a boolean flag that may appear as --foo / --no-foo.
@@ -48,6 +59,32 @@ export function resolveBoolFlag(_options, key, argv, defaultValue) {
   if (argv.includes(neg)) return false;
   if (argv.includes(pos)) return true;
   return defaultValue;
+}
+
+/**
+ * @param {string|undefined} raw
+ * @param {string} label
+ * @returns {{ ok: true, value: string } | { ok: true, value: '' } | { ok: false, error: string }}
+ */
+export function parseOriginFlag(raw, label) {
+  if (raw == null || String(raw).trim() === '') {
+    return { ok: true, value: '' };
+  }
+  const check = validateOriginEntry(String(raw));
+  if (!check.ok) {
+    return { ok: false, error: `Invalid --${label}: ${check.error}` };
+  }
+  return { ok: true, value: check.value };
+}
+
+/**
+ * @param {import('../lib/doctor.js').DoctorCheck[] | { id: string, status: string }[]} checks
+ * @returns {boolean}
+ */
+export function doctorSuggestsSetup(checks) {
+  return (checks || []).some(
+    (c) => SETUP_CHECK_IDS.has(c.id) && (c.status === 'fail' || c.status === 'warn')
+  );
 }
 
 /**
@@ -119,6 +156,12 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   let modules = resolveBoolFlag(options, 'modules', argv, undefined);
   let git = resolveBoolFlag(options, 'git', argv, undefined);
   let install = resolveBoolFlag(options, 'install', argv, undefined);
+  let php = resolveBoolFlag(options, 'php', argv, undefined);
+  let phpExamples = resolveBoolFlag(options, 'php-examples', argv, undefined);
+  if (phpExamples === undefined) {
+    phpExamples = resolveBoolFlag(options, 'phpExamples', argv, undefined);
+  }
+  let linkAtEnd = resolveBoolFlag(options, 'link', argv, undefined);
   let remote = options.remote != null ? String(options.remote).trim() : '';
   const log = deps.log || console.log;
   const detect = deps.detectSite || detectSite;
@@ -130,12 +173,49 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
     if (!parsed.ok) return { ok: false, error: parsed.error };
     siteModules = parsed.modules;
   }
+
   /** @type {string} */
   let origin = '';
-  if (options.site != null && String(options.site).trim() !== '') {
-    const check = normalizeSiteUrl(String(options.site));
+  /** @type {string} */
+  let production = '';
+  /** @type {boolean} */
+  let productionSkipped = false;
+
+  const siteFlag =
+    options.site != null && String(options.site).trim() !== ''
+      ? String(options.site).trim()
+      : '';
+  const stagingFlag =
+    options.staging != null && String(options.staging).trim() !== ''
+      ? String(options.staging).trim()
+      : '';
+
+  if (siteFlag) {
+    const check = normalizeSiteUrl(siteFlag);
     if (!check.ok) return { ok: false, error: check.error };
     origin = check.host;
+  }
+  if (stagingFlag) {
+    const check = parseOriginFlag(stagingFlag, 'staging');
+    if (!check.ok) return check;
+    if (origin && origin !== check.value) {
+      return {
+        ok: false,
+        error: `--site (${origin}) and --staging (${check.value}) disagree. Pass only one, or matching values.`,
+      };
+    }
+    origin = check.value;
+  }
+  if (options.production != null && String(options.production).trim() !== '') {
+    const check = parseOriginFlag(String(options.production), 'production');
+    if (!check.ok) return check;
+    production = check.value;
+  } else if (
+    Object.prototype.hasOwnProperty.call(options, 'production') &&
+    (options.production === '' || options.production == null) &&
+    !interactive
+  ) {
+    productionSkipped = true;
   }
 
   /**
@@ -144,8 +224,18 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
    */
   const detectFromSite = async () => {
     if (!origin) return null;
-    log(`Checking live site https://${origin}/ for Stagepass script tags...`);
-    const det = await detect(origin);
+    // Wildcards are valid CORS origins but not fetchable site hosts.
+    if (origin.startsWith('*.')) {
+      log(chalk.dim(`  Staging ${origin} is a wildcard; skipping live module detection.`));
+      return null;
+    }
+    const siteCheck = normalizeSiteUrl(origin);
+    if (!siteCheck.ok) {
+      log(chalk.dim(`  ${siteCheck.error} Skipping live module detection.`));
+      return null;
+    }
+    log(`Checking live site https://${siteCheck.host}/ for Stagepass script tags...`);
+    const det = await detect(siteCheck.host);
     log(`  ${describeDetection(det)}`);
     if (det.ok && det.loader) return det.list;
     if (det.ok) log('  The page does not load @stagepass/loader yet.');
@@ -175,15 +265,51 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
         const raw = await ask(rl, 'Styles (scss|css)', 'scss');
         styles = raw === 'css' ? 'css' : 'scss';
       }
-      if (siteModules === undefined && modules !== false) {
-        if (!origin) {
-          const raw = await ask(rl, 'Live Webflow site to check (optional, e.g. my-project.webflow.io)', '');
-          if (raw) {
-            const check = normalizeSiteUrl(raw);
-            if (check.ok) origin = check.host;
-            else log(chalk.yellow(`  ${check.error} Skipping the live check.`));
+      if (!origin) {
+        const suggested = name ? `${String(name).trim().toLowerCase()}.webflow.io` : '';
+        const raw = await ask(
+          rl,
+          'Staging domain (e.g. my-project.webflow.io)',
+          suggested
+        );
+        if (raw) {
+          const check = validateOriginEntry(raw);
+          if (check.ok) {
+            origin = check.value;
+            if (isBroadWebflowWildcard(origin)) {
+              log(
+                chalk.yellow(
+                  `  Warning: ${origin} allows any Webflow user's site (CORS). Prefer a concrete staging host.`
+                )
+              );
+            }
+          } else {
+            log(chalk.yellow(`  ${check.error} Skipping staging origin.`));
           }
         }
+      }
+      if (!production) {
+        const raw = await ask(rl, 'Production domain (optional)', '');
+        if (raw) {
+          const check = validateOriginEntry(raw);
+          if (check.ok) {
+            production = check.value;
+            if (isBroadWebflowWildcard(production)) {
+              log(
+                chalk.yellow(
+                  `  Warning: ${production} is a broad wildcard; prefer an exact production host.`
+                )
+              );
+            }
+          } else {
+            log(chalk.yellow(`  ${check.error} Skipping production origin.`));
+            productionSkipped = true;
+          }
+        } else {
+          productionSkipped = true;
+        }
+      }
+      if (siteModules === undefined && modules !== false) {
         const detected = await detectFromSite();
         if (detected && (await askYesNo(rl, `Use modules detected on the site: ${formatModules(detected)}?`, true))) {
           siteModules = detected;
@@ -199,6 +325,12 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
           else log(chalk.yellow(`  ${parsed.error}`));
         }
       }
+      if (php === undefined) {
+        php = await askYesNo(rl, 'Enable PHP for this project?', false);
+      }
+      if (php && phpExamples === undefined) {
+        phpExamples = await askYesNo(rl, 'Include PHP examples under examples/php/?', false);
+      }
       if (git === undefined) {
         git = await askYesNo(rl, 'Initialize git repository?', true);
       }
@@ -207,6 +339,10 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       }
       if (install === undefined) {
         install = await askYesNo(rl, 'Run npm install now?', false);
+      }
+      if (linkAtEnd === undefined) {
+        // Asked after create on macOS only; remember preference here when already decided.
+        linkAtEnd = undefined;
       }
     } finally {
       rl.close();
@@ -250,12 +386,21 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   if (modules === undefined) modules = true;
   if (git === undefined) git = true;
   if (install === undefined) install = false;
+  if (php === undefined) php = false;
+  if (phpExamples === undefined) phpExamples = false;
+  if (linkAtEnd === undefined) linkAtEnd = false;
 
   if (lang !== 'ts' && lang !== 'js') {
     return { ok: false, error: 'Language must be ts or js.' };
   }
   if (styles !== 'scss' && styles !== 'css') {
     return { ok: false, error: 'Styles must be scss or css.' };
+  }
+  if (phpExamples && !php) {
+    return {
+      ok: false,
+      error: '--php-examples requires PHP. Pass --php or omit --php-examples.',
+    };
   }
 
   const remoteCheck = validateGitRemote(remote);
@@ -274,6 +419,8 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       ? String(options.author).trim()
       : authorDefault;
 
+  if (!production) productionSkipped = true;
+
   return {
     ok: true,
     config: {
@@ -285,6 +432,11 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       modules,
       siteModules,
       origin: origin || undefined,
+      production: production || undefined,
+      productionSkipped,
+      php,
+      phpExamples,
+      linkAtEnd,
       git,
       remote: remoteCheck.remote,
       install,
@@ -324,6 +476,114 @@ async function reconcileInstalledTypes(targetDir, config, fse, log) {
 }
 
 /**
+ * Interactive macOS preflight: read-only doctor, optionally offer setup.
+ * Never runs under --yes / no-TTY. Never uses sudo by itself.
+ *
+ * @param {object} deps
+ * @returns {Promise<number>} 0 continue, 1 abort
+ */
+async function maybeDoctorPreflight(deps = {}) {
+  const isTty = deps.isTTY != null ? Boolean(deps.isTTY) : Boolean(input.isTTY);
+  if (!isTty || deps.yes === true) return 0;
+
+  const platform = deps.platform || process.platform;
+  if (!isMacOS(platform)) return 0;
+
+  const log = deps.log || console.log;
+  const error = deps.error || console.error;
+  const run = deps.runDoctor || runDoctor;
+
+  log(chalk.dim('Running read-only doctor preflight…'));
+  let report;
+  try {
+    report = await run({
+      skipHandshake: true,
+      projectChecks: false,
+      exec: deps.exec,
+      pathExists: deps.pathExists,
+      readFile: deps.readFile,
+    });
+  } catch (err) {
+    error(
+      chalk.yellow(
+        `Doctor preflight failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    );
+    return 0;
+  }
+
+  const { summary, checks } = report;
+  log(
+    chalk.dim(
+      `Doctor: ${summary.ok} ok, ${summary.warn} warn, ${summary.fail} fail`
+    )
+  );
+
+  if (!doctorSuggestsSetup(checks)) return 0;
+
+  const rl =
+    deps.createReadline?.() ||
+    readline.createInterface({ input, output });
+  try {
+    const runSetup = await askYesNo(
+      rl,
+      'Local Stagepass stack looks incomplete. Run `stagepass setup` now?',
+      false
+    );
+    if (!runSetup) {
+      log(chalk.dim('Skipping setup. You can run `stagepass setup` later.'));
+      return 0;
+    }
+    const setupFn = deps.setup || defaultSetup;
+    await setupFn({ verbose: deps.verbose === true });
+    return 0;
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Optionally link the new project (macOS only; interactive ask or --link).
+ *
+ * @param {object} config
+ * @param {string} targetDir
+ * @param {object} deps
+ */
+async function maybeLinkProject(config, targetDir, deps = {}) {
+  const log = deps.log || console.log;
+  const platform = deps.platform || process.platform;
+  if (!isMacOS(platform)) {
+    if (config.linkAtEnd) {
+      log(chalk.dim('Skipping link (macOS only).'));
+    }
+    return;
+  }
+
+  let shouldLink = config.linkAtEnd === true;
+  const isTty = deps.isTTY != null ? Boolean(deps.isTTY) : Boolean(input.isTTY);
+  if (!shouldLink && isTty && deps.yes !== true) {
+    const rl =
+      deps.createReadline?.() ||
+      readline.createInterface({ input, output });
+    try {
+      shouldLink = await askYesNo(
+        rl,
+        `Link this project as ${config.name}.sp now?`,
+        false
+      );
+    } finally {
+      rl.close();
+    }
+  }
+
+  if (!shouldLink) return;
+
+  const linkFn = deps.link || defaultLink;
+  log(chalk.dim(`Linking ${config.name}.sp…`));
+  await linkFn(config.name, { verbose: deps.verbose === true }, { cwd: targetDir, log });
+}
+
+/**
  * Scaffold a new Stagepass project.
  *
  * @param {string|undefined} nameArg
@@ -339,6 +599,16 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const error = deps.error || console.error;
   const cwd = deps.cwd || process.cwd();
   const templatesRoot = deps.templatesRoot || defaultTemplatesRoot();
+
+  const preflightDeps = {
+    ...deps,
+    yes: options.yes === true,
+    verbose: options.verbose === true,
+    log,
+    error,
+  };
+  const preflightCode = await maybeDoctorPreflight(preflightDeps);
+  if (preflightCode !== 0) return preflightCode;
 
   const resolved = await resolveNewOptions(nameArg, options, deps);
   if (!resolved.ok) {
@@ -426,6 +696,8 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     if (config.git) log('  (git init)');
     if (config.remote) log(`  (git remote add origin ${config.remote})`);
     if (config.install) log('  (npm install)');
+    if (config.linkAtEnd) log('  (stagepass link)');
+    if (config.productionSkipped) log(`  (${PRODUCTION_HINT})`);
     return 0;
   }
 
@@ -495,14 +767,29 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     log(`  cd ${path.relative(cwd, targetDir) || '.'} && npm install`);
   }
   log('  npm run build');
-  log(`  stagepass link ${config.name} --origin ${config.origin || 'my-project.webflow.io'}`);
+  if (config.origin || config.production) {
+    log(`  stagepass link ${config.name}`);
+  } else {
+    log(`  stagepass link ${config.name} --origin my-project.webflow.io`);
+  }
+  if (config.productionSkipped) {
+    log(chalk.dim(PRODUCTION_HINT));
+  }
   log(chalk.dim(`Declared modules (stagepass.json): ${formatModules(config.siteModules)}`));
+  log(chalk.dim(`PHP: ${config.php ? 'on' : 'off'}`));
 
   const snippets = buildWebflowSnippets({
     version: config.loaderVersion,
     moduleList: config.siteModules,
   });
   printWebflowSnippets(snippets, log);
+
+  await maybeLinkProject(config, targetDir, {
+    ...deps,
+    yes: options.yes === true,
+    verbose: options.verbose === true,
+    log,
+  });
 
   return 0;
 }

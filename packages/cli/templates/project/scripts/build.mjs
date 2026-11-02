@@ -2,6 +2,7 @@
 /**
  * Stagepass project build: esbuild (+ optional sass) → content-hashed dist files + manifest.json.
  * Also writes stable dist/main.js and dist/styles.css copies for local Stagepass paths.
+ * Manifest entries include Subresource Integrity (sha384) for production Webflow tags.
  */
 import { createHash } from 'node:crypto';
 import { watch as fsWatch, promises as fs } from 'node:fs';
@@ -26,6 +27,10 @@ function hashContent(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 8);
 }
 
+function sriSha384(buf) {
+  return `sha384-${createHash('sha384').update(buf).digest('base64')}`;
+}
+
 async function writeHashed(stableName, contents, encoding = undefined) {
   const buf = Buffer.isBuffer(contents)
     ? contents
@@ -36,7 +41,10 @@ async function writeHashed(stableName, contents, encoding = undefined) {
   const hashedName = `${base}.${hash}${ext}`;
   await fs.writeFile(path.join(distDir, hashedName), buf);
   await fs.writeFile(path.join(distDir, stableName), buf);
-  return hashedName;
+  return {
+    file: hashedName,
+    integrity: sriSha384(buf),
+  };
 }
 
 async function buildJs() {

@@ -47,6 +47,25 @@ export function scaffoldTemplateMap(lang, styles) {
 }
 
 /**
+ * Extra files when PHP is enabled for the project.
+ * @param {{ php?: boolean, phpExamples?: boolean }} options
+ * @returns {{ template: string, out: string }[]}
+ */
+export function scaffoldPhpTemplateMap(options = {}) {
+  if (options.php !== true) return [];
+  /** @type {{ template: string, out: string }[]} */
+  const files = [{ template: 'api/README.md.tmpl', out: 'api/README.md' }];
+  if (options.phpExamples === true) {
+    files.push(
+      { template: 'examples/php/form.php', out: 'examples/php/form.php' },
+      { template: 'examples/php/proxy.php', out: 'examples/php/proxy.php' },
+      { template: 'examples/php/README.md.tmpl', out: 'examples/php/README.md' }
+    );
+  }
+  return files;
+}
+
+/**
  * @typedef {object} ScaffoldOptions
  * @property {string} name
  * @property {string} dir Absolute or relative target directory
@@ -55,7 +74,10 @@ export function scaffoldTemplateMap(lang, styles) {
  * @property {'scss'|'css'} styles
  * @property {boolean} modules Add @stagepass/modules to devDependencies
  * @property {string[]} [siteModules] Declared modules the Webflow site loads (stagepass.json)
- * @property {string} [origin] Live site host (stagepass.json `origin`)
+ * @property {string} [origin] Staging / primary live host (stagepass.json `origin`)
+ * @property {string} [production] Optional production host (stagepass.json `production`)
+ * @property {boolean} [php] Enable PHP FastCGI for the linked .sp site (default false for new)
+ * @property {boolean} [phpExamples] Include examples/php samples (requires php)
  * @property {boolean} git
  * @property {string} [remote]
  * @property {boolean} install
@@ -102,6 +124,8 @@ export function buildPackageJson(options) {
     scripts: {
       build: 'node scripts/build.mjs',
       watch: 'node scripts/build.mjs --watch',
+      // Alias of watch until a real HMR server exists (stagepass dev).
+      dev: 'npm run watch',
     },
     devDependencies,
   };
@@ -122,6 +146,23 @@ export function applyTemplate(source, vars) {
 }
 
 /**
+ * Extra JSON lines for stagepass.json (leading commas / newlines).
+ * @param {ScaffoldOptions} options
+ */
+export function buildStagepassExtraLines(options) {
+  const lines = [];
+  if (options.origin) {
+    lines.push(`\n  "origin": ${JSON.stringify(options.origin)},`);
+  }
+  if (options.production) {
+    lines.push(`\n  "production": ${JSON.stringify(options.production)},`);
+  }
+  // Always record php for new projects so link/doctor can tell intentional off from legacy.
+  lines.push(`\n  "php": ${options.php === true ? 'true' : 'false'},`);
+  return lines.join('');
+}
+
+/**
  * Plan files to write for a scaffold (relative paths → contents).
  * @param {ScaffoldOptions} options
  * @param {object} [deps]
@@ -135,6 +176,8 @@ export async function planScaffoldFiles(options, deps = {}) {
   const entryJs = isTs ? 'src/main.ts' : 'src/main.js';
   const entryCss = useSass ? 'src/styles.scss' : 'src/styles.css';
   const configFile = isTs ? 'tsconfig.json' : 'jsconfig.json';
+  const php = options.php === true;
+  const stagingHost = options.origin || `${options.name}.webflow.io`;
 
   const siteModules = Array.isArray(options.siteModules) ? options.siteModules : [];
   const snippets = buildWebflowSnippets({
@@ -152,7 +195,7 @@ export async function planScaffoldFiles(options, deps = {}) {
     LANG: options.lang,
     STYLES: options.styles,
     MODULES_JSON: JSON.stringify(siteModules),
-    ORIGIN_LINE: options.origin ? `\n  "origin": ${JSON.stringify(options.origin)},` : '',
+    ORIGIN_LINE: buildStagepassExtraLines(options),
     TYPES_JSON: JSON.stringify(types),
     TYPES_INLINE: JSON.stringify(types).replace(/","/g, '", "'),
     STAGEPASS_BLOCK: buildManagedBlock(siteModules),
@@ -163,6 +206,25 @@ export async function planScaffoldFiles(options, deps = {}) {
     ENTRY_CSS: entryCss,
     USE_SASS: useSass ? 'true' : 'false',
     CONFIG_FILE: configFile,
+    STAGING_HOST: stagingHost,
+    PRODUCTION_HOST: options.production || '',
+    PHP_ENABLED: php ? 'true' : 'false',
+    PHP_SECTION: php
+      ? [
+          '## PHP',
+          '',
+          'This project enables PHP for the linked `.sp` site (`php_fastcgi`). Put handlers under `api/`.',
+          options.phpExamples
+            ? 'Optional samples live in `examples/php/` (copy or adapt; do not expose secrets).'
+            : 'Optional samples: re-run scaffolding with `--php --php-examples`, or copy from the Stagepass docs.',
+          '',
+        ].join('\n')
+      : [
+          '## PHP',
+          '',
+          'PHP is **off** for this project (no `php_fastcgi` in the Caddy site block). Enable later by setting `"php": true` in `stagepass.json` and re-running `stagepass link`.',
+          '',
+        ].join('\n'),
   };
 
   const readTemplate =
@@ -180,7 +242,10 @@ export async function planScaffoldFiles(options, deps = {}) {
     contents: `${JSON.stringify(pkg, null, 2)}\n`,
   });
 
-  const templateMap = scaffoldTemplateMap(options.lang, options.styles);
+  const templateMap = [
+    ...scaffoldTemplateMap(options.lang, options.styles),
+    ...scaffoldPhpTemplateMap(options),
+  ];
 
   for (const item of templateMap) {
     const raw = await readTemplate(item.template);
