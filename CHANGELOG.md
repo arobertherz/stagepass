@@ -154,6 +154,26 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.0-beta.3] - 2026-11-02
+
+Prerelease of the loader only, on top of 2.3.0-beta.2. CLI and modules are unchanged. The public `sp` API, attributes, events and URL swapping behave as before.
+
+#### Changed
+
+- Dev flag v2, in three stages. At rest it is a small pass-icon pill with a status dot (amber for warnings, red for errors). On hover or keyboard focus it expands to the left and shows `LOCAL` / `DEBUG` and the counters. A click opens a session card. On touch devices the first tap expands and the second opens the card.
+- Clicking the flag no longer ends the session. Only "End session" in the card disconnects (same as `?stagepass=off`). Esc or a click outside closes the card.
+- The flag text, counters and icons are dark ink on the gradient. There is still no glow, shadow, blur or filter in any state, and the pill has a 1px low-opacity border.
+- The Local Network Access hint is shown as a warning in the card instead of the tooltip.
+
+#### Added
+
+- Session card (340px, opaque, follows a dark or light page): project, session domain, number of files swapped locally, and the latest 50 warnings and errors with time and `file:line`. Messages are always rendered as text and long messages are truncated. Clicking a message copies it to the clipboard ("Copied").
+- Card footer: Reload, a Debug on/off toggle (reloads with `?stagepass=debug` and back to the previous session) and End session.
+- When the local dev server cannot be reached, the flag shows the error dot and the message "Local server not reachable … Run stagepass doctor".
+- The card ships as a separate file, `dist/flag-card.min.js`, fetched on first expand next to `flag.min.js`.
+- Accessibility: the pill is a button with `aria-expanded`, the card is a `role="dialog"` with an `aria-label`. Focus moves into the card on open and back to the pill on close, there is a visible focus ring, and with reduced motion all changes are instant.
+- Size budget test for `flag-card.min.js`. Sizes: `loader.min.js` 11.3 KB minified / 5.1 KB gzip (beta.2: 10.5 KB / 4.7 KB), `flag.min.js` 2.6 KB gzip, `flag-card.min.js` 3.4 KB gzip.
+
 ### [2.3.0-beta.2] - 2026-11-02
 
 Prerelease of the loader only, on top of 2.3.0-beta.1. CLI and modules are unchanged.

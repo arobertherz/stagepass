@@ -37,7 +37,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
 - Dynamically created scripts use `async=false` unless the original had `async`; `defer` is added when neither async nor defer was set (keeps classic order).
-- Chrome Local Network Access: best-effort permission query; flag tooltip, warning counter and console hint when state is `prompt` or `denied`.
+- Chrome Local Network Access: best-effort permission query; warning in the flag card and counter, and a console hint when state is `prompt` or `denied`.
 
 ## Loader tag attributes
 
@@ -74,19 +74,22 @@ Storage key: `localStorage.stagepass_domain` → JSON `{ "domain": "…", "expir
 
 ## Dev flag
 
-Shown only while a session is active (including debug). Click clears the session and reloads.
+Shown only while a session is active (including debug).
 
-| State | Flag |
+| Stage | Flag |
 | :--- | :--- |
-| Active swap | `LOCAL` |
-| Debug | `DEBUG` |
-| Warnings / errors | icons with counters (`99+` above 99) |
+| Rest | pass-icon pill with a status dot (amber: warnings, red: errors) |
+| Hover / focus (first tap on touch) | expands to the left: `LOCAL` or `DEBUG`, warning and error counters (`99+` above 99) |
+| Click (second tap on touch) | session card |
 
+- Card: project, session domain, files swapped locally, the latest 50 warnings and errors (time, `file:line`, text only, long messages truncated). Click a message to copy it.
+- Card footer: Reload, Debug on/off (reloads with `?stagepass=debug` and back to the previous session), End session.
+- Only "End session" clears the session. Esc or a click outside closes the card.
 - Warnings: `sp.warn`, `sp.log('warn', …)`, loader warnings (for example the LNA hint).
-- Errors: `sp.error`, `sp.log('error', …)`, uncaught errors, failed resource loads, unhandled rejections.
-- Tooltip: session domain, counts, LNA hint.
-- Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). Respects `prefers-reduced-motion`.
-- The UI lives in `dist/flag.min.js` (about 1.4 KB gzip) and is fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
+- Errors: `sp.error`, `sp.log('error', …)`, uncaught errors, failed resource loads, unhandled rejections. A local file that cannot be loaded shows "Local server not reachable … Run stagepass doctor".
+- Accessibility: the pill is a button with `aria-expanded`, the card a `role="dialog"`; focus moves into the card and back to the pill; reduced motion makes all changes instant.
+- Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
+- The UI lives in `dist/flag.min.js` (about 2.6 KB gzip) and `dist/flag-card.min.js` (about 3.4 KB gzip, fetched on first expand). Both are fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Runtime API
 

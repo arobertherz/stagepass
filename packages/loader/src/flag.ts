@@ -1,95 +1,262 @@
 /**
- * Dev flag ("Tally Pass"): red pill with a pass mark, the session label and
- * compact warning/error counters. Rendered in a shadow root so page CSS cannot
- * restyle it. Built with DOM APIs + textContent only (no innerHTML, no inline
- * handlers, no eval). Styles use a constructable stylesheet, so a strict
+ * Dev flag v2, pill (stage 1 rest, stage 2 expanded). The card (stage 3) lives in
+ * flag-card.min.js and is fetched on the first expand. Rendered in a shadow root so
+ * page CSS cannot restyle it. Built with DOM APIs + textContent only (no innerHTML,
+ * no inline handlers, no eval). Styles use a constructable stylesheet, so a strict
  * `style-src` CSP does not block them (`<style>` fallback on old browsers).
  */
-// No glow, no shadows, no filters in any state: blurred effects showed hard edges and hover artefacts in Chrome.
-// Hover only shifts the gradient; keyboard focus gets a crisp outline. The entry animation fades and scales in place.
+// No glow, no shadows, no blur, no filters in any state. Only transform and opacity animate.
+// The pill is three layers anchored right (left cap, gradient middle, right cap), so the
+// rest/expanded switch never animates width and the rounded ends stay round.
+// Pill text colour is one token (--fg).
 const CSS =
   ':host{all:initial!important;position:fixed!important;top:12px!important;right:12px!important;z-index:2147483647!important;display:block!important}' +
-  'button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border-radius:99px;background:linear-gradient(90deg,#FF453A,#FF8A3D);color:#fff;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}' +
-  'button:hover{background:linear-gradient(90deg,#FF5B4F,#FF9A55)}' +
-  'button:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
-  'i{position:relative;width:9px;height:13px;border-radius:2.5px;background:#fff}' +
-  'i:before,i:after{content:"";position:absolute;left:2px;border-radius:1px}' +
-  'i:before{top:2px;width:5px;height:2px;background:#FF453A}' +
-  'i:after{bottom:2px;width:5px;height:3px;background:linear-gradient(#121215 1px,#0000 0 2px,#121215 0);opacity:.45}' +
-  'span{display:flex;align-items:center;gap:3px;height:16px;padding:0 5px 0 4px;border-radius:99px;background:rgba(18,18,21,.3)}' +
-  'span:before{content:"";width:9px;height:8px;background:#fff;clip-path:polygon(50% 0,100% 100%,0 100%)}' +
-  '.e:before{width:8px;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}' +
-  '[hidden]{display:none}' +
-  '@media (prefers-reduced-motion:no-preference){button{animation:a .45s cubic-bezier(.2,.9,.3,1.2)}i:before{animation:b 1s .15s both}}' +
-  '@keyframes a{from{opacity:0;transform:scale(.8)}}' +
-  '@keyframes b{0%{opacity:0}60%{opacity:1;transform:scale(1.4)}}';
+  '.w{--W:44px;--k:1;--fg:#17171B;--a:#FF453A;--z:#FF8A3D;--ring:#121215;--bd:rgba(18,18,21,.22);position:relative;display:block;font:700 12px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;color:var(--fg)}' +
+  '.b{all:unset;box-sizing:border-box;position:relative;display:block;margin-left:auto;height:44px;width:var(--W);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+  '[data-st=rest] .b{width:44px}' +
+  '.bg,.t,.fr{position:absolute;right:0;top:8px;height:28px;box-sizing:border-box}' +
+  '.bg{width:var(--W);transform-origin:100% 50%}' +
+  '.bg i{position:absolute;top:0;height:28px;box-sizing:border-box;border:solid var(--bd);border-width:1px 0}' +
+  '.bg .l{left:0;width:14px;border-left-width:1px;border-radius:14px 0 0 14px;background:var(--a)}' +
+  '.bg .r{right:0;width:14px;border-right-width:1px;border-radius:0 14px 14px 0;background:var(--z)}' +
+  '.m{left:13px;right:13px;background:linear-gradient(90deg,var(--a),var(--z));transform-origin:100% 0}' +
+  '[data-st=rest] .l{transform:translateX(calc(var(--W) - 44px))}' +
+  '[data-st=rest] .m{transform:scaleX(var(--k))}' +
+  '.t{display:flex;align-items:center;gap:10px;padding:0 14px;white-space:nowrap;pointer-events:none}' +
+  '[data-st=rest] .t>b,[data-st=rest] .c{opacity:0}' +
+  '.c{display:flex;gap:10px}.c:empty{display:none}' +
+  '.c span{display:flex;align-items:center;gap:4px}' +
+  'svg{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}' +
+  '.c svg{width:12px;height:12px}' +
+  '.k{width:16px;height:8px;stroke-width:2}' +
+  '.dot{position:absolute;right:-1px;top:3px;width:8px;height:8px;border-radius:50%;border:2px solid var(--ring);background:var(--d);opacity:0}' +
+  '[data-d=e] .dot{--d:#FF2E4D}[data-d=w] .dot{--d:#FFB224}' +
+  '[data-st=rest][data-d] .dot{opacity:1}' +
+  '.fr{right:-4px;top:4px;height:36px;width:calc(var(--W) + 8px);border-radius:18px;border:2px solid #fff;outline:2px solid var(--ring);opacity:0;pointer-events:none}' +
+  '.b:focus-visible .fr{opacity:1}' +
+  '[data-st=rest] .fr{width:52px}' +
+  '.b:active .bg{transform:scale(.96)}' +
+  '@media (prefers-reduced-motion:no-preference){' +
+  '.l,.m{transition:transform .22s cubic-bezier(.2,.8,.2,1)}' +
+  '.t>b,.c{transition:opacity .14s .06s}' +
+  '[data-st=rest] .l,[data-st=rest] .m{transition:transform .16s cubic-bezier(.4,0,.6,1)}' +
+  '[data-st=rest] .t>b,[data-st=rest] .c{transition:opacity .08s}' +
+  '.dot{transition:opacity .12s}[data-st=rest] .dot{transition-delay:.12s}' +
+  '.fr{transition:opacity .12s .12s}.bg{transition:transform .08s}}';
 
-/** Counter state owned by the loader: `n[0]` warnings, `n[1]` errors, `tip` extra hint. */
-export type FlagState = { n: number[]; tip: string };
+const NS = 'http://www.w3.org/2000/svg';
+// 12x12 icons: [0] triangle = warning, [1] octagon = error
+const ICONS = ['M6 1.3 11 10.3H1zM6 4.8v2.2m0 1.6v.1', 'M4 1h4l3 3v4l-3 3H4L1 8V4zM6 3.8v2.6m0 1.6v.1'];
 
-/**
- * Contract between loader and `flag.min.js` (keep stable within a major):
- * the loader defines `stagepass[Symbol.for('stagepass.flag')]`, the flag chunk
- * calls it with `createFlag`, the loader keeps the returned `render` function.
- */
+/** One captured warning or error (built by the loader, rendered as text only). */
+export type FlagMsg = { type: 'warn' | 'error'; time: string; src: string; line: number | string; text: string };
+
+/** State owned by the loader. `n` = totals [warnings, errors], `m` = latest messages (capped). */
+export type FlagState = {
+  n: number[];
+  m: FlagMsg[];
+  swapped: number;
+  debug: boolean;
+  domain: string | null;
+  /** URL of flag-card.min.js (same pinned path as the loader) */
+  card: string;
+  /** End session: the only action that disconnects */
+  end: () => void;
+};
+
+export type FlagStage = 'rest' | 'exp' | 'card';
+
+/** What the card chunk gets from the pill. */
+export type FlagApi = {
+  s: FlagState;
+  root: ShadowRoot;
+  w: HTMLElement;
+  host: HTMLElement;
+  go: (st: FlagStage) => void;
+  icon: (i: number) => SVGSVGElement;
+  css: (root: ShadowRoot, css: string) => void;
+};
+export type FlagCard = { render: () => void; show: () => void; hide: () => void };
+export type CreateCard = (api: FlagApi) => FlagCard;
+/** Loader hook contract (versioned symbol, so mismatched cached chunks simply do nothing). */
 export type CreateFlag = typeof createFlag;
+export const FLAG_HOOK = 'stagepass.flag.v2';
+export const CARD_HOOK = 'stagepass.card.v1';
 
-/**
- * Create and mount the dev flag. Returns a render function (call after state changes).
- *
- * @param label - Visible label (`LOCAL` or `DEBUG`)
- * @param domain - Session domain shown in the tooltip
- * @param state - Live counter state
- * @param onClick - Click handler (disconnect)
- */
-export function createFlag(
-  label: string,
-  domain: string | null,
-  state: FlagState,
-  onClick: () => void
-): () => void {
-  const d = document;
-  const el = d.createElement('div');
-  el.id = 'stagepass-flag';
-  const root = el.attachShadow({ mode: 'open' });
+export function addCss(root: ShadowRoot, css: string): void {
   try {
     if (!('adoptedStyleSheets' in root)) throw 0;
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync(CSS);
-    root.adoptedStyleSheets = [sheet];
+    sheet.replaceSync(css);
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
   } catch (_) {
-    const style = root.appendChild(d.createElement('style'));
-    style.textContent = CSS;
+    root.appendChild(document.createElement('style')).textContent = css;
   }
-  const add = <K extends keyof HTMLElementTagNameMap>(tag: K, parent: Node) =>
-    parent.appendChild(d.createElement(tag));
-  const b = add('button', root);
-  b.type = 'button';
-  add('i', b);
-  add('b', b).textContent = label;
-  const chips = [add('span', b), add('span', b)];
-  chips[1].className = 'e';
-  const render = () => {
-    const n = state.n;
-    const parts = ['Stagepass ' + label + (domain ? ' · ' + domain : '')];
-    if (n[0]) parts.push(n[0] + ' warning' + (n[0] > 1 ? 's' : ''));
-    if (n[1]) parts.push(n[1] + ' error' + (n[1] > 1 ? 's' : ''));
-    if (state.tip) parts.push(state.tip);
-    parts.push('Click to disconnect');
-    const t = parts.join('\n');
-    b.title = t;
-    b.setAttribute('aria-label', t);
-    chips.forEach((c, i) => {
-      c.hidden = !n[i];
-      c.textContent = n[i] > 99 ? '99+' : String(n[i]);
-    });
+}
+
+function icon(i: number): SVGSVGElement {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('viewBox', '0 0 12 12');
+  s.setAttribute('aria-hidden', 'true');
+  s.appendChild(document.createElementNS(NS, 'path')).setAttribute('d', ICONS[i]);
+  return s;
+}
+
+const plural = (x: number, w: string) => x + ' ' + w + (x == 1 ? '' : 's');
+const is = (e: Element, sel: string) => {
+  try {
+    return e.matches(sel);
+  } catch (_) {
+    return false;
+  }
+};
+
+/** Create and mount the dev flag. Returns a render function (call after state changes). */
+export function createFlag(s: FlagState): () => void {
+  const d = document;
+  const host = d.createElement('div');
+  host.id = 'stagepass-flag';
+  const root = host.attachShadow({ mode: 'open' });
+  addCss(root, CSS);
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, parent: Node, cls?: string) => {
+    const e = parent.appendChild(d.createElement(tag));
+    if (cls) e.className = cls;
+    return e;
   };
-  render();
-  b.addEventListener('click', onClick);
+  const w = el('div', root, 'w');
+  w.setAttribute('data-st', 'rest');
+  const b = el('button', w, 'b');
+  b.type = 'button';
+  b.setAttribute('aria-haspopup', 'dialog');
+  b.setAttribute('aria-expanded', 'false');
+  const bg = el('span', b, 'bg');
+  ['l', 'm', 'r'].forEach((c) => el('i', bg, c));
+  el('span', b, 'fr');
+  const t = el('span', b, 't');
+  bg.setAttribute('aria-hidden', 'true');
+  t.setAttribute('aria-hidden', 'true');
+  const lab = el('b', t);
+  const c = el('span', t, 'c');
+  const k = t.appendChild(d.createElementNS(NS, 'svg'));
+  k.setAttribute('class', 'k');
+  k.setAttribute('viewBox', '0 0 16 8');
+  k.appendChild(d.createElementNS(NS, 'path')).setAttribute('d', 'M4 1h8a3 3 0 0 1 0 6H4a3 3 0 0 1 0-6z');
+  el('i', b, 'dot');
+
+  let st: FlagStage = 'rest';
+  let card: FlagCard | null = null;
+  let loading = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let touch = false;
+  let pre: FlagStage = 'rest';
+
+  const render = () => {
+    const [v, e] = s.n;
+    const l = s.debug ? 'DEBUG' : 'LOCAL';
+    lab.textContent = l;
+    c.textContent = '';
+    [v, e].forEach((x, i) => {
+      if (!x) return;
+      const g = el('span', c);
+      g.appendChild(icon(i));
+      g.appendChild(d.createTextNode(x > 99 ? '99+' : String(x)));
+    });
+    if (e || v) w.setAttribute('data-d', e ? 'e' : 'w');
+    else w.removeAttribute('data-d');
+    b.setAttribute(
+      'aria-label',
+      'Stagepass ' + l + ', ' + plural(v, 'warning') + ', ' + plural(e, 'error') + '. ' +
+        (st == 'card' ? 'Hide' : 'Show') + ' session details'
+    );
+    const x = t.offsetWidth;
+    if (x) {
+      w.style.setProperty('--W', x + 'px');
+      w.style.setProperty('--k', String(18 / (x - 26)));
+    }
+    if (card) card.render();
+  };
+
+  const load = () => {
+    if (loading) return;
+    loading = true;
+    try {
+      const sp = (window as any).stagepass;
+      const H = Symbol.for(CARD_HOOK);
+      Object.defineProperty(sp, H, {
+        configurable: true,
+        value: (create: CreateCard) => {
+          delete sp[H];
+          try {
+            card = create(api);
+            if (st == 'card') card.show();
+          } catch (_) {}
+        },
+      });
+      const sc = d.createElement('script');
+      sc.src = s.card;
+      sc.async = true;
+      (d.head || d.documentElement).appendChild(sc);
+    } catch (_) {}
+  };
+
+  const go = (n: FlagStage) => {
+    if (n == st) return;
+    clearTimeout(timer);
+    st = n;
+    w.setAttribute('data-st', n);
+    b.setAttribute('aria-expanded', String(n == 'card'));
+    if (n != 'rest') load();
+    if (card) n == 'card' ? card.show() : card.hide();
+    render();
+  };
+
+  const api: FlagApi = { s, root, w, host, go, icon, css: addCss };
+
+  b.addEventListener('pointerdown', (e) => {
+    touch = e.pointerType == 'touch';
+    pre = st;
+  });
+  b.addEventListener('pointerenter', (e) => {
+    if (e.pointerType == 'mouse' && st == 'rest') go('exp');
+  });
+  w.addEventListener('pointerleave', (e) => {
+    if (e.pointerType == 'mouse' && st == 'exp' && !is(b, ':focus-visible')) go('rest');
+  });
+  b.addEventListener('focus', () => {
+    if (!touch && st == 'rest') go('exp');
+  });
+  b.addEventListener('blur', () => {
+    if (st == 'exp' && !is(b, ':hover')) go('rest');
+  });
+  b.addEventListener('click', () => {
+    // Touch: first tap expands (collapses again after 4 s), second tap opens the card
+    if (touch && pre == 'rest') {
+      go('exp');
+      timer = setTimeout(() => go('rest'), 4e3);
+    } else go(st == 'card' ? 'exp' : 'card');
+    touch = false;
+  });
+  d.addEventListener('keydown', (e) => {
+    if (e.key != 'Escape' || st == 'rest') return;
+    if (st == 'card') {
+      go('exp');
+      b.focus();
+    } else go('rest');
+  });
+  d.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (st != 'rest' && e.composedPath().indexOf(host) < 0) go('rest');
+    },
+    true
+  );
+
   const mount = () => {
-    if (!el.isConnected) (d.body || d.documentElement).appendChild(el);
+    if (!host.isConnected) (d.body || d.documentElement).appendChild(host);
+    render();
   };
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', mount);
   else mount();
+  render();
   return render;
 }

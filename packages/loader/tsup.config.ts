@@ -44,4 +44,15 @@ export default defineConfig([
       return { js: '.min.js' };
     },
   },
+  // 4. Dev flag card (flag-card.min.js): fetched by the flag on the first expand
+  {
+    entry: { 'flag-card': 'src/flag-card-entry.ts' },
+    format: ['iife'],
+    clean: false,
+    minify: true,
+    define,
+    outExtension() {
+      return { js: '.min.js' };
+    },
+  },
 ]);
