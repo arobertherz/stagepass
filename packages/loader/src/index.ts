@@ -27,6 +27,23 @@ declare const __STAGEPASS_VERSION__: string;
     typeof __STAGEPASS_VERSION__ !== 'undefined' ? __STAGEPASS_VERSION__ : '0.0.0';
   const LOADER_RE = /loader(?:\.min)?\.js/i;
 
+  /**
+   * Folder URL for the flag chunks, or null. Only http(s) after resolving against the page
+   * (javascript:, data:, blob: and URLs with credentials are refused). `file` = the value is a
+   * script URL, so its folder is used; otherwise the value is the folder itself.
+   */
+  function flagBase(v: unknown, file: boolean): string | null {
+    if (typeof v !== 'string' || !(v = v.trim())) return null;
+    try {
+      const u = new URL(v as string, d.baseURI);
+      if (!/^https?:$/.test(u.protocol) || u.username || u.password) return null;
+      u.search = u.hash = '';
+      return file ? new URL('./', u).href : u.href.replace(/\/?$/, '/');
+    } catch (_) {
+      return null;
+    }
+  }
+
   function getLoaderScript(): HTMLScriptElement | null {
     try {
       if (d.currentScript instanceof HTMLScriptElement) return d.currentScript;
@@ -329,15 +346,21 @@ declare const __STAGEPASS_VERSION__: string;
     });
   }
 
-  // Dev flag: UI lives in flag.min.js next to the loader, fetched only during a session
+  // Dev flag: UI lives in flag.min.js next to the loader (relative to its URL), fetched only during a session
   if (dev) {
     try {
       const FLAG = Symbol.for('stagepass.flag.v2');
-      const src = (loaderScript && loaderScript.src) || '';
-      // Flag chunks come from the same pinned path as the loader
-      const base = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0])
-        ? new URL('./', src).href
-        : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+      // Flag chunks: explicit base option, else the folder of the loader's own script URL
+      // (any file name, so a self-hosted or npm-installed copy stays local). jsDelivr at the
+      // same version only when neither exists (inline or bundled without the option).
+      const opt = attr('flag-base') ?? W.stagepassFlagBase;
+      let base = flagBase(opt, false);
+      if (opt != null && !base) spWarn('Ignored flag base (http(s) or relative only): ' + cut(String(opt), 99));
+      base = base || flagBase((loaderScript && loaderScript.src) || '', true);
+      if (!base) {
+        base = `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+        if (debug) spWarn('Loader URL unknown, flag loads from ' + base + '. Set data-stagepass-flag-base');
+      }
       Object.assign(flagState, {
         debug,
         domain: dom,

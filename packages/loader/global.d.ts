@@ -161,6 +161,8 @@ declare global {
   interface Window {
     stagepass: StagepassAPI;
     sp: StagepassAPI;
+    /** Optional folder for flag.min.js / flag-card.min.js when the loader is inlined or bundled (2.3.1+). http(s) or relative only. */
+    stagepassFlagBase?: string;
   }
 
   // Global aliases (same object as window.stagepass)
