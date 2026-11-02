@@ -154,6 +154,14 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.0-beta.2] - 2026-11-02
+
+Prerelease of the loader only, on top of 2.3.0-beta.1. CLI and modules are unchanged.
+
+#### Changed
+
+- Dev flag: the glow is removed. The pill has no shadows, glow layers or filters in any state (rest, hover, focus, entry animation), which also removes the glow artefacts Chrome showed on hover. Hover now slightly lightens the red gradient; keyboard focus keeps the crisp 2px outline. Label, icons, counters and click behaviour are unchanged.
+
 ### [2.3.0-beta.1] - 2026-11-02
 
 Prerelease of the loader only, on top of 2.3.0-beta.0. CLI and modules are unchanged.

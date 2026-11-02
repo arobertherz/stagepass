@@ -5,20 +5,17 @@
  * handlers, no eval). Styles use a constructable stylesheet, so a strict
  * `style-src` CSP does not block them (`<style>` fallback on old browsers).
  */
-// The glow is a radial gradient on a pseudo-element (no blurred box-shadow): it fades to 0 inside its own box,
-// so no layer/tile/viewport clip can cut it into a hard edge. The entry animation only fades and scales in
-// place (no slide from above the viewport), so nothing is rasterised off-screen.
+// No glow, no shadows, no filters in any state: blurred effects showed hard edges and hover artefacts in Chrome.
+// Hover only shifts the gradient; keyboard focus gets a crisp outline. The entry animation fades and scales in place.
 const CSS =
   ':host{all:initial!important;position:fixed!important;top:12px!important;right:12px!important;z-index:2147483647!important;display:block!important}' +
-  'button{all:unset;position:relative;isolation:isolate;box-sizing:border-box;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border-radius:99px;color:#fff;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}' +
-  'button:before,button:after{content:"";position:absolute;z-index:-1;pointer-events:none}' +
-  'button:before{top:0;right:0;bottom:0;left:0;border-radius:inherit;background:linear-gradient(90deg,#FF453A,#FF8A3D);box-shadow:inset 0 1px #fff3}' +
-  'button:after{top:-16px;right:-34px;bottom:-24px;left:-34px;z-index:-2;background:radial-gradient(closest-side,#ff783ccc,#ff603a66 50%,#ff503a29 70%,#ff453a0d 86%,#ff453a00)}' +
+  'button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 8px;border-radius:99px;background:linear-gradient(90deg,#FF453A,#FF8A3D);color:#fff;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}' +
+  'button:hover{background:linear-gradient(90deg,#FF5B4F,#FF9A55)}' +
   'button:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
   'i{position:relative;width:9px;height:13px;border-radius:2.5px;background:#fff}' +
   'i:before,i:after{content:"";position:absolute;left:2px;border-radius:1px}' +
-  'i:before{top:2px;width:5px;height:2px;background:#FF453A;box-shadow:0 0 3px 1px #FF8A3D}' +
-  'i:after{bottom:2px;width:5px;height:1px;background:#121215;opacity:.45;box-shadow:0 -2px #121215}' +
+  'i:before{top:2px;width:5px;height:2px;background:#FF453A}' +
+  'i:after{bottom:2px;width:5px;height:3px;background:linear-gradient(#121215 1px,#0000 0 2px,#121215 0);opacity:.45}' +
   'span{display:flex;align-items:center;gap:3px;height:16px;padding:0 5px 0 4px;border-radius:99px;background:rgba(18,18,21,.3)}' +
   'span:before{content:"";width:9px;height:8px;background:#fff;clip-path:polygon(50% 0,100% 100%,0 100%)}' +
   '.e:before{width:8px;clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)}' +
