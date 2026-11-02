@@ -265,6 +265,7 @@ In the Webflow Designer, instead of hardcoding your script `src` or stylesheet `
 * `data-stagepass`: Marks the element for processing (presence is enough; `"true"` is conventional).
 * `data-stagepass-version` (loader tag) / `data-stagepass-v` (per asset): In production, appends `?v=<version>` for cache busting. `data-stagepass-cachebust` no longer timestamps every production page view.
 * `data-stagepass-session-hours` (loader tag): Optional session lifetime in hours (default `12`).
+* `data-stagepass-flag-base` (loader tag, 2.3.1+): Optional folder for `flag.min.js` and `flag-card.min.js`, only needed when the loader is inlined or bundled into another file. Only `http(s)` or relative URLs; anything else is ignored with a warning.
 * `data-stagepass-mute-console="true"` (loader tag): Opt-in legacy global console mute in production when no session.
 
 ### 5. Activate Dev Mode
@@ -297,7 +298,9 @@ The `?stagepass=` parameter is removed from the address bar via `history.replace
 * Errors count `sp.error(...)`, `sp.log('error', ...)`, `console.error(...)`, uncaught errors, failed resource loads and unhandled promise rejections on the page. A missing local file shows "Local file not found (404)". When the local dev server cannot be reached, the card says "Local server not reachable", suggests `stagepass doctor` and, if Chrome blocks local network access, adds that hint.
 * Messages are always shown as plain text. Counters above 99 show `99+`.
 * The flag renders in a Shadow DOM, so site CSS cannot restyle it and it cannot restyle the site. It is keyboard accessible, and with `prefers-reduced-motion` all changes are instant.
-* The flag UI ships as two separate files, `dist/flag.min.js` and `dist/flag-card.min.js` (the card loads on first expand), served from the same location as the loader (for example `…/@stagepass/loader@2/dist/flag.min.js`). With a strict Content Security Policy, `script-src` must allow that origin (for jsDelivr: `https://cdn.jsdelivr.net`). If it is blocked, swapping still works and the console shows a warning.
+* The flag UI ships as two separate files, `dist/flag.min.js` and `dist/flag-card.min.js` (the card loads on first expand). Both are fetched only during a session, from the folder of the loader's own script URL, whatever the file is called (for example `…/@stagepass/loader@2/dist/flag.min.js`, or `/js/flag.min.js` next to a self-hosted `/js/stagepass.js`). When you self-host or copy the loader from `node_modules/@stagepass/loader/dist/`, copy both flag files into the same folder and everything stays on your server.
+* Inlined or bundled loader: set `data-stagepass-flag-base="/assets/stagepass/"` on the script tag (or `window.stagepassFlagBase` before the loader runs). Without a script URL and without the option, the flag files load from jsDelivr at the loader's exact version, and debug sessions show a warning.
+* With a strict Content Security Policy, `script-src` must allow the origin of the flag files (for jsDelivr: `https://cdn.jsdelivr.net`). If they are blocked, swapping still works and the console shows a warning.
 
 ## 🛠 CLI Reference
 

@@ -108,6 +108,124 @@ describe('dev flag v2', () => {
     );
   });
 
+  describe('flag chunk location (relative to the loader URL)', () => {
+    const flagSrc = () => (document.querySelector('script[src*="flag.min.js"]') as HTMLScriptElement | null)?.src;
+    /** Boot with `el` as document.currentScript (how a real browser runs the loader tag). */
+    async function bootAs(el: HTMLScriptElement) {
+      document.head.appendChild(el);
+      const desc = Object.getOwnPropertyDescriptor(Document.prototype, 'currentScript');
+      Object.defineProperty(document, 'currentScript', { configurable: true, get: () => el });
+      try {
+        await boot(false);
+      } finally {
+        delete (document as any).currentScript;
+        if (!desc) delete (document as any).currentScript;
+      }
+    }
+    const tag = (src?: string, attrs: Record<string, string> = {}) => {
+      const s = document.createElement('script');
+      if (src) s.src = src;
+      for (const [k, v] of Object.entries(attrs)) s.setAttribute(k, v);
+      return s;
+    };
+    afterEach(() => {
+      delete (window as any).stagepassFlagBase;
+    });
+
+    it('CDN @2: unchanged, next to the loader', async () => {
+      startSession('my-project.sp');
+      await bootAs(tag('https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js?modules=cookies'));
+      expect(flagSrc()).toBe('https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/flag.min.js');
+    });
+
+    it('self-hosted under another file name: same folder, no jsDelivr', async () => {
+      startSession('my-project.sp');
+      await bootAs(tag('https://www.example.com/js/stagepass-2.3.1.js?v=3#x'));
+      expect(flagSrc()).toBe('https://www.example.com/js/flag.min.js');
+      await import('../flag-entry.js');
+      ptr(parts().pill, 'pointerenter');
+      expect((document.querySelector('script[src*="flag-card"]') as HTMLScriptElement).src).toBe(
+        'https://www.example.com/js/flag-card.min.js'
+      );
+      expect(document.querySelector('script[src*="jsdelivr"]')).toBeNull();
+    });
+
+    it('subfolder (npm install copied to /vendor/…): same folder, relative src resolved', async () => {
+      startSession('my-project.sp');
+      await bootAs(tag('/vendor/@stagepass/loader/dist/loader.min.js'));
+      expect(flagSrc()).toBe(new URL('/vendor/@stagepass/loader/dist/flag.min.js', document.baseURI).href);
+    });
+
+    it('option data-stagepass-flag-base wins (relative or absolute folder)', async () => {
+      startSession('my-project.sp');
+      await bootAs(tag('https://www.example.com/js/app.bundle.js', { 'data-stagepass-flag-base': '/static/stagepass' }));
+      expect(flagSrc()).toBe(new URL('/static/stagepass/flag.min.js', document.baseURI).href);
+    });
+
+    it('option as window.stagepassFlagBase (bundled as a module, no script tag)', async () => {
+      startSession('my-project.sp');
+      (window as any).stagepassFlagBase = 'https://assets.example.com/sp/';
+      await boot(false);
+      expect(flagSrc()).toBe('https://assets.example.com/sp/flag.min.js');
+    });
+
+    for (const bad of ['javascript:alert(1)//', 'data:text/javascript,alert(1)//', 'blob:https://x.test/1', 'https://u:p@evil.test/', ' ']) {
+      it(`refuses an unsafe option ${JSON.stringify(bad)} and keeps the loader folder`, async () => {
+        startSession('my-project.sp');
+        await bootAs(tag('https://www.example.com/js/loader.min.js', { 'data-stagepass-flag-base': bad }));
+        expect(flagSrc()).toBe('https://www.example.com/js/flag.min.js');
+        expect(document.querySelector('script[src^="javascript:"], script[src^="data:"], script[src^="blob:"]')).toBeNull();
+      });
+    }
+
+    it('inline (no script URL, no option): jsDelivr at the same version, reported in debug mode', async () => {
+      startSession('debug');
+      const warn = console.warn as unknown as ReturnType<typeof vi.fn>;
+      await bootAs(tag());
+      expect(flagSrc()).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@stagepass\/loader@[^/]+\/dist\/flag\.min\.js$/);
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/Loader URL unknown/);
+    });
+
+    it('inline outside debug mode: same fallback, no extra message', async () => {
+      startSession('my-project.sp');
+      const warn = console.warn as unknown as ReturnType<typeof vi.fn>;
+      await bootAs(tag());
+      expect(flagSrc()).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@stagepass\/loader@[^/]+\/dist\/flag\.min\.js$/);
+      expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Loader URL unknown/);
+    });
+  });
+
+  it('without a session touches no flag DOM, styles, listeners, console, storage or requests', async () => {
+    const warn = console.warn;
+    const error = console.error;
+    const wAdd = vi.spyOn(window, 'addEventListener');
+    const dAdd = vi.spyOn(document, 'addEventListener');
+    const create = vi.spyOn(document, 'createElement');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await boot(false);
+    expect(document.head.children.length + document.body.children.length).toBe(0);
+    expect(create).not.toHaveBeenCalled();
+    const types = [...wAdd.mock.calls, ...dAdd.mock.calls].map((c) => c[0]);
+    for (const t of ['error', 'unhandledrejection', 'keydown', 'pointerdown']) expect(types).not.toContain(t);
+    expect(console.warn).toBe(warn);
+    expect(console.error).toBe(error);
+    // Only the capability probe of sp.client() (unchanged since 2.0), removed right away
+    expect(setItem.mock.calls.map((c) => c[0]).filter((k) => k !== '__stagepass_test__')).toEqual([]);
+    expect(localStorage.length + sessionStorage.length).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect((window as any).stagepass[FLAG]).toBeUndefined();
+  });
+
+  it('without a session the option is not read and nothing is requested', async () => {
+    (window as any).stagepassFlagBase = 'https://assets.example.com/sp/';
+    await boot(false);
+    expect(document.querySelector('script')).toBeNull();
+    expect(document.getElementById('stagepass-flag')).toBeNull();
+    delete (window as any).stagepassFlagBase;
+  });
+
   it('ignores the old beta hook (mismatched cached chunks stay silent)', async () => {
     startSession('my-project.sp');
     await boot(false);

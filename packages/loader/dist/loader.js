@@ -288,8 +288,19 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.3.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.3.1" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
+    function flagBase(v, file) {
+      if (typeof v !== "string" || !(v = v.trim())) return null;
+      try {
+        const u = new URL(v, d.baseURI);
+        if (!/^https?:$/.test(u.protocol) || u.username || u.password) return null;
+        u.search = u.hash = "";
+        return file ? new URL("./", u).href : u.href.replace(/\/?$/, "/");
+      } catch (_) {
+        return null;
+      }
+    }
     function getLoaderScript() {
       try {
         if (d.currentScript instanceof HTMLScriptElement) return d.currentScript;
@@ -545,8 +556,14 @@ var Stagepass = (() => {
     if (dev) {
       try {
         const FLAG = /* @__PURE__ */ Symbol.for("stagepass.flag.v2");
-        const src = loaderScript && loaderScript.src || "";
-        const base = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0]) ? new URL("./", src).href : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+        const opt = attr("flag-base") ?? W.stagepassFlagBase;
+        let base = flagBase(opt, false);
+        if (opt != null && !base) spWarn("Ignored flag base (http(s) or relative only): " + cut(String(opt), 99));
+        base = base || flagBase(loaderScript && loaderScript.src || "", true);
+        if (!base) {
+          base = `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+          if (debug) spWarn("Loader URL unknown, flag loads from " + base + ". Set data-stagepass-flag-base");
+        }
         Object.assign(flagState, {
           debug,
           domain: dom,

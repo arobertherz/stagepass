@@ -154,6 +154,20 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.1] - 2026-11-02
+
+Patch release of the loader only. CLI and modules are unchanged. Visitors without a session see no change: same single request, no flag code runs, no extra listeners, storage or DOM.
+
+#### Fixed
+
+- Self-hosted loaders under another file name (for example `/js/stagepass.js`) loaded `flag.min.js` and `flag-card.min.js` from jsDelivr. The flag files now always come from the folder of the loader's own script URL, so a copy from `node_modules/@stagepass/loader/dist/` stays fully local. CDN embeds (`@2`, exact pins) request the same URLs as before.
+
+#### Added
+
+- `data-stagepass-flag-base` on the loader tag (or `window.stagepassFlagBase`) sets the folder of the flag files for an inlined or bundled loader. Only `http(s)` or relative URLs are used; `javascript:`, `data:`, `blob:` and URLs with credentials are ignored with a warning. Read only during a session.
+- Without a script URL and without the option the flag files still load from jsDelivr at the same version, and debug sessions now show a warning about it.
+- Size budget also checks brotli. `loader.min.js`: 13798 B minified / 6257 B gzip / 5588 B brotli (2.3.0: 13395 / 6067 / 5407). `flag.min.js` and `flag-card.min.js` are unchanged.
+
 ### [2.3.0] - 2026-11-02
 
 Stable release of the 2.3 loader, identical in behaviour to 2.3.0-beta.4 (only the embedded version string changes). Non-breaking minor release: the public `sp` API, attributes, events, session handling and URL swapping behave as in 2.2.0. `@stagepass/cli` (2.2.1) and `@stagepass/modules` (2.2.0) are unchanged; the published modules peer range `>=2.0.0` accepts 2.3.0 without `--legacy-peer-deps`.

@@ -48,6 +48,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-stagepass-mute-console="true"` | Opt-in legacy mute of `console.log/warn/error/info/debug` in production when no session. |
 | `data-stagepass-staging-hosts` | Comma-separated hostnames treated as staging (in addition to `*.webflow.io`). |
 | `data-stagepass-alias` | Optional custom global name (valid JS identifier). Assigned only when that global is free. |
+| `data-stagepass-flag-base` | Folder for `flag.min.js` / `flag-card.min.js` when the loader is inlined or bundled (2.3.1+). `http(s)` or relative only; also `window.stagepassFlagBase`. Read only during a session. |
 
 ## Asset attributes
 
@@ -90,7 +91,7 @@ Shown only while a session is active (including debug).
 - Errors: `sp.error`, `sp.log('error', …)`, `console.error`, uncaught errors (with stack), failed resource loads, unhandled rejections (with stack). Local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor". Sanitized errors from other origins show as "Error in a cross-origin script (details only in DevTools console)".
 - Accessibility: the pill is a button with `aria-expanded`, the card a `role="dialog"`; focus moves into the card and back to the pill; reduced motion makes all changes instant.
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
-- The UI lives in `dist/flag.min.js` (about 2.7 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
+- The UI lives in `dist/flag.min.js` (about 2.7 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the three files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Runtime API
 
