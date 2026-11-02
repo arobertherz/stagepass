@@ -1,6 +1,5 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { createRequire } from 'module';
 import chalk from 'chalk';
 import { defaultExec } from '../lib/exec.js';
 import {
@@ -8,8 +7,16 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require('../../package.json');
+import readline from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { detectSite } from '../lib/site-detect.js';
+import {
+  applyProjectSync,
+  planProjectSync,
+  readStagepassJson,
+  resolveUpgradeModules,
+} from '../lib/project-sync.js';
 
 const STAGEPASS_SCOPE = '@stagepass/';
 
@@ -28,18 +35,21 @@ function needsNpmView(version) {
 }
 
 /**
- * Resolve target version. Uses CLI package version by default.
+ * Resolve target version. Defaults to the @stagepass/loader + modules version
+ * this CLI targets (not the CLI's own version, which can differ on CLI patches).
  * Contacts the network only when `--version` is an npm dist-tag (e.g. latest).
  *
  * @param {string|undefined} requested
  * @param {object} deps
  * @param {import('../lib/exec.js').ExecFn} [deps.exec]
- * @param {string} [deps.cliVersion]
+ * @param {string} [deps.packagesVersion]
+ * @param {string} [deps.cliVersion] Legacy alias for packagesVersion (tests)
  * @returns {Promise<string>}
  */
 export async function resolveUpgradeVersion(requested, deps = {}) {
   const exec = deps.exec || defaultExec;
-  const fallback = deps.cliVersion || cliVersion;
+  const fallback =
+    deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION;
 
   if (!requested || String(requested).trim() === '') {
     return fallback;
@@ -112,11 +122,17 @@ export function applyStagepassVersions(pkg, targetVersion) {
 }
 
 /**
- * Upgrade @stagepass/* deps in the current project's package.json.
+ * Upgrade @stagepass/* deps in the current project's package.json and sync
+ * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
+ * tsconfig/jsconfig types.
  *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
  * @param {string} [options.version]
+ * @param {string} [options.site] live Webflow host to detect modules from
+ * @param {string} [options.siteModules] none | all | comma list
+ * @param {boolean} [options.skipSite]
+ * @param {boolean} [options.yes]
  * @param {object} [deps]
  * @param {typeof fs} [deps.fs]
  * @param {string} [deps.cwd]
@@ -140,7 +156,7 @@ export async function upgrade(options = {}, deps = {}) {
   try {
     targetVersion = await resolveUpgradeVersion(options.version, {
       exec: deps.exec || defaultExec,
-      cliVersion: deps.cliVersion || cliVersion,
+      packagesVersion: deps.packagesVersion || deps.cliVersion,
     });
   } catch (error) {
     log(chalk.red(error instanceof Error ? error.message : String(error)));
@@ -157,10 +173,6 @@ export async function upgrade(options = {}, deps = {}) {
   }
 
   const { next, changes } = applyStagepassVersions(pkg, targetVersion);
-  const hasModules = Boolean(
-    next.dependencies?.['@stagepass/modules'] ||
-      next.devDependencies?.['@stagepass/modules']
-  );
 
   if (changes.length === 0) {
     const existing = findStagepassDeps(pkg);
@@ -174,20 +186,86 @@ export async function upgrade(options = {}, deps = {}) {
     for (const change of changes) {
       log(`  ${change.name}: ${change.from} → ${change.to} (${change.section})`);
     }
+  }
 
-    if (options.dryRun) {
-      log(chalk.dim('\nDry run: package.json was not modified.'));
-    } else {
+  // Declared modules: live site first, then stagepass.json, then ask.
+  const sp = await readStagepassJson(cwd, fse);
+  if (sp.error) log(chalk.yellow(sp.error));
+  const isTty = deps.isTTY != null ? Boolean(deps.isTTY) : Boolean(input.isTTY && output.isTTY);
+  const interactive = isTty && options.yes !== true;
+  /** @type {import('node:readline/promises').Interface | null} */
+  let rl = null;
+  const getRl = () => {
+    if (!rl) rl = deps.createReadline?.() || readline.createInterface({ input, output });
+    return rl;
+  };
+  let resolved;
+  try {
+    resolved = await resolveUpgradeModules(
+      { cwd, data: sp.data, pkg: next, options },
+      {
+        detectSite: deps.detectSite || detectSite,
+        loadProjects: deps.loadProjects,
+        interactive,
+        log,
+        ask: async (question, def) => {
+          const answer = await getRl().question(`${question} (${def}): `);
+          const trimmed = String(answer || '').trim();
+          return trimmed === '' ? def : trimmed;
+        },
+        confirm: async (question, defYes) => {
+          const answer = await getRl().question(`${question} (${defYes ? 'Y/n' : 'y/N'}): `);
+          const t = String(answer || '').trim().toLowerCase();
+          if (t === '') return defYes;
+          return ['y', 'yes'].includes(t);
+        },
+      }
+    );
+  } finally {
+    if (rl) rl.close();
+  }
+  if (!resolved.ok) {
+    log(chalk.red(resolved.error));
+    return 1;
+  }
+
+  const plan = await planProjectSync(
+    {
+      cwd,
+      modules: resolved.modules,
+      origin: options.site ? resolved.origin : null,
+      pkg: next,
+    },
+    fse
+  );
+
+  log(chalk.bold(`\nProject files for modules: ${resolved.modules.length ? resolved.modules.join(', ') : 'none'}`));
+  if (plan.writes.length === 0) {
+    log('  Everything is up to date.');
+  }
+  for (const w of plan.writes) {
+    log(`  ${w.file}: ${w.action}`);
+  }
+  for (const note of plan.notes) {
+    log(chalk.yellow(`  note: ${note}`));
+  }
+
+  if (options.dryRun) {
+    log(chalk.dim('\nDry run: no files were modified.'));
+  } else {
+    if (changes.length > 0) {
       const trailingNewline = raw.endsWith('\n');
-      const body = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
-      await fse.writeFile(pkgPath, body, 'utf8');
+      const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
+      await fse.writeFile(pkgPath, pkgBody, 'utf8');
       log(chalk.green('\nUpdated package.json.'));
     }
+    await applyProjectSync(cwd, plan.writes, fse);
+    if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
   const snippets = buildWebflowSnippets({
     version: targetVersion,
-    modules: hasModules,
+    moduleList: resolved.modules,
   });
   printWebflowSnippets(snippets, log);
 

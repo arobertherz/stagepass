@@ -190,6 +190,7 @@ describe('createNew', () => {
         remote: 'https://github.com/org/full-app.git',
         install: false,
         author: 'Test',
+        siteModules: 'cookies',
       },
       {
         isTTY: false,
@@ -223,8 +224,19 @@ describe('createNew', () => {
     expect(pkg.private).toBe(true);
     expect(pkg.scripts.build).toBeTruthy();
     expect(pkg.scripts.watch).toBeTruthy();
-    expect(pkg.devDependencies['@stagepass/loader']).toBe('2.0.0');
-    expect(pkg.devDependencies['@stagepass/modules']).toBe('2.0.0');
+    // major.minor caret range of the injected packages version (2.0.0 here).
+    expect(pkg.devDependencies['@stagepass/loader']).toBe("^2.0.0");
+    expect(pkg.devDependencies['@stagepass/modules']).toBe("^2.0.0");
+    const sp = await fs.readJson(path.join(target, 'stagepass.json'));
+    expect(sp.modules).toEqual(['cookies']);
+    expect(sp.origin).toBeUndefined();
+    const tsconfig = await fs.readJson(path.join(target, 'tsconfig.json'));
+    expect(tsconfig.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
+    const rule = await fs.readFile(path.join(target, '.cursor/rules/stagepass.mdc'), 'utf8');
+    expect(rule).toContain('globs: src/**');
+    expect(rule).toContain('if (sp.cookies)');
+    const gitignore = await fs.readFile(path.join(target, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('node_modules/');
     expect(pkg.devDependencies.sass).toBeTruthy();
     expect(pkg.devDependencies.esbuild).toBeTruthy();
 
@@ -236,7 +248,12 @@ describe('createNew', () => {
     const agents = await fs.readFile(path.join(target, 'AGENTS.md'), 'utf8');
     expect(agents).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
     expect(agents).toMatch(/unpkg serves the same paths/i);
-    expect(agents).toContain('modules/dist/{inject,cookies,maintenance,all}.min.js');
+    expect(agents).toContain('<!-- stagepass:begin -->');
+    expect(agents).toContain('sp.cookies.bake');
+    expect(agents).toContain('`sp.inject`: not available');
+    expect(agents).toMatch(/Never call `sp\.<module>`/);
+    expect(readme).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(readme).not.toContain('inject.min.js');
 
     expect(exec).toHaveBeenCalledWith('git', ['init'], expect.objectContaining({ cwd: target }));
     expect(exec).toHaveBeenCalledWith(
@@ -274,10 +291,76 @@ describe('createNew', () => {
     expect(await fs.pathExists(path.join(target, 'src/main.js'))).toBe(true);
     expect(await fs.pathExists(path.join(target, 'src/styles.css'))).toBe(true);
     expect(await fs.pathExists(path.join(target, 'jsconfig.json'))).toBe(true);
+    expect(await fs.pathExists(path.join(target, '.gitignore'))).toBe(true);
     const pkg = JSON.parse(await fs.readFile(path.join(target, 'package.json'), 'utf8'));
     expect(pkg.devDependencies['@stagepass/modules']).toBeUndefined();
+    expect((await fs.readJson(path.join(target, 'stagepass.json'))).modules).toEqual([]);
+    expect((await fs.readJson(path.join(target, 'jsconfig.json'))).compilerOptions.types).toEqual(['@stagepass/loader']);
+    expect(await fs.pathExists(path.join(target, '.cursor/rules/stagepass.mdc'))).toBe(true);
     expect(pkg.devDependencies.sass).toBeUndefined();
     expect(pkg.devDependencies.typescript).toBeUndefined();
+  });
+});
+
+describe('createNew robustness', () => {
+  it('fails clearly and writes nothing when a template is missing', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-missing-'));
+    const templates = path.join(tmp, 'templates');
+    await fs.copy(defaultTemplatesRoot(), templates);
+    await fs.remove(path.join(templates, 'gitignore'));
+    const target = path.join(tmp, 'broken');
+    const errors = [];
+    const spawn = vi.fn();
+    try {
+      const code = await createNew(
+        'broken-app',
+        { yes: true, dir: target, git: false, install: true },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--install'],
+          templatesRoot: templates,
+          cwd: tmp,
+          log: () => {},
+          error: (msg) => errors.push(String(msg)),
+          exec: vi.fn(),
+          spawn,
+        }
+      );
+      expect(code).toBe(1);
+      expect(errors.join('\n')).toMatch(/Template "gitignore" is missing/);
+      expect(errors.join('\n')).toMatch(/Reinstall the CLI/);
+      expect(await fs.pathExists(target)).toBe(false);
+      expect(spawn).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('defaults snippets to the loader/modules version, not the CLI version', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-ver-'));
+    const target = path.join(tmp, 'ver');
+    try {
+      const code = await createNew(
+        'ver-app',
+        { yes: true, dir: target, git: false },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+      const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
+      expect(readme).toContain(`data-stagepass-version="${STAGEPASS_PACKAGES_VERSION}"`);
+    } finally {
+      await fs.remove(tmp);
+    }
   });
 });
 
@@ -328,4 +411,81 @@ describe('scaffold e2e build', () => {
       await fs.remove(tmp);
     }
   }, 300_000);
+});
+
+describe('new: declared modules', () => {
+  const liveAll = vi.fn(async () => ({
+    ok: true,
+    url: 'https://shop.webflow.io/',
+    loader: { version: '2', cdn: 'jsdelivr' },
+    modules: [{ id: 'all', version: '2', cdn: 'jsdelivr' }],
+    list: ['all'],
+  }));
+
+  it('--site detects modules non-interactively and stores origin', async () => {
+    const logs = [];
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'https://shop.webflow.io/' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), detectSite: liveAll, log: (m) => logs.push(m) }
+    );
+    expect(r.ok).toBe(true);
+    expect(r.config).toMatchObject({ siteModules: ['all'], origin: 'shop.webflow.io', modules: true });
+    expect(liveAll).toHaveBeenCalledWith('shop.webflow.io');
+    expect(logs.join('\n')).toContain('detected on shop.webflow.io');
+  });
+
+  it('--site-modules wins and never fetches', async () => {
+    const detectSite = vi.fn();
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'shop.webflow.io', siteModules: 'inject,maintenance' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), detectSite, log: () => {} }
+    );
+    expect(r.config.siteModules).toEqual(['inject', 'maintenance']);
+    expect(detectSite).not.toHaveBeenCalled();
+  });
+
+  it('defaults to none with a hint and rejects bad input', async () => {
+    const logs = [];
+    const r = await resolveNewOptions('shop', { yes: true }, { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), log: (m) => logs.push(String(m)) });
+    expect(r.config.siteModules).toEqual([]);
+    expect(logs.join('\n')).toContain('--site-modules');
+    const bad = await resolveNewOptions('shop', { yes: true, siteModules: 'evil' }, { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) });
+    expect(bad.ok).toBe(false);
+    const http = await resolveNewOptions('shop', { yes: true, site: 'http://shop.webflow.io' }, { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) });
+    expect(http.ok).toBe(false);
+    const conflict = await resolveNewOptions('shop', { yes: true, siteModules: 'cookies' }, { isTTY: false, argv: ['--yes', '--no-modules'], exec: async () => ({ stdout: '' }) });
+    expect(conflict.ok).toBe(false);
+  });
+
+  it('wizard: asks for the site, confirms detected modules', async () => {
+    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', 'y', 'n', 'y'];
+    const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
+    const r = await resolveNewOptions(undefined, {}, {
+      isTTY: true,
+      argv: [],
+      exec: async () => ({ stdout: '' }),
+      detectSite: liveAll,
+      createReadline: () => rl,
+      log: () => {},
+    });
+    expect(r.ok).toBe(true);
+    expect(r.config).toMatchObject({ siteModules: ['all'], origin: 'shop.webflow.io', git: false, install: true });
+  });
+
+  it('wizard: unreachable site falls back to asking for the list', async () => {
+    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', 'cookies', 'n', 'n'];
+    const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
+    const r = await resolveNewOptions(undefined, {}, {
+      isTTY: true,
+      argv: [],
+      exec: async () => ({ stdout: '' }),
+      detectSite,
+      createReadline: () => rl,
+      log: () => {},
+    });
+    expect(r.config.siteModules).toEqual(['cookies']);
+  });
 });

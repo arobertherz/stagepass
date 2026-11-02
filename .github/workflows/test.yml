@@ -38,3 +38,6 @@ jobs:
 
       - name: Run Modules tests
         run: npm test --workspace=packages/modules
+
+      - name: Packed CLI smoke test (npm pack, global install, new + install + build)
+        run: node scripts/test-cli-packed.mjs

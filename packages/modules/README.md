@@ -16,12 +16,12 @@ Without the loader, `inject` and `cookies` still attach their APIs and warn; `ma
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.1.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see root README [Version pinning](../../README.md#-version-pinning)).
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see root README [Version pinning](../../README.md#-version-pinning)).
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
@@ -161,7 +161,20 @@ sp.maintenance.disable();
 
 ## Types
 
-`global.d.ts` extends `@stagepass/loader` via declaration merging (`inject`, `cookies` / `cookie`, `consent`, `maintenance`).
+The modules extend `@stagepass/loader` via declaration merging. Use one entry per module your site actually loads, so an AI assistant or teammate cannot call a module that is not there:
+
+```json
+{ "compilerOptions": { "types": ["@stagepass/loader", "@stagepass/modules/cookies"] } }
+```
+
+| Entry | Adds |
+| :--- | :--- |
+| `@stagepass/modules/inject` | `sp.inject` |
+| `@stagepass/modules/cookies` | `sp.cookies` / `sp.cookie`, `sp.consent` |
+| `@stagepass/modules/maintenance` | `sp.maintenance` |
+| `@stagepass/modules` | all of the above (unchanged since 2.0) |
+
+Module members are optional (`sp.cookies?`), because a page may not load the file; guard calls (`if (sp.cookies) …`). `stagepass new` / `stagepass upgrade` set these entries from `stagepass.json` `modules`.
 
 ## Repository
 

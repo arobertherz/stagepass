@@ -124,6 +124,14 @@ docker run --rm -v "$PWD":/w \
   -w /w node:22-bookworm-slim bash -lc 'npm ci && npm run build && npm test --workspaces --if-present'
 ```
 
+Packed smoke test (what npm actually ships: packs cli, loader and modules, scaffolds ts/js projects from the local tarballs, runs `tsc --noEmit` on `sp`, builds, and runs `upgrade` on an old-style project; needs registry access for third-party deps and a prior `npm run build`):
+
+```bash
+docker run --rm -v "$PWD":/w -w /w node:22-bookworm-slim node scripts/test-cli-packed.mjs
+```
+
+Templates under `packages/cli/templates/` must not start with a dot (npm pack drops `.gitignore`); name them without the dot and map them in `scaffoldTemplateMap`.
+
 Also verify on Node 24 (`node:24-bookworm-slim`) to match CI (matrix: 22.x and 24.x). See `RELEASING.md` for the tag → `npm stage` flow. Loader v2 behaviour notes: session expiry, version cache busting, and no global console mute. See `MIGRATION.md`.
 
 ### CLI Changes
@@ -145,7 +153,7 @@ npm run dev
 
 ## Publishing
 
-Do **not** run `npm publish` from a developer machine. Releases use the tag → `npm stage publish` flow documented in **[RELEASING.md](RELEASING.md)** (prerelease on `next`, then stable on `latest`, maintainer 2FA approval).
+Do **not** run `npm publish` from a developer machine. Releases use the tag → `npm stage publish` flow documented in **[RELEASING.md](RELEASING.md)** (every version is staged on `next`, maintainer 2FA approval, then an explicit `npm dist-tag add … latest`).
 
 ## Unlinking
 

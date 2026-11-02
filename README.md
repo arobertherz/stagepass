@@ -113,7 +113,7 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
@@ -124,10 +124,10 @@ See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
 
 ### Optional exact pin
 
-For maximum control (freeze one publish), use an exact version such as `@2.1.0`:
+For maximum control (freeze one publish), use an exact version such as `@2.2.0`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.1.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.2.0/dist/loader.min.js"></script>
 ```
 
 jsDelivr may cache alias versions such as `@2` for a while after a new publish. Exact pins are not affected the same way. To force a refresh of the major alias, purge:
@@ -150,7 +150,7 @@ Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 Why `@2`:
 * **Compatible updates**: minor/patch releases within v2 stay backward compatible under strict semver.
 * **One intentional major bump**: breaking changes require a new major (v3) and a deliberate URL change.
-* **Exact pin when needed**: use `@2.1.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.1.0-beta.1`).
+* **Exact pin when needed**: use `@2.2.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.2.0-beta.1`).
 
 ---
 
@@ -185,7 +185,7 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
 <!-- Core loader only (major pin @2) -->
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 ```
 
@@ -213,7 +213,7 @@ Modules extend the core loader with additional features (e.g., programmatic inje
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
@@ -306,15 +306,27 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 | `stagepass unlink [domain]` | Remove the link (and `projects.json` entry) for that domain. |
 | `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). |
 | `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
-| `stagepass doctor` | Read-only stack diagnostics (never sudo). `--json`. Exit `1` on any fail. |
+| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus the current project's declared modules vs. its live site. `--json`, `--skip-site`. Exit `1` on any fail. |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`); non-interactive; never sudo. |
-| `stagepass new [name]` | Scaffold a lean Webflow project (flags for every option; `--yes` for non-interactive). |
+| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project. |
 | `stagepass watch` | Run `npm run watch` in the current project. |
-| `stagepass upgrade` | Bump `@stagepass/*` in the project `package.json` and print Webflow snippets. |
+| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. |
+
+### Declared modules, AI guide and types
+
+Projects created or upgraded with CLI 2.2 declare in `stagepass.json` which modules their Webflow site loads: `"modules": []`, `["cookies"]` (any of `inject`, `cookies`, `maintenance`) or `["all"]`. `stagepass new --site <host>` and `stagepass upgrade` read this from the live site (public https GET, no cookies, `<script src>` tags of `@stagepass/loader` / `@stagepass/modules` on jsDelivr or unpkg; nothing is executed) and ask you to confirm. `stagepass doctor` warns when the declared list and the live site differ.
+
+From that list the CLI generates the `sp` API reference in `AGENTS.md` (managed block between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`), `.cursor/rules/stagepass.mdc`, and `compilerOptions.types`:
+
+```json
+{ "compilerOptions": { "types": ["@stagepass/loader", "@stagepass/modules/cookies"] } }
+```
+
+`@stagepass/loader` types `sp` / `window.stagepass`; `@stagepass/modules/inject`, `/cookies`, `/maintenance` add one module each, and `@stagepass/modules` adds all of them (unchanged from 2.0). See [`packages/cli/README.md`](./packages/cli/README.md) for details.
 
 ### `link` details
 
@@ -598,7 +610,7 @@ Visitors without a Stagepass session see the overlay. Developers with an active 
 
 ## 🤖 AGENTS.md Templates
 
-Use one of the following canonical profiles in your project-level `AGENTS.md` so AI coding agents know exactly which Stagepass runtime APIs are available.
+`stagepass new` and `stagepass upgrade` generate the project `AGENTS.md` block and `.cursor/rules/stagepass.mdc` from the declared modules (see [Declared modules, AI guide and types](#declared-modules-ai-guide-and-types)). For projects without the CLI, use one of the following canonical profiles in your project-level `AGENTS.md` so AI coding agents know exactly which Stagepass runtime APIs are available.
 
 ### Canonical profile files
 - Loader only: [`AGENTS.LOADER.md`](./AGENTS.LOADER.md)

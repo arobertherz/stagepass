@@ -2,12 +2,12 @@
 
 This guide covers every breaking change in **2.0.0**. Sites that keep using `@1` / exact `1.x` CDN URLs are unaffected until you opt in.
 
-Prefer the major pin `@2` (strict semver within v2; breaking changes only in a new major). Exact `@2.1.0` is optional for maximum control:
+Prefer the major pin `@2` (strict semver within v2; breaking changes only in a new major). Exact `@2.2.0` is optional for maximum control:
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 ```
 
@@ -173,7 +173,7 @@ sp.error('fail');
 npm install -g @stagepass/cli@2
 ```
 
-`stagepass --version` should print a 2.x version (e.g. `2.1.0`).
+`stagepass --version` should print a 2.x version (e.g. `2.2.0`).
 
 ## Modules
 

@@ -1,10 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'module';
 import { buildWebflowSnippets } from './snippets.js';
-
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require('../../package.json');
+import { CURSOR_RULE_PATH, buildCursorRule, buildManagedBlock } from './ai-guide.js';
+import { typesForModules } from './project-modules.js';
+import { STAGEPASS_PACKAGES_VERSION, packagesRange } from './versions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,18 +14,54 @@ export function defaultTemplatesRoot() {
 }
 
 /**
+ * Template file → output path. Dotfiles are stored without the leading dot
+ * because npm pack / publish drops `.gitignore` (and `.npmignore`) files.
+ * Never add a template whose name starts with `.` (a test enforces this).
+ *
+ * @param {'ts'|'js'} lang
+ * @param {'scss'|'css'} styles
+ * @returns {{ template: string, out: string }[]}
+ */
+export function scaffoldTemplateMap(lang, styles) {
+  const isTs = lang === 'ts';
+  const useSass = styles === 'scss';
+  return [
+    { template: 'scripts/build.mjs', out: 'scripts/build.mjs' },
+    { template: 'gitignore', out: '.gitignore' },
+    { template: 'README.md.tmpl', out: 'README.md' },
+    { template: 'AGENTS.md.tmpl', out: 'AGENTS.md' },
+    { template: 'stagepass.json.tmpl', out: 'stagepass.json' },
+    {
+      template: isTs ? 'src/main.ts.tmpl' : 'src/main.js.tmpl',
+      out: isTs ? 'src/main.ts' : 'src/main.js',
+    },
+    {
+      template: useSass ? 'src/styles.scss.tmpl' : 'src/styles.css.tmpl',
+      out: useSass ? 'src/styles.scss' : 'src/styles.css',
+    },
+    {
+      template: isTs ? 'tsconfig.json.tmpl' : 'jsconfig.json.tmpl',
+      out: isTs ? 'tsconfig.json' : 'jsconfig.json',
+    },
+  ];
+}
+
+/**
  * @typedef {object} ScaffoldOptions
  * @property {string} name
  * @property {string} dir Absolute or relative target directory
  * @property {string} [author]
  * @property {'ts'|'js'} lang
  * @property {'scss'|'css'} styles
- * @property {boolean} modules
+ * @property {boolean} modules Add @stagepass/modules to devDependencies
+ * @property {string[]} [siteModules] Declared modules the Webflow site loads (stagepass.json)
+ * @property {string} [origin] Live site host (stagepass.json `origin`)
  * @property {boolean} git
  * @property {string} [remote]
  * @property {boolean} install
  * @property {boolean} dryRun
- * @property {string} [loaderVersion]
+ * @property {string} [loaderVersion] @stagepass/loader + modules version (snippets)
+ * @property {string} [packagesRange] Override for package.json ranges (default ^<major>.<minor>.0)
  */
 
 /**
@@ -34,18 +69,20 @@ export function defaultTemplatesRoot() {
  * @returns {Record<string, string>}
  */
 export function buildPackageJson(options) {
-  const version = options.loaderVersion || cliVersion;
+  const range =
+    options.packagesRange ||
+    packagesRange(options.loaderVersion || STAGEPASS_PACKAGES_VERSION);
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
 
   /** @type {Record<string, string>} */
   const devDependencies = {
-    '@stagepass/loader': version,
+    '@stagepass/loader': range,
     esbuild: '^0.25.0',
   };
 
   if (options.modules) {
-    devDependencies['@stagepass/modules'] = version;
+    devDependencies['@stagepass/modules'] = range;
   }
   if (isTs) {
     devDependencies.typescript = '^5.6.0';
@@ -91,24 +128,30 @@ export function applyTemplate(source, vars) {
  * @returns {Promise<{ relativePath: string, contents: string }[]>}
  */
 export async function planScaffoldFiles(options, deps = {}) {
-  const version = options.loaderVersion || cliVersion;
+  const version = options.loaderVersion || STAGEPASS_PACKAGES_VERSION;
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
   const entryJs = isTs ? 'src/main.ts' : 'src/main.js';
   const entryCss = useSass ? 'src/styles.scss' : 'src/styles.css';
   const configFile = isTs ? 'tsconfig.json' : 'jsconfig.json';
 
+  const siteModules = Array.isArray(options.siteModules) ? options.siteModules : [];
   const snippets = buildWebflowSnippets({
     version,
-    modules: options.modules,
+    moduleList: siteModules,
   });
+  const types = typesForModules(siteModules, { modulesDependency: options.modules === true });
 
   const vars = {
     NAME: options.name,
     AUTHOR: options.author || '',
     LANG: options.lang,
     STYLES: options.styles,
-    MODULES_JSON: options.modules ? 'true' : 'false',
+    MODULES_JSON: JSON.stringify(siteModules),
+    ORIGIN_LINE: options.origin ? `\n  "origin": ${JSON.stringify(options.origin)},` : '',
+    TYPES_JSON: JSON.stringify(types),
+    TYPES_INLINE: JSON.stringify(types).replace(/","/g, '", "'),
+    STAGEPASS_BLOCK: buildManagedBlock(siteModules),
     LOADER_VERSION: version,
     HEAD_SNIPPET: snippets.head,
     FOOTER_SNIPPET: snippets.footer,
@@ -116,9 +159,6 @@ export async function planScaffoldFiles(options, deps = {}) {
     ENTRY_CSS: entryCss,
     USE_SASS: useSass ? 'true' : 'false',
     CONFIG_FILE: configFile,
-    MODULES_NOTE: options.modules
-      ? '\nModules are enabled: load `inject` / `cookies` (or `all`) after the loader in Webflow Head.\n'
-      : '\nModules are not included. Add `@stagepass/modules` later if you need `sp.inject` or `sp.cookies`.\n',
   };
 
   const readTemplate =
@@ -136,25 +176,7 @@ export async function planScaffoldFiles(options, deps = {}) {
     contents: `${JSON.stringify(pkg, null, 2)}\n`,
   });
 
-  const templateMap = [
-    { template: 'scripts/build.mjs', out: 'scripts/build.mjs' },
-    { template: '.gitignore', out: '.gitignore' },
-    { template: 'README.md.tmpl', out: 'README.md' },
-    { template: 'AGENTS.md.tmpl', out: 'AGENTS.md' },
-    { template: 'stagepass.json.tmpl', out: 'stagepass.json' },
-    {
-      template: isTs ? 'src/main.ts.tmpl' : 'src/main.js.tmpl',
-      out: entryJs,
-    },
-    {
-      template: useSass ? 'src/styles.scss.tmpl' : 'src/styles.css.tmpl',
-      out: entryCss,
-    },
-    {
-      template: isTs ? 'tsconfig.json.tmpl' : 'jsconfig.json.tmpl',
-      out: configFile,
-    },
-  ];
+  const templateMap = scaffoldTemplateMap(options.lang, options.styles);
 
   for (const item of templateMap) {
     const raw = await readTemplate(item.template);
@@ -163,6 +185,10 @@ export async function planScaffoldFiles(options, deps = {}) {
       contents: applyTemplate(raw, vars),
     });
   }
+
+  // Generated in code (not a template): npm drops dotfiles and dot folders
+  // are easy to lose in the published package.
+  files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule(siteModules) });
 
   return files;
 }

@@ -1,3 +1,6 @@
+import { normalizeModulesList } from './project-modules.js';
+import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
+
 /**
  * Safe token for CDN pins and data-stagepass-version (blocks HTML/attr injection).
  * @param {unknown} version
@@ -19,12 +22,21 @@ export function sanitizeSnippetVersion(version) {
  *
  * @param {object} options
  * @param {string} options.version Exact package version for data-stagepass-version / docs
- * @param {boolean} [options.modules]
+ * @param {boolean} [options.modules] Legacy: true = inject + cookies tags
+ * @param {string[]} [options.moduleList] Declared modules (wins over `modules`)
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
  */
 export function buildWebflowSnippets(options) {
-  const version = sanitizeSnippetVersion(options.version || '2.1.0');
-  const modules = options.modules === true;
+  const version = sanitizeSnippetVersion(options.version || STAGEPASS_PACKAGES_VERSION);
+  /** @type {string[]} */
+  let moduleFiles = [];
+  if (Array.isArray(options.moduleList)) {
+    const parsed = normalizeModulesList(options.moduleList);
+    if (!parsed.ok) throw new Error(parsed.error);
+    moduleFiles = parsed.modules;
+  } else if (options.modules === true) {
+    moduleFiles = ['inject', 'cookies'];
+  }
   const majorPin = '@2';
   const exactPin = `@${version}`;
 
@@ -36,10 +48,9 @@ export function buildWebflowSnippets(options) {
     '></script>',
   ];
 
-  if (modules) {
+  for (const id of moduleFiles) {
     loaderLines.push(
-      `<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules${majorPin}/dist/inject.min.js"></script>`,
-      `<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules${majorPin}/dist/cookies.min.js"></script>`
+      `<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules${majorPin}/dist/${id}.min.js"></script>`
     );
   }
 
@@ -78,6 +89,6 @@ export function printWebflowSnippets(snippets, log = console.log) {
   log('\nWebflow Custom Code (Footer):');
   log(snippets.footer);
   log(
-    '\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @2.1.0).'
+    `\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @${STAGEPASS_PACKAGES_VERSION}).`
   );
 }

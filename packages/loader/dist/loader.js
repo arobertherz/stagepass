@@ -299,7 +299,7 @@ var Stagepass = (() => {
   (function() {
     const K = SESSION_KEY;
     const P = "stagepass";
-    const PKG_VERSION = true ? "2.1.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.2.0" : "0.0.0";
     function getLoaderScript() {
       try {
         if (document.currentScript instanceof HTMLScriptElement) {

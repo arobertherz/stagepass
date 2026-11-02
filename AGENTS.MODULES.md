@@ -8,12 +8,12 @@ This profile is for projects that use Stagepass Loader and Stagepass Modules (In
 Loader must be loaded before modules as separate `<script>` tags (the loader does not auto-load modules via query parameters). Without the loader, `inject`/`cookies` still attach APIs and warn; `maintenance` skips registration.
 
 ## CDN (version pinning)
-Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.1.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
+Prefer the major pin `@2` in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.0`) are optional for maximum control. Legacy `@1` sites are unaffected.
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.1.0"
+  data-stagepass-version="2.2.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>

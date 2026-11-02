@@ -67,14 +67,54 @@ export type StagepassCapabilityName =
 
 export type StagepassEventName = 'theme' | 'session' | (string & {});
 
+/** Payload of `sp.on('session', fn)` (emitted once at boot). */
+export interface StagepassSessionEvent {
+  /** True while a Stagepass session (or debug mode) is active. */
+  active: boolean;
+  /** Raw session value (`.sp` domain or `debug`), or null. */
+  domain: string | null;
+  /** True when assets are swapped to a local `.sp` domain. */
+  swap: boolean;
+  /** True in debug mode (`?stagepass=debug`). */
+  debug: boolean;
+}
+
+/** Subscribe helper with typed payloads for known events. */
+export interface StagepassOn {
+  /**
+   * Color scheme changes. Payload equals `vars.client.theme`.
+   * @example
+   * const off = sp.on('theme', ({ current }) => { document.documentElement.dataset.theme = current; });
+   */
+  (event: 'theme', fn: (payload: StagepassClientTheme) => void): () => void;
+  /**
+   * Session state, emitted once at boot after globals are set.
+   * @example
+   * sp.on('session', ({ active, swap }) => { if (active && swap) sp.log('local assets'); });
+   */
+  (event: 'session', fn: (payload: StagepassSessionEvent) => void): () => void;
+  /** Unknown events are accepted and never fire. */
+  (event: StagepassEventName, fn: (payload: unknown) => void): () => void;
+}
+
 export type StagepassModuleFactory = (api: StagepassAPI) => void;
 
 /**
  * Core Stagepass runtime API (loader). Modules extend this via declaration merging.
  */
 export interface StagepassAPI {
+  /**
+   * Frozen runtime variables.
+   * @example
+   * if (sp.vars.isLocal) sp.log('local session on', sp.vars.domain);
+   */
   vars: StagepassVars;
-  /** Structured log (only when a session is active). */
+  /**
+   * Structured log (only when a session is active). A first argument of
+   * `'warn'` or `'error'` selects the level.
+   * @example
+   * sp.log('menu ready');
+   */
   log: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -90,17 +130,26 @@ export interface StagepassAPI {
    * Staging: hostname ends with `.webflow.io` or matches `data-stagepass-staging-hosts`.
    */
   env: () => StagepassEnvName;
-  /** `true` when `env()` equals `name`. */
+  /**
+   * `true` when `env()` equals `name`.
+   * @example
+   * if (sp.is('production')) initAnalytics();
+   */
   is: (name: StagepassEnvName | string) => boolean;
-  /** Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`, …). */
+  /**
+   * Capability probe. Known: `localStorage`, `sessionStorage`, `cookies`, `serviceWorker`.
+   * Any other name returns `false`.
+   * @example
+   * if (sp.can('localStorage')) localStorage.setItem('seen', '1');
+   */
   can: (capability: StagepassCapabilityName) => boolean;
   /** Read a key from `vars.client`, or the whole client object when omitted. */
   client: (key?: keyof StagepassClientInfo | string) => unknown;
   /**
    * Subscribe to runtime events. Returns an unsubscribe function.
-   * Supported: `theme` (prefers-color-scheme), `session` (boot / disconnect).
+   * Supported: `theme` (prefers-color-scheme), `session` (boot).
    */
-  on: (event: StagepassEventName, fn: (payload: unknown) => void) => () => void;
+  on: StagepassOn;
   /**
    * Register a module after a major-version check against the loader.
    * @returns whether registration succeeded

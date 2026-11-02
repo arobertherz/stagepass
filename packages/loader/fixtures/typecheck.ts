@@ -35,3 +35,19 @@ void canSw;
 void theme;
 void g;
 void alias;
+
+// Typed event payloads (2.2.0), untyped callbacks stay valid.
+api.on('theme', ({ preferred, current }) => {
+  const _p: 'light' | 'dark' | 'no-preference' = preferred;
+  const _c: 'light' | 'dark' | 'unknown' = current;
+  void _p;
+  void _c;
+});
+api.on('session', ({ active, domain, swap, debug }) => {
+  const _d: string | null = domain;
+  void [active, swap, debug, _d];
+});
+api.on('theme', (payload: unknown) => void payload);
+api.on('custom-event', (payload) => void payload);
+// @ts-expect-error loader alone does not type module APIs
+void api.cookies;

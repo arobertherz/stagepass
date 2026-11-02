@@ -3,7 +3,6 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import chalk from 'chalk';
-import { createRequire } from 'module';
 import { defaultExec } from '../lib/exec.js';
 import { defaultSpawn } from '../lib/spawn.js';
 import { validateProjectName } from '../lib/project-name.js';
@@ -18,8 +17,9 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require('../../package.json');
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
+import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 
 /**
  * Resolve a boolean flag that may appear as --foo / --no-foo.
@@ -109,6 +109,37 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   let git = resolveBoolFlag(options, 'git', argv, undefined);
   let install = resolveBoolFlag(options, 'install', argv, undefined);
   let remote = options.remote != null ? String(options.remote).trim() : '';
+  const log = deps.log || console.log;
+  const detect = deps.detectSite || detectSite;
+
+  /** @type {string[] | undefined} */
+  let siteModules;
+  if (options.siteModules != null) {
+    const parsed = normalizeModulesList(String(options.siteModules));
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    siteModules = parsed.modules;
+  }
+  /** @type {string} */
+  let origin = '';
+  if (options.site != null && String(options.site).trim() !== '') {
+    const check = normalizeSiteUrl(String(options.site));
+    if (!check.ok) return { ok: false, error: check.error };
+    origin = check.host;
+  }
+
+  /**
+   * Detect modules on the live site (public GET, never executed).
+   * @returns {Promise<string[] | null>} detected list, or null when unknown
+   */
+  const detectFromSite = async () => {
+    if (!origin) return null;
+    log(`Checking live site https://${origin}/ for Stagepass script tags...`);
+    const det = await detect(origin);
+    log(`  ${describeDetection(det)}`);
+    if (det.ok && det.loader) return det.list;
+    if (det.ok) log('  The page does not load @stagepass/loader yet.');
+    return null;
+  };
 
   if (interactive) {
     const rl =
@@ -133,8 +164,29 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
         const raw = await ask(rl, 'Styles (scss|css)', 'scss');
         styles = raw === 'css' ? 'css' : 'scss';
       }
-      if (modules === undefined) {
-        modules = await askYesNo(rl, 'Include @stagepass/modules?', true);
+      if (siteModules === undefined && modules !== false) {
+        if (!origin) {
+          const raw = await ask(rl, 'Live Webflow site to check (optional, e.g. my-project.webflow.io)', '');
+          if (raw) {
+            const check = normalizeSiteUrl(raw);
+            if (check.ok) origin = check.host;
+            else log(chalk.yellow(`  ${check.error} Skipping the live check.`));
+          }
+        }
+        const detected = await detectFromSite();
+        if (detected && (await askYesNo(rl, `Use modules detected on the site: ${formatModules(detected)}?`, true))) {
+          siteModules = detected;
+        }
+        while (siteModules === undefined) {
+          const raw = await ask(
+            rl,
+            'Modules your Webflow site loads (none | all | inject,cookies,maintenance)',
+            detected ? formatModules(detected) : 'none'
+          );
+          const parsed = normalizeModulesList(raw);
+          if (parsed.ok) siteModules = parsed.modules;
+          else log(chalk.yellow(`  ${parsed.error}`));
+        }
       }
       if (git === undefined) {
         git = await askYesNo(rl, 'Initialize git repository?', true);
@@ -148,7 +200,28 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
     } finally {
       rl.close();
     }
+  } else if (siteModules === undefined && modules !== false) {
+    const detected = await detectFromSite();
+    if (detected) {
+      siteModules = detected;
+      log(`Modules: ${formatModules(detected)} (detected on ${origin}; change "modules" in stagepass.json if needed).`);
+    }
   }
+
+  if (siteModules === undefined) {
+    siteModules = [];
+    if (!interactive && modules !== false) {
+      log(chalk.dim('Modules: none declared. Pass --site <host> or --site-modules <list>, or edit stagepass.json and run stagepass upgrade.'));
+    }
+  }
+  if (modules === false && siteModules.length > 0) {
+    return {
+      ok: false,
+      error: '--no-modules conflicts with declared site modules. Drop --no-modules or pass --site-modules none.',
+    };
+  }
+  // The npm package (types) follows the declared list; keep the legacy default (included).
+  if (siteModules.length > 0) modules = true;
 
   // Non-interactive / --yes defaults
   if (!name) {
@@ -199,11 +272,14 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       lang,
       styles,
       modules,
+      siteModules,
+      origin: origin || undefined,
       git,
       remote: remoteCheck.remote,
       install,
       dryRun: options.dryRun === true,
-      loaderVersion: deps.cliVersion || cliVersion,
+      loaderVersion:
+        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
     },
   };
 }
@@ -247,7 +323,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     ) {
       throw new Error(`Template path escapes templates root: ${rel}`);
     }
-    return fse.readFile(abs, 'utf8');
+    try {
+      return await fse.readFile(abs, 'utf8');
+    } catch (err) {
+      if (err && err.code === 'ENOENT') {
+        throw new Error(
+          `Template "${rel}" is missing from the @stagepass/cli install (${templatesRootResolved}). ` +
+            'Reinstall the CLI (npm install -g @stagepass/cli) and try again. Nothing was written.'
+        );
+      }
+      throw err;
+    }
   };
 
   let files;
@@ -353,11 +439,12 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     log(`  cd ${path.relative(cwd, targetDir) || '.'} && npm install`);
   }
   log('  npm run build');
-  log(`  stagepass link ${config.name} --origin my-project.webflow.io`);
+  log(`  stagepass link ${config.name} --origin ${config.origin || 'my-project.webflow.io'}`);
+  log(chalk.dim(`Declared modules (stagepass.json): ${formatModules(config.siteModules)}`));
 
   const snippets = buildWebflowSnippets({
     version: config.loaderVersion,
-    modules: config.modules,
+    moduleList: config.siteModules,
   });
   printWebflowSnippets(snippets, log);
 
