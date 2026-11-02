@@ -20,6 +20,17 @@ import {
 import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
+import {
+  PACKAGES_MAJOR_RANGE,
+  fetchPublished,
+  installedHasPerModuleTypes,
+  rangeHasPerModuleTypes,
+} from '../lib/registry.js';
+import { updateConfigTypes } from '../lib/project-sync.js';
+
+const PER_MODULE_TYPES_HINT =
+  '@stagepass/modules on npm has no per-module types yet (needs 2.2.0); ' +
+  'types use "@stagepass/modules" for now. Run `stagepass upgrade` once it is published to narrow them.';
 
 /**
  * Resolve a boolean flag that may appear as --foo / --no-foo.
@@ -285,6 +296,34 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
 }
 
 /**
+ * After `npm install`, align tsconfig/jsconfig types with the installed
+ * @stagepass/modules (per-module entries only when it ships them).
+ *
+ * @param {string} targetDir
+ * @param {{ siteModules: string[], perModuleTypes?: boolean }} config
+ * @param {typeof fs} fse
+ * @param {(msg?: string) => void} log
+ */
+async function reconcileInstalledTypes(targetDir, config, fse, log) {
+  const installed = await installedHasPerModuleTypes(targetDir, fse);
+  if (installed === null || installed === (config.perModuleTypes !== false)) return;
+  for (const name of ['tsconfig.json', 'jsconfig.json']) {
+    const file = path.join(targetDir, name);
+    if (!(await fse.pathExists(file))) continue;
+    const raw = await fse.readFile(file, 'utf8');
+    const result = updateConfigTypes(raw, config.siteModules, {
+      modulesDependency: true,
+      perModuleTypes: installed,
+    });
+    if (result.status === 'updated' && result.content) {
+      await fse.writeFile(file, result.content, 'utf8');
+      log(chalk.dim(`${name}: types ${result.types.join(', ')} (matches installed @stagepass/modules)`));
+    }
+  }
+  if (!installed) log(chalk.yellow(PER_MODULE_TYPES_HINT));
+}
+
+/**
  * Scaffold a new Stagepass project.
  *
  * @param {string|undefined} nameArg
@@ -335,6 +374,20 @@ export async function createNew(nameArg, options = {}, deps = {}) {
       throw err;
     }
   };
+
+  // Single-module types (`@stagepass/modules/cookies`) exist since modules
+  // 2.2.0. Only use them when a published release in range ships them;
+  // otherwise (or offline) fall back to the umbrella types so tsc passes.
+  const singleModuleTypes =
+    config.modules === true &&
+    config.siteModules.length > 0 &&
+    !config.siteModules.includes('all');
+  if (singleModuleTypes && !config.dryRun) {
+    const published = await (deps.fetchPublished || fetchPublished)('@stagepass/modules', { exec });
+    config.perModuleTypes =
+      rangeHasPerModuleTypes(published ? published.versions : null, PACKAGES_MAJOR_RANGE) === true;
+    if (!config.perModuleTypes) log(chalk.yellow(PER_MODULE_TYPES_HINT));
+  }
 
   let files;
   try {
@@ -422,6 +475,9 @@ export async function createNew(nameArg, options = {}, deps = {}) {
       if (result.code !== 0) {
         error(chalk.red(`npm install exited with code ${result.code}`));
         return typeof result.code === 'number' ? result.code : 1;
+      }
+      if (singleModuleTypes) {
+        await reconcileInstalledTypes(targetDir, config, fse, log);
       }
     } catch (err) {
       error(

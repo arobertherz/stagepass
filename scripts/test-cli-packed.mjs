@@ -181,6 +181,14 @@ try {
       });
       rmSync(join(dir, 'src', 'sp-check.ts'));
       console.log(`✅ ${lang}/${modules}: tsc sees sp and only declared modules`);
+    } else {
+      // jsconfig has checkJs + strict: the generated JS must type check too.
+      run(npm, ['exec', '--yes', '--package', 'typescript@5', '--', 'tsc', '--noEmit', '-p', 'jsconfig.json'], {
+        cwd: dir,
+        env,
+        stdio: ['ignore', 'inherit', 'inherit'],
+      });
+      console.log(`✅ ${lang}/${modules}: tsc -p jsconfig.json passes (checkJs)`);
     }
 
     run(npm, ['run', 'build'], { cwd: dir, env, stdio: ['ignore', 'inherit', 'inherit'] });
@@ -209,10 +217,23 @@ try {
   assert(agents.startsWith('# old\n\nHand-written notes.\n'), 'upgrade keeps AGENTS.md content');
   assert(agents.includes('<!-- stagepass:begin -->') && agents.includes('sp.cookies'), 'upgrade adds block');
   assert(existsSync(join(old, '.cursor', 'rules', 'stagepass.mdc')), 'upgrade adds cursor rule');
+  // upgrade only writes published ranges, and per-module types only when the
+  // published @stagepass/modules ships them (>= 2.2.0). Expectations follow
+  // the real registry state, so this works before and after a release.
+  const latestModules = run(npm, ['view', '@stagepass/modules', 'version'], { cwd: old, env }).trim();
+  const latestLoader = run(npm, ['view', '@stagepass/loader', 'version'], { cwd: old, env }).trim();
+  const [maj, min] = latestModules.split('.').map(Number);
+  const perModule = maj > 2 || (maj === 2 && min >= 2);
+  const oldPkg = JSON.parse(readFileSync(join(old, 'package.json'), 'utf8'));
+  assert(oldPkg.devDependencies['@stagepass/loader'] === `^${latestLoader}`, `upgrade writes published loader range ^${latestLoader}`);
+  assert(oldPkg.devDependencies['@stagepass/modules'] === `^${latestModules}`, `upgrade writes published modules range ^${latestModules}`);
   const ts = JSON.parse(readFileSync(join(old, 'tsconfig.json'), 'utf8'));
+  const expectedTypes = perModule
+    ? ['@stagepass/loader', '@stagepass/modules/cookies']
+    : ['@stagepass/loader', '@stagepass/modules'];
   assert(
-    JSON.stringify(ts.compilerOptions.types) === JSON.stringify(['@stagepass/loader', '@stagepass/modules/cookies']),
-    'upgrade sets per-module types'
+    JSON.stringify(ts.compilerOptions.types) === JSON.stringify(expectedTypes),
+    `upgrade sets types for published modules ${latestModules}`
   );
   assert(ts.compilerOptions.strict === true, 'upgrade keeps tsconfig options');
   const oldSp = JSON.parse(readFileSync(join(old, 'stagepass.json'), 'utf8'));

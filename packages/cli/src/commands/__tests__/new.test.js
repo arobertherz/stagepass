@@ -208,6 +208,7 @@ describe('createNew', () => {
         exec,
         spawn: vi.fn(),
         cliVersion: '2.0.0',
+        fetchPublished: async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.0.0', '2.2.0'] }),
       }
     );
     expect(code).toBe(0);
@@ -224,9 +225,9 @@ describe('createNew', () => {
     expect(pkg.private).toBe(true);
     expect(pkg.scripts.build).toBeTruthy();
     expect(pkg.scripts.watch).toBeTruthy();
-    // major.minor caret range of the injected packages version (2.0.0 here).
-    expect(pkg.devDependencies['@stagepass/loader']).toBe("^2.0.0");
-    expect(pkg.devDependencies['@stagepass/modules']).toBe("^2.0.0");
+    // Major range only: never derived from the CLI or a staged version.
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('^2');
     const sp = await fs.readJson(path.join(target, 'stagepass.json'));
     expect(sp.modules).toEqual(['cookies']);
     expect(sp.origin).toBeUndefined();
@@ -361,6 +362,115 @@ describe('createNew robustness', () => {
     } finally {
       await fs.remove(tmp);
     }
+  });
+});
+
+describe('new: dependency ranges and types vs. published versions', () => {
+  /** @type {string} */
+  let tmp;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-pub-'));
+  });
+  afterEach(async () => {
+    await fs.remove(tmp);
+  });
+
+  const run = (name, opts, extra = {}) => {
+    const logs = [];
+    return createNew(
+      name,
+      { yes: true, dir: path.join(tmp, name), git: false, author: 'T', ...opts },
+      {
+        isTTY: false,
+        argv: ['--yes', '--no-git', ...(opts.install ? ['--install'] : [])],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: tmp,
+        log: (m) => logs.push(String(m ?? '')),
+        error: (m) => logs.push(String(m ?? '')),
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+        spawn: vi.fn(),
+        ...extra,
+      }
+    ).then((code) => ({ code, logs, dir: path.join(tmp, name) }));
+  };
+  const only200 = vi.fn(async () => ({ distTags: { latest: '2.0.0' }, versions: ['1.2.0', '2.0.0'] }));
+
+  it('uses ^2 even when the CLI and packages are 2.2.x but only 2.0.0 is published', async () => {
+    const { code, logs, dir } = await run('pub-a', { siteModules: 'cookies' }, {
+      fetchPublished: only200,
+      cliVersion: '2.2.1',
+      packagesVersion: '2.2.0',
+    });
+    expect(code).toBe(0);
+    const pkg = await fs.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('^2');
+    expect(JSON.stringify(pkg)).not.toContain('2.2');
+    const ts = await fs.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+    expect(logs.join('\n')).toMatch(/no per-module types yet/);
+    expect(only200).toHaveBeenCalledWith('@stagepass/modules', expect.anything());
+  });
+
+  it('falls back to the umbrella types offline', async () => {
+    const { code, dir } = await run('pub-b', { siteModules: 'cookies,inject' }, {
+      fetchPublished: async () => null,
+    });
+    expect(code).toBe(0);
+    const ts = await fs.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+  });
+
+  it('does not query npm for none or all', async () => {
+    const fetchPublished = vi.fn();
+    for (const [name, mods] of [['pub-none', 'none'], ['pub-all', 'all']]) {
+      const { code } = await run(name, { siteModules: mods }, { fetchPublished });
+      expect(code).toBe(0);
+    }
+    expect(fetchPublished).not.toHaveBeenCalled();
+  });
+
+  it('npm install succeeds with only 2.0.0 published and types follow the installed package', async () => {
+    // Fake npm install: ^2 resolves to 2.0.0 (no per-module d.ts files).
+    const spawn = vi.fn(async (_cmd, args, opts) => {
+      expect(args).toEqual(['install']);
+      const pkg = await fs.readJson(path.join(opts.cwd, 'package.json'));
+      for (const name of ['@stagepass/loader', '@stagepass/modules']) {
+        const range = pkg.devDependencies[name];
+        // what npm does: a range no published version satisfies is ETARGET
+        if (!['^2', '^2.0.0'].includes(range)) return { code: 1 };
+        const dir = path.join(opts.cwd, 'node_modules', name);
+        await fs.outputJson(path.join(dir, 'package.json'), { name, version: '2.0.0', types: 'global.d.ts' });
+        await fs.outputFile(path.join(dir, 'global.d.ts'), 'export {};\n');
+      }
+      return { code: 0 };
+    });
+    // Registry claims 2.2.0 (e.g. stale cache) but the install got 2.0.0.
+    const { code, logs, dir } = await run('pub-c', { siteModules: 'cookies', install: true }, {
+      spawn,
+      fetchPublished: async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.0.0', '2.2.0'] }),
+    });
+    expect(code).toBe(0);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    const ts = await fs.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+    expect(logs.join('\n')).toMatch(/no per-module types yet/);
+  });
+
+  it('switches to per-module types when the installed modules ship them', async () => {
+    const spawn = vi.fn(async (_cmd, _args, opts) => {
+      const dir = path.join(opts.cwd, 'node_modules', '@stagepass', 'modules');
+      await fs.outputJson(path.join(dir, 'package.json'), { name: '@stagepass/modules', version: '2.2.0' });
+      for (const id of ['inject', 'cookies', 'maintenance']) await fs.outputFile(path.join(dir, `${id}.d.ts`), 'export {};\n');
+      return { code: 0 };
+    });
+    const { code, dir } = await run('pub-d', { siteModules: 'cookies', install: true }, {
+      spawn,
+      fetchPublished: only200,
+    });
+    expect(code).toBe(0);
+    const ts = await fs.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
   });
 });
 

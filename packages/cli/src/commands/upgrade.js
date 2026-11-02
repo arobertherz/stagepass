@@ -10,6 +10,14 @@ import {
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import {
+  PACKAGES_MAJOR_RANGE,
+  fetchPublished,
+  installedHasPerModuleTypes,
+  maxSatisfying,
+  rangeHasPerModuleTypes,
+  satisfiesSimple,
+} from '../lib/registry.js';
 import { detectSite } from '../lib/site-detect.js';
 import {
   applyProjectSync,
@@ -20,13 +28,13 @@ import {
 
 const STAGEPASS_SCOPE = '@stagepass/';
 
+const SAFE_SPEC_RE = /^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/;
+
 /**
- * True when the version looks like an npm dist-tag that needs resolution.
+ * True when the version looks like an npm dist-tag (bare word, e.g. latest).
  * @param {string} version
  */
-function needsNpmView(version) {
-  if (!version) return false;
-  // Semver-ish or range: treat as literal. Dist-tags are bare words.
+function isDistTag(version) {
   if (/^[0-9]/.test(version) || version.startsWith('^') || version.startsWith('~')) {
     return false;
   }
@@ -35,47 +43,80 @@ function needsNpmView(version) {
 }
 
 /**
- * Resolve target version. Defaults to the @stagepass/loader + modules version
- * this CLI targets (not the CLI's own version, which can differ on CLI patches).
- * Contacts the network only when `--version` is an npm dist-tag (e.g. latest).
+ * Resolve the range to write for one @stagepass/* package.
  *
+ * Never writes a version or range that no published release satisfies
+ * (releases can be staged but not yet approved, which gives ETARGET):
+ * - default: `^<latest>` when latest is in the current major, else
+ *   `^<highest published 2.x>`; `^2` when npm is unreachable
+ * - `--version <semver|range>`: must match a published version
+ * - `--version <dist-tag>`: the published version behind that tag
+ *
+ * @param {string} name
  * @param {string|undefined} requested
- * @param {object} deps
- * @param {import('../lib/exec.js').ExecFn} [deps.exec]
- * @param {string} [deps.packagesVersion]
- * @param {string} [deps.cliVersion] Legacy alias for packagesVersion (tests)
- * @returns {Promise<string>}
+ * @param {{ distTags: Record<string, string>, versions: string[] } | null} published
+ * @returns {{ spec: string, resolved: string | null, offline: boolean }}
  */
-export async function resolveUpgradeVersion(requested, deps = {}) {
-  const exec = deps.exec || defaultExec;
-  const fallback =
-    deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION;
-
-  if (!requested || String(requested).trim() === '') {
-    return fallback;
+export function resolvePackageTarget(name, requested, published) {
+  const value = requested == null ? '' : String(requested).trim().replace(/^v(?=\d)/i, '');
+  if (value && !SAFE_SPEC_RE.test(value)) {
+    throw new Error('Invalid --version value (use a semver, range prefix ^/~, or npm dist-tag).');
   }
 
-  const value = String(requested).trim();
-  if (!needsNpmView(value)) {
-    const literal = value.replace(/^v/i, '');
-    // Keep package.json / snippet versions free of shell or HTML metacharacters.
-    if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(literal)) {
-      throw new Error(
-        'Invalid --version value (use a semver, range prefix ^/~, or npm dist-tag).'
-      );
-    }
-    return literal;
+  if (!value) {
+    if (!published) return { spec: PACKAGES_MAJOR_RANGE, resolved: null, offline: true };
+    const latest = published.distTags.latest;
+    const best =
+      latest && satisfiesSimple(latest, PACKAGES_MAJOR_RANGE)
+        ? latest
+        : maxSatisfying(published.versions, PACKAGES_MAJOR_RANGE);
+    if (!best) return { spec: PACKAGES_MAJOR_RANGE, resolved: null, offline: false };
+    return { spec: `^${best}`, resolved: best, offline: false };
   }
 
-  const { stdout } = await exec('npm', ['view', `@stagepass/cli@${value}`, 'version']);
-  const resolved = String(stdout || '').trim();
-  if (!resolved) {
-    throw new Error(`Could not resolve version for dist-tag "${value}".`);
+  if (!published) {
+    throw new Error(
+      `Could not check ${name}@${value} on npm (offline?). Retry online, or run without --version to use ${PACKAGES_MAJOR_RANGE}.`
+    );
   }
-  if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(resolved)) {
-    throw new Error(`Resolved version looks unsafe: ${resolved}`);
+
+  if (isDistTag(value)) {
+    const tagged = published.distTags[value];
+    if (!tagged) throw new Error(`${name} has no dist-tag "${value}".`);
+    return { spec: tagged, resolved: tagged, offline: false };
   }
-  return resolved;
+
+  const best = maxSatisfying(published.versions, value);
+  if (!best) {
+    throw new Error(
+      `No published ${name} matches ${value} (staged releases cannot be installed until they are approved).`
+    );
+  }
+  return { spec: value, resolved: best, offline: false };
+}
+
+/**
+ * Resolve target ranges for every @stagepass/* dependency in package.json.
+ *
+ * @param {string|undefined} requested `--version`
+ * @param {string[]} names package names
+ * @param {object} [deps]
+ * @param {(name: string) => Promise<{ distTags: Record<string, string>, versions: string[] } | null>} [deps.fetchPublished]
+ * @param {import('../lib/exec.js').ExecFn} [deps.exec]
+ * @returns {Promise<{ targets: Record<string, { spec: string, resolved: string | null, offline: boolean }>, published: Record<string, { distTags: Record<string, string>, versions: string[] } | null> }>}
+ */
+export async function resolveUpgradeTargets(requested, names, deps = {}) {
+  const lookup =
+    deps.fetchPublished || ((name) => fetchPublished(name, { exec: deps.exec || defaultExec }));
+  /** @type {Record<string, any>} */
+  const targets = {};
+  /** @type {Record<string, any>} */
+  const published = {};
+  for (const name of [...new Set(names)]) {
+    published[name] = await lookup(name);
+    targets[name] = resolvePackageTarget(name, requested, published[name]);
+  }
+  return { targets, published };
 }
 
 /**
@@ -101,17 +142,17 @@ export function findStagepassDeps(pkg) {
 /**
  * Rewrite @stagepass/* versions in a package.json object (mutates a copy).
  * @param {object} pkg
- * @param {string} targetVersion
+ * @param {string | Record<string, string>} target one spec for all, or per package name
  * @returns {{ next: object, changes: { name: string, from: string, to: string, section: string }[] }}
  */
-export function applyStagepassVersions(pkg, targetVersion) {
+export function applyStagepassVersions(pkg, target) {
   const next = structuredClone(pkg);
   const changes = [];
-  const target = String(targetVersion);
 
   for (const { section, name, from } of findStagepassDeps(pkg)) {
     if (!next[section]) continue;
-    const to = target;
+    const to = typeof target === 'string' ? target : target[name];
+    if (!to) continue;
     if (String(from) !== to) {
       changes.push({ name, from: String(from), to, section });
     }
@@ -137,7 +178,7 @@ export function applyStagepassVersions(pkg, targetVersion) {
  * @param {typeof fs} [deps.fs]
  * @param {string} [deps.cwd]
  * @param {import('../lib/exec.js').ExecFn} [deps.exec]
- * @param {string} [deps.cliVersion]
+ * @param {(name: string) => Promise<{ distTags: Record<string, string>, versions: string[] } | null>} [deps.fetchPublished]
  * @param {(msg?: string) => void} [deps.log]
  * @returns {Promise<number>} exit code
  */
@@ -152,17 +193,6 @@ export async function upgrade(options = {}, deps = {}) {
     return 1;
   }
 
-  let targetVersion;
-  try {
-    targetVersion = await resolveUpgradeVersion(options.version, {
-      exec: deps.exec || defaultExec,
-      packagesVersion: deps.packagesVersion || deps.cliVersion,
-    });
-  } catch (error) {
-    log(chalk.red(error instanceof Error ? error.message : String(error)));
-    return 1;
-  }
-
   const raw = await fse.readFile(pkgPath, 'utf8');
   let pkg;
   try {
@@ -172,20 +202,51 @@ export async function upgrade(options = {}, deps = {}) {
     return 1;
   }
 
-  const { next, changes } = applyStagepassVersions(pkg, targetVersion);
+  const names = findStagepassDeps(pkg).map((d) => d.name);
+  let resolvedTargets;
+  try {
+    resolvedTargets = await resolveUpgradeTargets(options.version, names, {
+      exec: deps.exec || defaultExec,
+      fetchPublished: deps.fetchPublished,
+    });
+  } catch (error) {
+    log(chalk.red(error instanceof Error ? error.message : String(error)));
+    return 1;
+  }
+  const { targets, published } = resolvedTargets;
+  /** @type {Record<string, string>} */
+  const specs = Object.fromEntries(Object.entries(targets).map(([n, t]) => [n, t.spec]));
+  if (Object.values(targets).some((t) => t.offline)) {
+    log(chalk.yellow(`npm registry not reachable: using ${PACKAGES_MAJOR_RANGE} (resolves to the newest published 2.x).`));
+  }
+
+  const { next, changes } = applyStagepassVersions(pkg, specs);
 
   if (changes.length === 0) {
-    const existing = findStagepassDeps(pkg);
-    if (existing.length === 0) {
+    if (names.length === 0) {
       log(chalk.yellow('No @stagepass/* packages found in package.json.'));
     } else {
-      log(chalk.green(`@stagepass/* already at ${targetVersion}.`));
+      log(chalk.green('@stagepass/* already at the newest published ranges.'));
     }
   } else {
-    log(chalk.bold(`Upgrade @stagepass/* → ${targetVersion}`));
+    log(chalk.bold('Upgrade @stagepass/* (published versions only)'));
     for (const change of changes) {
       log(`  ${change.name}: ${change.from} → ${change.to} (${change.section})`);
     }
+  }
+
+  // Per-module types need @stagepass/modules >= 2.2.0 resolvable from the range.
+  /** @type {boolean | undefined} */
+  let perModuleTypes;
+  const modulesSpec =
+    next?.dependencies?.['@stagepass/modules'] || next?.devDependencies?.['@stagepass/modules'];
+  if (modulesSpec) {
+    const fromRegistry = rangeHasPerModuleTypes(
+      published['@stagepass/modules'] ? published['@stagepass/modules'].versions : null,
+      String(modulesSpec)
+    );
+    perModuleTypes =
+      fromRegistry != null ? fromRegistry : (await installedHasPerModuleTypes(cwd, fse)) === true;
   }
 
   // Declared modules: live site first, then stagepass.json, then ask.
@@ -235,6 +296,7 @@ export async function upgrade(options = {}, deps = {}) {
       modules: resolved.modules,
       origin: options.site ? resolved.origin : null,
       pkg: next,
+      perModuleTypes,
     },
     fse
   );
@@ -248,6 +310,13 @@ export async function upgrade(options = {}, deps = {}) {
   }
   for (const note of plan.notes) {
     log(chalk.yellow(`  note: ${note}`));
+  }
+  if (perModuleTypes === false && resolved.modules.length > 0 && !resolved.modules.includes('all')) {
+    log(
+      chalk.yellow(
+        '  note: the published @stagepass/modules has no per-module types yet (needs 2.2.0); types use "@stagepass/modules". Run `stagepass upgrade` again once it is published.'
+      )
+    );
   }
 
   if (options.dryRun) {
@@ -264,7 +333,7 @@ export async function upgrade(options = {}, deps = {}) {
   }
 
   const snippets = buildWebflowSnippets({
-    version: targetVersion,
+    version: targets['@stagepass/loader']?.resolved || STAGEPASS_PACKAGES_VERSION,
     moduleList: resolved.modules,
   });
   printWebflowSnippets(snippets, log);

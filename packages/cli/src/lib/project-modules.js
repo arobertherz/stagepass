@@ -71,12 +71,22 @@ export function isStagepassModulesTypeEntry(entry) {
 /**
  * `compilerOptions.types` entries for a declared list.
  * @param {string[]} modules normalized list
- * @param {{ modulesDependency?: boolean }} [opts] module types need the npm dep
+ * Single modules use `@stagepass/modules/<id>` (modules >= 2.2.0). When the
+ * installed or resolvable @stagepass/modules has no per-module types
+ * (`perModuleTypes: false`, e.g. only 2.0.0 published), the umbrella
+ * `@stagepass/modules` is used so the project still type-checks.
+ *
+ * @param {string[]} modules normalized list
+ * @param {{ modulesDependency?: boolean, perModuleTypes?: boolean }} [opts] module types need the npm dep
  * @returns {string[]}
  */
 export function typesForModules(modules, opts = {}) {
   const types = ['@stagepass/loader'];
   if (opts.modulesDependency === false) return types;
+  if (modules.length > 0 && opts.perModuleTypes === false) {
+    types.push('@stagepass/modules');
+    return types;
+  }
   if (modules.includes('all')) {
     types.push('@stagepass/modules');
   } else {

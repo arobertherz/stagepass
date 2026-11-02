@@ -267,7 +267,7 @@ export function createProgram(deps = {}) {
     .option('-y, --yes', 'Non-interactive; accept detected or existing modules')
     .option(
       '--target <version>',
-      'Target loader/modules version (default: the version this CLI targets; dist-tags use npm view)'
+      'Target version, range or dist-tag; must be published on npm (default: ^<latest published 2.x>, ^2 offline)'
     )
     // Public docs use `--version`; rewriteArgvForUpgrade maps it to `--target`
     // so it does not collide with the root `stagepass --version` handler.

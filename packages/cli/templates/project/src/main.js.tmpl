@@ -13,7 +13,7 @@
   };
 
   const start = () => {
-    const w = window;
+    const w = /** @type {Window & { Webflow?: { push?: (fn: () => void) => void } }} */ (window);
     if (w.Webflow && typeof w.Webflow.push === 'function') {
       w.Webflow.push(run);
       return;

@@ -179,9 +179,20 @@ export async function resolveUpgradeModules(input, deps) {
     source = 'stagepass.json';
   }
 
+  // Legacy `"modules": true` (CLI 2.0/2.1) meant "modules included", typed via
+  // `@stagepass/modules` (all modules). Keep that as `["all"]` so an upgrade
+  // without a live site result never removes types the project relied on.
+  if (!candidate && data?.modules === true) {
+    candidate = ['all'];
+    source = 'legacy "modules": true in stagepass.json';
+  }
+
   if (!deps.interactive) {
     if (candidate) {
       log(`Modules: ${formatModules(candidate)} (inferred from ${source}). Check it, or pass --site-modules.`);
+      if (candidate.includes('all') && source.startsWith('legacy')) {
+        log('Hint: narrow it to the module tags your site loads, e.g. stagepass upgrade --site-modules cookies.');
+      }
       return { ok: true, modules: candidate, source, origin, detection };
     }
     if (hasModulesDep) {
@@ -221,7 +232,7 @@ export async function resolveUpgradeModules(input, deps) {
  *
  * @param {string} raw file contents
  * @param {string[]} modules
- * @param {{ modulesDependency: boolean }} opts
+ * @param {{ modulesDependency: boolean, perModuleTypes?: boolean }} opts
  * @returns {{ status: 'updated' | 'unchanged' | 'skipped', content?: string, reason?: string, types?: string[] }}
  */
 export function updateConfigTypes(raw, modules, opts) {
@@ -269,6 +280,7 @@ export function updateConfigTypes(raw, modules, opts) {
  * @param {string[]} input.modules
  * @param {string | null} [input.origin] stored in stagepass.json when set
  * @param {object} input.pkg package.json
+ * @param {boolean} [input.perModuleTypes] false when @stagepass/modules has no per-module types (umbrella entry)
  * @param {typeof fs} [fse]
  * @returns {Promise<{ writes: { file: string, content: string, action: string }[], notes: string[] }>}
  */
@@ -281,6 +293,7 @@ export async function planProjectSync(input, fse = fs) {
   const modulesDependency = Boolean(
     pkg?.dependencies?.['@stagepass/modules'] || pkg?.devDependencies?.['@stagepass/modules']
   );
+  const perModuleTypes = input.perModuleTypes;
 
   // stagepass.json
   const sp = await readStagepassJson(cwd, fse);
@@ -356,9 +369,9 @@ export async function planProjectSync(input, fse = fs) {
     if (!(await fse.pathExists(file))) continue;
     sawConfig = true;
     const raw = await fse.readFile(file, 'utf8');
-    const result = updateConfigTypes(raw, modules, { modulesDependency });
+    const result = updateConfigTypes(raw, modules, { modulesDependency, perModuleTypes });
     if (result.status === 'skipped') {
-      const wanted = JSON.stringify(typesForModules(modules, { modulesDependency }));
+      const wanted = JSON.stringify(typesForModules(modules, { modulesDependency, perModuleTypes }));
       notes.push(`${name} ${result.reason}: "types": ${wanted}`);
     } else if (result.status === 'updated') {
       writes.push({ file: name, content: result.content, action: `types: ${result.types.join(', ')}` });
