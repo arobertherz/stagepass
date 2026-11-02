@@ -33,4 +33,15 @@ export default defineConfig([
       return { js: '.min.js' };
     },
   },
+  // 3. Dev flag chunk (flag.min.js): loaded by the loader only while a session is active
+  {
+    entry: { flag: 'src/flag-entry.ts' },
+    format: ['iife'],
+    clean: false,
+    minify: true,
+    define,
+    outExtension() {
+      return { js: '.min.js' };
+    },
+  },
 ]);

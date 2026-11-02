@@ -281,16 +281,20 @@ Go to your live Webflow URL and append the parameter:
 
 The `?stagepass=` parameter is removed from the address bar via `history.replaceState` after processing.
 
-**Visual indicator (badge):** When a session is active, a fixed top-right badge appears. Click it to clear the session and reload (same as `?stagepass=off`).
+**Dev flag:** While a session is active, a small red pill appears fixed in the top-right corner. Click it to clear the session and reload (same as `?stagepass=off`). Visitors without a session never see it and never download its code.
 
-| State | Badge text |
+| State | Flag |
 | :--- | :--- |
-| Active swap | `STAGEPASS ACTIVE` |
-| Debug | `STAGEPASS DEBUG` |
-| Active + Chrome LNA prompt/denied | `STAGEPASS · ALLOW LOCAL NETWORK` |
-| Debug + Chrome LNA prompt/denied | `STAGEPASS DEBUG · LNA` |
+| Active swap (`?stagepass=my-project.sp`) | `LOCAL` |
+| Debug (`?stagepass=debug`) | `DEBUG` |
+| Warnings | warning icon with a counter |
+| Errors | error icon with a counter |
 
-When LNA help is needed, the badge `title` and a console warning use the same hint text from the loader.
+* Warnings count `sp.warn(...)` and `sp.log('warn', ...)`, including loader warnings such as the Chrome Local Network Access hint.
+* Errors count `sp.error(...)`, `sp.log('error', ...)`, uncaught errors, failed resource loads and unhandled promise rejections on the page.
+* Counters above 99 show `99+`. The tooltip shows the session domain, the counts and, when Chrome LNA help is needed, the same hint as the console warning.
+* The flag renders in a Shadow DOM, so site CSS cannot restyle it and it cannot restyle the site. Animations only run when the OS allows motion (`prefers-reduced-motion`).
+* The flag UI ships as a separate file, `dist/flag.min.js`, loaded only during a session from the same location as the loader (for example `…/@stagepass/loader@2/dist/flag.min.js`). With a strict Content Security Policy, `script-src` must allow that origin (for jsDelivr: `https://cdn.jsdelivr.net`). If it is blocked, swapping still works and the console shows a warning.
 
 ## 🛠 CLI Reference
 

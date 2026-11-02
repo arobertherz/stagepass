@@ -37,7 +37,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
 - Dynamically created scripts use `async=false` unless the original had `async`; `defer` is added when neither async nor defer was set (keeps classic order).
-- Chrome Local Network Access: best-effort permission query; badge/console hint when state is `prompt` or `denied`.
+- Chrome Local Network Access: best-effort permission query; flag tooltip, warning counter and console hint when state is `prompt` or `denied`.
 
 ## Loader tag attributes
 
@@ -72,16 +72,21 @@ After handling, `?stagepass=` is removed with `history.replaceState` (other quer
 
 Storage key: `localStorage.stagepass_domain` → JSON `{ "domain": "…", "expires": <ms> }`. Legacy plain-string values are cleared.
 
-## Badge
+## Dev flag
 
 Shown only while a session is active (including debug). Click clears the session and reloads.
 
-| State | Text |
+| State | Flag |
 | :--- | :--- |
-| Active swap | `STAGEPASS ACTIVE` |
-| Debug | `STAGEPASS DEBUG` |
-| Active + LNA prompt/denied | `STAGEPASS · ALLOW LOCAL NETWORK` |
-| Debug + LNA prompt/denied | `STAGEPASS DEBUG · LNA` |
+| Active swap | `LOCAL` |
+| Debug | `DEBUG` |
+| Warnings / errors | icons with counters (`99+` above 99) |
+
+- Warnings: `sp.warn`, `sp.log('warn', …)`, loader warnings (for example the LNA hint).
+- Errors: `sp.error`, `sp.log('error', …)`, uncaught errors, failed resource loads, unhandled rejections.
+- Tooltip: session domain, counts, LNA hint.
+- Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). Respects `prefers-reduced-motion`.
+- The UI lives in `dist/flag.min.js` (about 1.4 KB gzip) and is fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Runtime API
 

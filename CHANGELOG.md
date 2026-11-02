@@ -11,6 +11,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+- `@stagepass/modules`: the peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
+- Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does.
+
 ---
 
 ## `@stagepass/cli`
@@ -150,6 +153,22 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/loader`
+
+### [2.3.0-beta.0] - 2026-11-02
+
+Non-breaking minor prerelease of the loader only. `@stagepass/cli` (2.2.1) and `@stagepass/modules` (2.2.0) are unchanged; any 2.x CLI and modules work with it. The public `sp` API, attributes, events and URL swapping behave as in 2.2.0.
+
+#### Changed
+
+- New dev flag: a red `LOCAL` pill (or `DEBUG`) replaces the old `STAGEPASS ACTIVE` / `STAGEPASS DEBUG` badge. The LNA hint moves from the badge text to the tooltip and the warning counter.
+- The flag UI moved to a separate file, `dist/flag.min.js`, fetched only while a session is active. Visitors without a session load less code: `loader.min.js` is 10.5 KB minified / 4.7 KB gzip (2.2.0: 12.1 KB / 5.0 KB).
+- The Chrome Local Network Access check runs once per page instead of twice.
+
+#### Added
+
+- Warning and error counters on the flag: `sp.warn` / `sp.error` / `sp.log('warn' | 'error')`, uncaught errors, failed resource loads and unhandled rejections (listeners are only added during a session).
+- The flag renders in a Shadow DOM, uses DOM APIs only and respects `prefers-reduced-motion`.
+- Size budget test in CI for `loader.min.js` and `flag.min.js`.
 
 ### [2.2.0] - 2026-11-02
 
