@@ -12,7 +12,7 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See the root README [Version pinning](../../README.md#-version-pinning) section.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
