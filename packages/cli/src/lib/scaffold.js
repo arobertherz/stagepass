@@ -61,7 +61,8 @@ export function scaffoldTemplateMap(lang, styles) {
  * @property {boolean} install
  * @property {boolean} dryRun
  * @property {string} [loaderVersion] @stagepass/loader + modules version (snippets)
- * @property {string} [packagesRange] Override for package.json ranges (default ^<major>.<minor>.0)
+ * @property {string} [packagesRange] Override for package.json ranges (default ^<major>, e.g. ^2)
+ * @property {boolean} [perModuleTypes] false: use the umbrella `@stagepass/modules` types (modules < 2.2.0)
  */
 
 /**
@@ -69,9 +70,9 @@ export function scaffoldTemplateMap(lang, styles) {
  * @returns {Record<string, string>}
  */
 export function buildPackageJson(options) {
-  const range =
-    options.packagesRange ||
-    packagesRange(options.loaderVersion || STAGEPASS_PACKAGES_VERSION);
+  // Never derive the range from the CLI or target version: a release can be
+  // staged but unpublished (ETARGET). The major range matches the @2 embeds.
+  const range = options.packagesRange || packagesRange(STAGEPASS_PACKAGES_VERSION);
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
 
@@ -140,7 +141,10 @@ export async function planScaffoldFiles(options, deps = {}) {
     version,
     moduleList: siteModules,
   });
-  const types = typesForModules(siteModules, { modulesDependency: options.modules === true });
+  const types = typesForModules(siteModules, {
+    modulesDependency: options.modules === true,
+    perModuleTypes: options.perModuleTypes,
+  });
 
   const vars = {
     NAME: options.name,

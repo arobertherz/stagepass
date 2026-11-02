@@ -93,7 +93,7 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `-y, --yes` | Non-interactive; use defaults for omitted flags. |
 | `--dry-run` | Print the file plan without writing. |
 
-The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2.2.0` (same major as the CDN pin `@2`, minor that ships the per-module types).
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2` (same major as the CDN pin `@2`; npm installs the newest published 2.x). Per-module types are written only when the published or installed `@stagepass/modules` ships them (2.2.0 and later); otherwise `types` lists the umbrella `@stagepass/modules`.
 
 Interactively, `new` asks for the live site after the styles question, shows the detected modules and asks for confirmation; otherwise it asks for the list directly. Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint.
 
@@ -109,7 +109,7 @@ Interactively, `new` asks for the live site after the styles question, shows the
 - `.cursor/rules/stagepass.mdc` (globs `src/**`) with the same content;
 - `compilerOptions.types` in `tsconfig.json` / `jsconfig.json`: `@stagepass/loader` plus `@stagepass/modules/<module>` for each declared module (`@stagepass/modules` for `all`), so undeclared modules are type errors.
 
-The legacy boolean `"modules": true|false` is still read; `upgrade` replaces it with a list.
+The legacy boolean `"modules": true|false` is still read; `upgrade` replaces it with a list (`true` becomes `["all"]` without a TTY).
 
 ### Live site detection
 
@@ -119,7 +119,7 @@ The legacy boolean `"modules": true|false` is still read; `upgrade` replaces it 
 
 | Option | Behaviour |
 | :--- | :--- |
-| `--version <x>` | Target loader/modules version (default: the version this CLI targets, currently `2.2.0`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
+| `--version <x>` | Target loader/modules version, range or dist-tag. It must be published on npm (staged releases are refused until approved). Default: `^<latest published 2.x>` from `npm view`, or `^2` when the registry is not reachable. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
 | `--site <host>` | Live site to detect modules from (default: the origin linked in `~/.stagepass/projects.json` for this folder). Stored in `stagepass.json` when given. |
 | `--site-modules <list>` | Set the modules list directly (`none`, `all`, or a comma list). |
 | `--skip-site` | Do not fetch the live site. |

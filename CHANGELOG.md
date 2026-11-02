@@ -15,6 +15,17 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.1] - 2026-11-02
+
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+
+#### Fixed
+
+- `stagepass new` with "Run npm install now?" = y failed with `npm error notarget No matching version found for @stagepass/loader@^2.2.0` while 2.2.0 was not yet published. Generated projects now depend on `@stagepass/loader` / `@stagepass/modules` `^2` (the same major as the CDN pin `@2`), never on a range derived from the CLI or a staged version.
+- `stagepass upgrade` only writes ranges that a published version satisfies. It reads `npm view <pkg> dist-tags versions` and writes `^<latest published 2.x>`; offline it writes `^2`. An explicit `--version` that is not published (for example a staged release awaiting approval) is refused before any file is written.
+- Types follow what is actually available: per-module entries (`@stagepass/modules/cookies`, …) are only written when a published or installed `@stagepass/modules` ships them (2.2.0 and later). Otherwise the umbrella `@stagepass/modules` is used, so `tsc` keeps passing on 2.0.0. After `npm install`, `new` reconciles the types with the installed package.
+- `stagepass upgrade` without a TTY maps the legacy `"modules": true` to `["all"]` instead of `[]`, so `sp.inject` / `sp.cookies` / `sp.maintenance` do not become type errors. A hint shows how to narrow the list (`--site-modules cookies`).
+
 ### [2.2.0] - 2026-11-02
 
 Non-breaking minor release, together with `@stagepass/loader` and `@stagepass/modules` 2.2.0. Includes the 2.1.0 packaging fix (2.1.0 and the planned 2.1.1 were never published as `latest`). Existing commands, flags and defaults keep working.

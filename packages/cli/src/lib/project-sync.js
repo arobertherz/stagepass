@@ -232,7 +232,7 @@ export async function resolveUpgradeModules(input, deps) {
  *
  * @param {string} raw file contents
  * @param {string[]} modules
- * @param {{ modulesDependency: boolean }} opts
+ * @param {{ modulesDependency: boolean, perModuleTypes?: boolean }} opts
  * @returns {{ status: 'updated' | 'unchanged' | 'skipped', content?: string, reason?: string, types?: string[] }}
  */
 export function updateConfigTypes(raw, modules, opts) {
@@ -280,6 +280,7 @@ export function updateConfigTypes(raw, modules, opts) {
  * @param {string[]} input.modules
  * @param {string | null} [input.origin] stored in stagepass.json when set
  * @param {object} input.pkg package.json
+ * @param {boolean} [input.perModuleTypes] false when @stagepass/modules has no per-module types (umbrella entry)
  * @param {typeof fs} [fse]
  * @returns {Promise<{ writes: { file: string, content: string, action: string }[], notes: string[] }>}
  */
@@ -292,6 +293,7 @@ export async function planProjectSync(input, fse = fs) {
   const modulesDependency = Boolean(
     pkg?.dependencies?.['@stagepass/modules'] || pkg?.devDependencies?.['@stagepass/modules']
   );
+  const perModuleTypes = input.perModuleTypes;
 
   // stagepass.json
   const sp = await readStagepassJson(cwd, fse);
@@ -367,9 +369,9 @@ export async function planProjectSync(input, fse = fs) {
     if (!(await fse.pathExists(file))) continue;
     sawConfig = true;
     const raw = await fse.readFile(file, 'utf8');
-    const result = updateConfigTypes(raw, modules, { modulesDependency });
+    const result = updateConfigTypes(raw, modules, { modulesDependency, perModuleTypes });
     if (result.status === 'skipped') {
-      const wanted = JSON.stringify(typesForModules(modules, { modulesDependency }));
+      const wanted = JSON.stringify(typesForModules(modules, { modulesDependency, perModuleTypes }));
       notes.push(`${name} ${result.reason}: "types": ${wanted}`);
     } else if (result.status === 'updated') {
       writes.push({ file: name, content: result.content, action: `types: ${result.types.join(', ')}` });

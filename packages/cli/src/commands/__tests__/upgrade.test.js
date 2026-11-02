@@ -5,7 +5,8 @@ import fsx from 'fs-extra';
 import {
   applyStagepassVersions,
   findStagepassDeps,
-  resolveUpgradeVersion,
+  resolvePackageTarget,
+  resolveUpgradeTargets,
   upgrade,
 } from '../upgrade.js';
 
@@ -35,31 +36,42 @@ describe('upgrade helpers', () => {
     expect(changes).toHaveLength(2);
   });
 
-  it('resolveUpgradeVersion defaults to CLI version without network', async () => {
-    const exec = vi.fn();
-    const v = await resolveUpgradeVersion(undefined, {
-      exec,
-      cliVersion: '2.0.0',
-    });
-    expect(v).toBe('2.0.0');
-    expect(exec).not.toHaveBeenCalled();
+  const pub = (latest, versions) => ({ distTags: { latest }, versions });
+
+  it('defaults to ^<latest published>, never a staged version', () => {
+    expect(resolvePackageTarget('@stagepass/loader', undefined, pub('2.0.0', ['1.2.0', '2.0.0'])).spec).toBe('^2.0.0');
+    expect(resolvePackageTarget('@stagepass/loader', undefined, pub('2.2.0', ['2.0.0', '2.2.0'])).spec).toBe('^2.2.0');
+    // latest moved to a new major: stay in 2.x (no breaking upgrade)
+    expect(resolvePackageTarget('@stagepass/loader', undefined, pub('3.0.0', ['2.0.0', '2.3.1', '3.0.0'])).spec).toBe('^2.3.1');
   });
 
-  it('resolveUpgradeVersion uses npm view for dist-tags', async () => {
-    const exec = vi.fn(async () => ({ stdout: '2.1.0\n', stderr: '', code: 0 }));
-    const v = await resolveUpgradeVersion('latest', { exec, cliVersion: '2.0.0' });
-    expect(v).toBe('2.1.0');
-    expect(exec).toHaveBeenCalledWith('npm', [
-      'view',
-      '@stagepass/cli@latest',
-      'version',
-    ]);
+  it('falls back to ^2 offline', () => {
+    expect(resolvePackageTarget('@stagepass/loader', undefined, null)).toEqual({ spec: '^2', resolved: null, offline: true });
   });
 
-  it('rejects unsafe literal --version values', async () => {
-    await expect(
-      resolveUpgradeVersion('2"><script>', { exec: vi.fn(), cliVersion: '2.0.0' })
-    ).rejects.toThrow(/Invalid --version/);
+  it('rejects an explicit version that is not published (staged only)', () => {
+    expect(() => resolvePackageTarget('@stagepass/loader', '2.2.0', pub('2.0.0', ['2.0.0']))).toThrow(/No published/);
+    expect(() => resolvePackageTarget('@stagepass/loader', '^2.2.0', pub('2.0.0', ['2.0.0']))).toThrow(/No published/);
+    expect(resolvePackageTarget('@stagepass/loader', '^2.0.0', pub('2.0.0', ['2.0.0'])).spec).toBe('^2.0.0');
+    expect(resolvePackageTarget('@stagepass/loader', 'v2.0.0', pub('2.0.0', ['2.0.0'])).spec).toBe('2.0.0');
+    expect(() => resolvePackageTarget('@stagepass/loader', '2.0.0', null)).toThrow(/offline/);
+  });
+
+  it('resolves dist-tags to their published version', () => {
+    expect(resolvePackageTarget('@stagepass/loader', 'latest', pub('2.0.0', ['2.0.0'])).spec).toBe('2.0.0');
+    expect(() => resolvePackageTarget('@stagepass/loader', 'next', pub('2.0.0', ['2.0.0']))).toThrow(/no dist-tag "next"/);
+  });
+
+  it('rejects unsafe literal --version values', () => {
+    expect(() => resolvePackageTarget('@stagepass/loader', '2"><script>', pub('2.0.0', ['2.0.0']))).toThrow(/Invalid --version/);
+  });
+
+  it('resolveUpgradeTargets looks up each package once', async () => {
+    const fetchPublished = vi.fn(async (name) => (name === '@stagepass/modules' ? pub('2.0.0', ['2.0.0']) : pub('2.2.0', ['2.0.0', '2.2.0'])));
+    const { targets } = await resolveUpgradeTargets(undefined, ['@stagepass/loader', '@stagepass/modules', '@stagepass/loader'], { fetchPublished });
+    expect(targets['@stagepass/loader'].spec).toBe('^2.2.0');
+    expect(targets['@stagepass/modules'].spec).toBe('^2.0.0');
+    expect(fetchPublished).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -76,7 +88,7 @@ describe('upgrade command', () => {
   const noProjects = async () => ({ projects: {} });
   const baseDeps = (logs, extra = {}) => ({
     cwd: dir,
-    cliVersion: '2.2.0',
+    fetchPublished: async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.0.0', '2.2.0'] }),
     log: (m) => logs.push(String(m ?? '')),
     isTTY: false,
     loadProjects: noProjects,
@@ -108,8 +120,8 @@ describe('upgrade command', () => {
     expect(code).toBe(0);
     expect(exec).not.toHaveBeenCalled();
     const pkg = await fsx.readJson(path.join(dir, 'package.json'));
-    expect(pkg.devDependencies['@stagepass/loader']).toBe('2.2.0');
-    expect(pkg.devDependencies['@stagepass/modules']).toBe('2.2.0');
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2.2.0');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('^2.2.0');
     const sp = await fsx.readJson(path.join(dir, 'stagepass.json'));
     expect(sp.modules).toEqual(['cookies']);
     const agents = await fsx.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
@@ -270,3 +282,61 @@ async function snapshot(root) {
   await walk(root);
   return out;
 }
+
+describe('upgrade: published versions only', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-pub-'));
+    await fsx.writeJson(path.join(dir, 'package.json'), {
+      name: 'app',
+      devDependencies: { '@stagepass/loader': '2.2.0', '@stagepass/modules': '2.2.0' },
+    }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: ['cookies'], version: 1 }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'tsconfig.json'), {
+      compilerOptions: { strict: true, types: ['@stagepass/loader', '@stagepass/modules/cookies'] },
+    }, { spaces: 2 });
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+  const deps = (logs, fetchPublished) => ({
+    cwd: dir,
+    fetchPublished,
+    log: (m) => logs.push(String(m ?? '')),
+    isTTY: false,
+    loadProjects: async () => ({ projects: {} }),
+    detectSite: vi.fn(),
+  });
+
+  it('repairs an unpublished exact pin to the published range and umbrella types', async () => {
+    const logs = [];
+    const code = await upgrade({}, deps(logs, async () => ({ distTags: { latest: '2.0.0' }, versions: ['2.0.0'] })));
+    expect(code).toBe(0);
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies).toEqual({ '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' });
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+    expect(logs.join('\n')).toMatch(/no per-module types yet/);
+  });
+
+  it('writes ^2 offline and keeps per-module types only if installed ones have them', async () => {
+    const logs = [];
+    const code = await upgrade({}, deps(logs, async () => null));
+    expect(code).toBe(0);
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2');
+    expect(logs.join('\n')).toMatch(/not reachable/);
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+  });
+
+  it('refuses --version for an unpublished release and writes nothing', async () => {
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const logs = [];
+    const code = await upgrade({ version: '2.2.0' }, deps(logs, async () => ({ distTags: { latest: '2.0.0' }, versions: ['2.0.0'] })));
+    expect(code).toBe(1);
+    expect(logs.join('\n')).toMatch(/No published @stagepass\/loader matches 2.2.0/);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+});

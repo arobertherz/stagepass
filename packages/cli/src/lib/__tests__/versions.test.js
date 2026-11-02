@@ -17,11 +17,12 @@ describe('STAGEPASS_PACKAGES_VERSION', () => {
     expect(STAGEPASS_PACKAGES_VERSION).toBe(pkg.version);
   });
 
-  it('builds a major.minor caret range (npm would otherwise keep resolving the older latest tag)', () => {
-    expect(packagesRange('2.2.0')).toBe('^2.2.0');
-    expect(packagesRange('3.0.4')).toBe('^3.0.0');
-    expect(packagesRange('^3.4.5')).toBe('^3.4.0');
-    expect(packagesRange()).toMatch(/^\^\d+\.\d+\.0$/);
+  it('builds the major range (never a minor that may only be staged)', () => {
+    expect(packagesRange('2.2.0')).toBe('^2');
+    expect(packagesRange('3.0.4')).toBe('^3');
+    expect(packagesRange('^3.4.5')).toBe('^3');
+    expect(packagesRange()).toBe('^2');
     expect(() => packagesRange('latest')).toThrow();
+    expect(() => packagesRange('2.2.0"; rm')).toThrow();
   });
 });
