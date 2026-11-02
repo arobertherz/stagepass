@@ -185,3 +185,21 @@ npm install -g @stagepass/cli@2
 ```
 
 Injector option `cacheBust: true` no longer appends timestamps in production; use `version: '…'` instead.
+
+---
+
+## CLI behaviour (2.x operations)
+
+These are behavioural changes for operators with autostart or custom local stacks. Loader/CDN sites are unaffected.
+
+### `start` no longer kills foreign processes on port 443 without confirmation
+
+`stagepass start` shows the blocking process **name and PID**, asks before sending SIGTERM, and asks again before SIGKILL. Non-interactive runs refuse to kill and print a hint.
+
+### `stop` with autostart enabled only stops until the next login
+
+When the login LaunchAgent is installed, `stagepass stop` runs `launchctl bootout` (and stops PHP). The agent starts again at the next login. Use `stagepass autostart off` to remove it permanently. `stagepass start` uses `launchctl kickstart` when the agent is present.
+
+### CLI Node engine
+
+`@stagepass/cli` now requires **Node `>=20.17.0`** (driven by `@inquirer/prompts@8`). Development and CI continue to use Node 22 and 24.

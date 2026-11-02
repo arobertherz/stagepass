@@ -11,6 +11,15 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+### `@stagepass/cli`
+
+- `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version) in recommended snippets and in the current project's snippet-bearing files (`README.md`, `stagepass.json`, generated snippet HTML).
+- `stagepass certs renew`: scoped repair of failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`); `renew --root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`; `renew --remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`).
+- `stagepass start` runs a read-only `certs check` and, when interactive, can offer `certs trust` / site `renew`. Non-interactive prints findings and a hint. Sudo is requested only when a confirmed port conflict kill (or orphan delete) needs it. Port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation.
+- When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently).
+- `stagepass daemon` ensures PHP-FPM (never sudo) and reports problems via macOS notifications (`osascript` with argv-safe AppleScript).
+- Dependencies: `inquirer` replaced with `@inquirer/prompts@^8`; `commander@^14`, `execa@^9`, `ora@^9`. CLI `engines.node` is now `>=20.17.0` (required by `@inquirer/prompts@8`). Chalk 6 / Commander 15 / Execa 10 / Ora 10 were not taken (they require Node 22+).
+
 ### `@stagepass/loader`
 
 - Opt-in **zero-cost production mode** via `data-stagepass-live-src="true"` on the loader tag: tagged assets keep a normal `src` / `href` (optional `integrity`); without a session the loader does not touch them; with an active swap session they are rewritten to the local `.sp` URL before classic scripts run (MutationObserver; Firefox uses `beforescriptexecute`). Legacy `data-src` / `data-href` is unchanged and remains the default.

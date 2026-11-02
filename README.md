@@ -86,7 +86,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 
 ## 📦 Installation
 
-Stagepass CLI is distributed via npm (`engines.node`: `>=18.0.0`). Prefer the major pin `@2` (exact pin optional):
+Stagepass CLI is distributed via npm (`engines.node`: `>=20.17.0`). Prefer the major pin `@2` (exact pin optional):
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -306,23 +306,24 @@ The `?stagepass=` parameter is removed from the address bar via `history.replace
 
 ## 🛠 CLI Reference
 
-**Requirements:** macOS (system commands exit with code 1 on other platforms; `--version` / `--help` remain available). Published CLI `engines.node` stays `>=18.0.0`; contributors develop and test on Node 22 or 24.
+**Requirements:** macOS (system commands exit with code 1 on other platforms; `--version` / `--help` remain available). Published CLI `engines.node` is `>=20.17.0`; contributors develop and test on Node 22 or 24.
 
 Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop` as needed). All commands support `-v, --verbose`.
 
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the `.sp` resolver. |
-| `stagepass start` | Start background Caddy & PHP services (also migrates legacy Caddyfile blocks if needed). |
+| `stagepass start` | Start Caddy & PHP (certs check; offer repair when interactive; `launchctl kickstart` when autostart is on). Migrates legacy Caddyfile blocks if needed. |
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain and reload Caddy. |
 | `stagepass unlink [domain]` | Remove the link (and `projects.json` entry) for that domain. |
 | `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). |
-| `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
-| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus the current project's declared modules vs. its live site. `--json`, `--skip-site`. Exit `1` on any fail. |
+| `stagepass stop` | Stop services. With autostart enabled, boots out the LaunchAgent until next login (`autostart off` removes it permanently). |
+| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus project modules vs. live site and unpinned CDN warnings. `--json`, `--skip-site`. Exit `1` on any fail. |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
+| `stagepass certs renew` | Repair failing site certs; `--root` (move CA to backup); `--remove-orphans` (delete by SHA-1 after confirm). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
-| `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`); non-interactive; never sudo. |
+| `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications); never sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project. |
 | `stagepass watch` | Run `npm run watch` in the current project. |

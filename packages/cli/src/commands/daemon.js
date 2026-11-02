@@ -5,6 +5,8 @@ import { getCaddyfilePath, getLogsDir } from '../lib/paths.js';
 import { runCertsCheck } from '../lib/certs.js';
 import { loadProjects } from '../lib/projects.js';
 import { getProjectsPath } from '../lib/paths.js';
+import { ensurePhpFpm } from '../lib/php-fpm.js';
+import { notifyMac } from '../lib/notify.js';
 
 /**
  * Detect bind / permission failures that will not self-heal on immediate restart.
@@ -19,14 +21,25 @@ export function isPermanentDaemonFailure(detail) {
 }
 
 /**
+ * Best-effort notification; never throws.
+ * @param {object} opts
+ */
+async function safeNotify(opts) {
+  try {
+    await (opts.notify || notifyMac)({
+      title: opts.title || 'Stagepass',
+      body: opts.body,
+      exec: opts.exec,
+    });
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Non-interactive foreground daemon for LaunchAgent use.
- * Never uses sudo. Runs certs check (log only, no TLS handshake), then `caddy run`.
- *
- * Existing `stagepass start` also launches Caddy as the user (sudo is only for
- * port conflict helpers). Binding TCP 443 as a user LaunchAgent is therefore
- * expected to work on macOS the same way. Permanent startup failures (missing
- * Caddyfile, port 443 bind) exit 0 after logging so launchd KeepAlive does not
- * restart-loop; unexpected mid-run failures exit 1 so KeepAlive can retry.
+ * Never uses sudo. Ensures PHP-FPM, runs certs check (log only, no TLS handshake),
+ * then `caddy run`. Problems are reported via macOS notifications (best effort).
  *
  * @param {object} [options]
  * @param {import('../lib/exec.js').ExecFn} [options.exec]
@@ -51,8 +64,39 @@ export async function daemon(options = {}) {
   if (!(await pathExists(caddyfilePath))) {
     log(`Caddyfile missing: ${caddyfilePath}`);
     log('Refusing to start. Run: stagepass setup && stagepass link');
+    await safeNotify({
+      exec,
+      notify: options.notify,
+      body: 'Caddyfile missing. Run stagepass setup && stagepass link.',
+    });
     // Exit 0: permanent until the user fixes config; avoid KeepAlive restart loop.
     return 0;
+  }
+
+  // PHP-FPM (non-interactive, never sudo)
+  try {
+    const php = await (options.ensurePhpFpm || ensurePhpFpm)({
+      exec,
+      stdio: 'ignore',
+    });
+    if (php.ok) {
+      log(`php-fpm: ${php.action}`);
+    } else {
+      log(`php-fpm failed: ${php.detail || 'unknown error'}`);
+      await safeNotify({
+        exec,
+        notify: options.notify,
+        body: `PHP-FPM failed: ${php.detail || 'unknown error'}`,
+      });
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    log(`php-fpm error: ${detail}`);
+    await safeNotify({
+      exec,
+      notify: options.notify,
+      body: `PHP-FPM error: ${detail}`,
+    });
   }
 
   // Non-interactive cert check (log only; never prompts; never repairs).
@@ -79,6 +123,20 @@ export async function daemon(options = {}) {
           .map((o) => o.sha1 || '?')
           .join(', ')})`
       );
+    }
+    if (report.trust && !report.trust.trusted) {
+      await safeNotify({
+        exec,
+        notify: options.notify,
+        body: 'Caddy local CA is not trusted. Run: stagepass certs trust',
+      });
+    }
+    if (report.root.status === 'fail') {
+      await safeNotify({
+        exec,
+        notify: options.notify,
+        body: `Certificate root problem: ${report.root.reason}`,
+      });
     }
   } catch (error) {
     log(
@@ -112,12 +170,22 @@ export async function daemon(options = {}) {
       log(
         'Port 443 bind/listen failed for the user LaunchAgent. Exiting without KeepAlive retry. Use interactive `stagepass start` (which can resolve conflicts with confirmation), or free port 443, then retry.'
       );
+      await safeNotify({
+        exec,
+        notify: options.notify,
+        body: `Caddy could not bind port 443: ${detail}`,
+      });
       if (process.stderr.isTTY) {
         console.error(chalk.red(detail));
       }
       // Exit 0 so SuccessfulExit=false KeepAlive does not restart-loop.
       return 0;
     }
+    await safeNotify({
+      exec,
+      notify: options.notify,
+      body: `Caddy failed: ${detail}`,
+    });
     if (process.stderr.isTTY) {
       console.error(chalk.red(detail));
     }

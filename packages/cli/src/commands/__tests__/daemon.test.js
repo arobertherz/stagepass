@@ -18,6 +18,8 @@ describe('daemon', () => {
       logsDir: '/tmp/stagepass-logs-test',
       pathExists: async () => false,
       log: (msg) => logs.push(msg),
+      notify: async () => {},
+      ensurePhpFpm: async () => ({ ok: true, action: 'start' }),
       runForeground: async () => {
         throw new Error('should not start caddy');
       },
@@ -35,6 +37,8 @@ describe('daemon', () => {
       logsDir: '/tmp/stagepass-logs-test',
       pathExists: async (p) => p === '/tmp/Caddyfile',
       log: (msg) => logs.push(msg),
+      notify: async () => {},
+      ensurePhpFpm: async () => ({ ok: true, action: 'start' }),
       exec: async (file, args) => {
         certCalls.push({ file, args });
         if (file === 'security') {
@@ -65,6 +69,8 @@ describe('daemon', () => {
       logsDir: '/tmp/stagepass-logs-test',
       pathExists: async (p) => p === '/tmp/Caddyfile',
       log: () => {},
+      notify: async () => {},
+      ensurePhpFpm: async () => ({ ok: true, action: 'start' }),
       exec: async () => ({ stdout: '', stderr: '', code: 0 }),
       runForeground: async () => {
         throw new Error('caddy panicked unexpectedly');
@@ -82,6 +88,7 @@ describe('daemon', () => {
       pathExists: async (p) => p === '/tmp/Caddyfile',
       log: () => {},
       exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      ensurePhpFpm: async () => ({ ok: true, action: 'start' }),
       runForeground,
     });
     expect(code).toBe(0);
@@ -92,5 +99,44 @@ describe('daemon', () => {
       '--adapter',
       'caddyfile',
     ]);
+  });
+
+  it('ensures PHP-FPM and notifies on failure without crashing', async () => {
+    const notifications = [];
+    const logs = [];
+    const runForeground = vi.fn(async () => ({ stdout: '', stderr: '', code: 0 }));
+    const code = await daemon({
+      caddyfilePath: '/tmp/Caddyfile',
+      projectsPath: '/tmp/projects.json',
+      logsDir: '/tmp/stagepass-logs-test',
+      pathExists: async (p) => p === '/tmp/Caddyfile',
+      log: (msg) => logs.push(msg),
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      ensurePhpFpm: async () => ({ ok: false, action: 'failed', detail: 'brew missing' }),
+      notify: async ({ body }) => {
+        notifications.push(body);
+      },
+      runForeground,
+    });
+    expect(code).toBe(0);
+    expect(logs.some((l) => /php-fpm failed/i.test(l))).toBe(true);
+    expect(notifications.some((n) => /PHP-FPM failed/i.test(n))).toBe(true);
+  });
+
+  it('notification failures never crash the daemon', async () => {
+    const code = await daemon({
+      caddyfilePath: '/tmp/Caddyfile',
+      projectsPath: '/tmp/projects.json',
+      logsDir: '/tmp/stagepass-logs-test',
+      pathExists: async (p) => p === '/tmp/Caddyfile',
+      log: () => {},
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      ensurePhpFpm: async () => ({ ok: false, action: 'failed', detail: 'nope' }),
+      notify: async () => {
+        throw new Error('osascript exploded');
+      },
+      runForeground: async () => ({ stdout: '', stderr: '', code: 0 }),
+    });
+    expect(code).toBe(0);
   });
 });

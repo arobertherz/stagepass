@@ -15,6 +15,7 @@ import {
   CHROME_LNA_HINT,
   findUnpinnedCdnSnippets,
   RECOMMENDED_CDN_SNIPPETS,
+  scanProjectUnpinnedCdn,
 } from './cdn-snippets.js';
 
 /**
@@ -461,7 +462,7 @@ export async function runDoctor(opts = {}) {
     );
   }
 
-  // CDN snippets (Stagepass-recommended; do not scan user sites)
+  // CDN snippets: canonical docs + current project snippet files (read-only)
   const snippets = opts.cdnSnippets || RECOMMENDED_CDN_SNIPPETS;
   const unpinned = findUnpinnedCdnSnippets(snippets);
   if (!unpinned.ok) {
@@ -469,7 +470,7 @@ export async function runDoctor(opts = {}) {
       check(
         'cdn',
         'warn',
-        'Recommended CDN snippets include @latest (prefer major pin @2)',
+        'Recommended CDN snippets include unpinned refs (@latest, @1, or bare package; prefer @2)',
         unpinned.offenders.join(', ')
       )
     );
@@ -478,9 +479,52 @@ export async function runDoctor(opts = {}) {
       check(
         'cdn',
         'ok',
-        'Recommended CDN snippets use a pinned major (@2), not @latest'
+        'Recommended CDN snippets use a pinned major (@2), not @latest/@1/bare'
       )
     );
+  }
+
+  if (opts.projectCdnScan !== false) {
+    try {
+      const projectCdn =
+        opts.projectCdnResult ||
+        (await scanProjectUnpinnedCdn({
+          cwd: opts.cwd,
+          files: opts.projectCdnFiles,
+          pathExists,
+          readFile,
+        }));
+      if (!projectCdn.ok) {
+        const detail = projectCdn.offenders
+          .map((o) => `${o.file}: ${o.match}`)
+          .join('; ');
+        checks.push(
+          check(
+            'cdn.project',
+            'warn',
+            'Project files contain unpinned Stagepass CDN URLs (@latest, @1, or bare; prefer @2)',
+            detail
+          )
+        );
+      } else {
+        checks.push(
+          check(
+            'cdn.project',
+            'ok',
+            'Project snippet files use pinned Stagepass CDN URLs (or none found)'
+          )
+        );
+      }
+    } catch (error) {
+      checks.push(
+        check(
+          'cdn.project',
+          'warn',
+          'Could not scan project files for CDN pins',
+          error instanceof Error ? error.message : String(error)
+        )
+      );
+    }
   }
 
   hints.push(CHROME_LNA_HINT);

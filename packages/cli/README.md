@@ -6,7 +6,7 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 
 ## Install
 
-Requires Node.js **18+** (`engines.node`: `>=18.0.0`) on **macOS** with Homebrew. Development and CI use Node 22 or 24; the published package keeps `engines.node` at `>=18.0.0` so existing consumers are not broken by an engines bump.
+Requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew. Development and CI use Node 22 or 24. The floor was raised because `@inquirer/prompts@8` requires it.
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -49,16 +49,17 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
-| `stagepass start` | Start background Caddy & PHP services. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). Uses `launchctl kickstart` when autostart is on. Migrates legacy Caddyfile blocks if needed. |
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
-| `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, plus the current project's declared modules vs. its live site). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
+| `stagepass stop` | Stop services. With autostart on: `launchctl bootout` until next login (`autostart off` removes permanently). |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, CDN pins in docs + project files, declared modules vs. live site). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
+| `stagepass certs renew` | Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
-| `stagepass daemon` | Non-interactive foreground helper for the LaunchAgent (certs check log-only, then `caddy run`). Never uses sudo. |
+| `stagepass daemon` | Non-interactive LaunchAgent helper (PHP-FPM ensure, certs log-only, `caddy run`, macOS notifications). Never uses sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
 | `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
 | `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). |
@@ -69,9 +70,11 @@ All commands support `-v, --verbose` where applicable.
 ### Doctor / certificates / autostart
 
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
-- Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
+- Prefer CDN major pin `@2` in Webflow custom code. Doctor warns on `@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md` / `stagepass.json` / snippet HTML files.
+- `certs renew` is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
-- Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
+- Autostart runs as your user. `start` / `stop` are autostart-aware (`kickstart` / `bootout`). If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts (name + PID confirmation; SIGTERM then optional SIGKILL).
+- Requires Node `>=20.17.0`.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
 
 ### `new` options

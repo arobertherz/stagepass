@@ -5,6 +5,7 @@ import {
   buildLaunchctlBootstrapArgs,
   buildLaunchctlBootoutArgs,
   buildLaunchctlPrintArgs,
+  buildLaunchctlKickstartArgs,
   renderLaunchAgentPlist,
   resolveAutostartPaths,
   enableAutostart,
@@ -44,6 +45,11 @@ describe('autostart helpers', () => {
     ]);
     expect(buildLaunchctlPrintArgs(501)).toEqual([
       'print',
+      `gui/501/${LAUNCH_AGENT_LABEL}`,
+    ]);
+    expect(buildLaunchctlKickstartArgs(501)).toEqual([
+      'kickstart',
+      '-k',
       `gui/501/${LAUNCH_AGENT_LABEL}`,
     ]);
   });

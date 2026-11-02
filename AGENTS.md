@@ -11,7 +11,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### 1. `packages/cli` (Node.js Environment)
 -   **Purpose:** Sets up the local environment (HTTPS, DNS, PHP).
--   **Tech:** Node 18+ (`engines`; development/CI: Node 22 or 24), Commander, Execa, Ora.
+-   **Tech:** Node 20.17+ (`engines`; development/CI: Node 22 or 24), Commander, Execa, Ora, `@inquirer/prompts`.
 -   **Platform:** macOS only for system commands. Guard in `src/lib/platform.js`; override with `STAGEPASS_SKIP_PLATFORM_CHECK=1` for tests/CI only.
 -   **Role:** The "Enabler". It creates the environment where local files are served.
 -   **Package Name:** `@stagepass/cli`
@@ -165,13 +165,14 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass link [domain]` - Link current directory to .sp domain (domain optional, defaults to folder name)
 -   `stagepass unlink [domain]` - Unlink directory from .sp domain (domain optional, defaults to folder name)
 -   `stagepass reload` - Reload Caddy configuration
--   `stagepass start` - Start background services (Caddy & PHP)
--   `stagepass stop` - Stop all background services (hints when autostart is enabled)
+-   `stagepass start` - Start Caddy & PHP (certs check; kickstart when autostart is on)
+-   `stagepass stop` - Stop services (bootout until next login when autostart is on; `autostart off` removes permanently)
 -   `stagepass doctor` - Read-only diagnostics (never sudo); `--json`; exit 1 on fail
 -   `stagepass certs check` - Read-only Caddy local CA / trust / TLS checks
 -   `stagepass certs trust` - Run `caddy trust` after confirmation or `--yes`
+-   `stagepass certs renew` - Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)
 -   `stagepass autostart on|off|status` - Login LaunchAgent (`io.github.arobertherz.stagepass`)
--   `stagepass daemon` - Foreground helper for LaunchAgent (`caddy run`; never sudo)
+-   `stagepass daemon` - Foreground helper (PHP-FPM, certs log-only, `caddy run`, notifications; never sudo)
 -   `stagepass new [name]` - Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive)
 -   `stagepass build` / `stagepass watch` - Thin wrappers around `npm run build` / `npm run watch`
 -   `stagepass upgrade` - Bump `@stagepass/*` in the current package.json and print Webflow snippets
