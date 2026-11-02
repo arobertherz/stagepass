@@ -23,7 +23,18 @@ export const SENSITIVE_BLOCK_DOCS = Object.freeze({
  * @typedef {object} SiteBlockOptions
  * @property {boolean} [allowAllOrigins]
  * @property {string[]} [origins]
+ * @property {boolean} [php] When false, omit php_fastcgi. Missing/undefined keeps PHP on (2.x backcompat).
  */
+
+/**
+ * Whether a site block should enable PHP FastCGI.
+ * Explicit false disables; everything else (including missing) keeps the legacy on behaviour.
+ * @param {boolean|undefined} php
+ * @returns {boolean}
+ */
+export function isPhpEnabled(php) {
+  return php !== false;
+}
 
 /**
  * @param {string} domain - normalized foo.sp
@@ -43,9 +54,10 @@ export function renderSiteBlock(domain, root, options = {}) {
     throw new Error(originsResult.error);
   }
   const origins = originsResult.origins;
+  const php = isPhpEnabled(options.php);
 
   const quotedRoot = `"${escapeCaddyQuotedString(rootResult.path)}"`;
-  const optionsComment = formatOptionsComment({ allowAllOrigins, origins });
+  const optionsComment = formatOptionsComment({ allowAllOrigins, origins, php });
 
   const lines = [
     `# START: ${domain}`,
@@ -68,13 +80,11 @@ export function renderSiteBlock(domain, root, options = {}) {
     lines.push(...allowlistCorsLines(origins));
   }
 
-  lines.push(
-    '',
-    '    handle {',
-    `        root * ${quotedRoot}`,
-    '        php_fastcgi 127.0.0.1:9000',
-    '        file_server'
-  );
+  lines.push('', '    handle {', `        root * ${quotedRoot}`);
+  if (php) {
+    lines.push('        php_fastcgi 127.0.0.1:9000');
+  }
+  lines.push('        file_server');
 
   if (allowAllOrigins) {
     lines.push('        header Access-Control-Allow-Origin *');
@@ -90,8 +100,11 @@ export function renderSiteBlock(domain, root, options = {}) {
   return lines.join('\n');
 }
 
-function formatOptionsComment({ allowAllOrigins, origins }) {
-  const parts = [`allowAllOrigins=${allowAllOrigins ? 'true' : 'false'}`];
+function formatOptionsComment({ allowAllOrigins, origins, php }) {
+  const parts = [
+    `allowAllOrigins=${allowAllOrigins ? 'true' : 'false'}`,
+    `php=${php ? 'true' : 'false'}`,
+  ];
   if (origins.length > 0) {
     parts.push(`origins=${origins.join(',')}`);
   }
@@ -169,11 +182,12 @@ export function parseBlocks(content) {
  * @param {string} blockText
  */
 export function parseOptionsFromBlock(blockText) {
-  const defaults = { allowAllOrigins: false, origins: [] };
+  const defaults = { allowAllOrigins: false, origins: [], php: undefined };
   const line = blockText.match(/^# stagepass-options:\s*(.+)$/m);
   if (!line) {
     if (!/# stagepass-block:/m.test(blockText)) {
-      return { allowAllOrigins: true, origins: [] };
+      // Legacy pre-marker blocks always had PHP.
+      return { allowAllOrigins: true, origins: [], php: true };
     }
     return defaults;
   }
@@ -181,13 +195,15 @@ export function parseOptionsFromBlock(blockText) {
   const text = line[1];
   const allowMatch = text.match(/allowAllOrigins=(true|false)/);
   const allowAllOrigins = allowMatch ? allowMatch[1] === 'true' : false;
+  const phpMatch = text.match(/(?:^|\s)php=(true|false)(?:\s|$)/);
+  const php = phpMatch ? phpMatch[1] === 'true' : undefined;
   const originsMatch = text.match(/origins=([^\s]+)/);
   let origins = [];
   if (originsMatch) {
     const list = validateOriginList(originsMatch[1].split(',').filter(Boolean));
     origins = list.ok ? list.origins : [];
   }
-  return { allowAllOrigins, origins };
+  return { allowAllOrigins, origins, php };
 }
 
 /**

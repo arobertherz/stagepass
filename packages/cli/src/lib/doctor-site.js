@@ -1,6 +1,7 @@
 /**
  * Doctor checks for the current project folder: declared modules in
- * stagepass.json vs. the Stagepass scripts the live Webflow site loads.
+ * stagepass.json vs. the Stagepass scripts the live Webflow site loads,
+ * plus a PHP check when the project opts into PHP.
  * Read-only: one public GET of the live page, parsed and never executed.
  */
 
@@ -8,7 +9,13 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { detectSite, describeDetection } from './site-detect.js';
 import { formatModules, sameModules } from './project-modules.js';
-import { declaredModules, readStagepassJson, resolveProjectOrigin } from './project-sync.js';
+import {
+  declaredModules,
+  phpFromStagepassConfig,
+  readStagepassJson,
+  resolveProjectOrigin,
+} from './project-sync.js';
+import { resolveCommand } from './exec.js';
 
 /**
  * @param {object} [opts]
@@ -16,6 +23,8 @@ import { declaredModules, readStagepassJson, resolveProjectOrigin } from './proj
  * @param {boolean} [opts.skipSite]
  * @param {(site: string) => Promise<any>} [opts.detectSite]
  * @param {Function} [opts.loadProjects]
+ * @param {typeof resolveCommand} [opts.resolveCommand]
+ * @param {Function} [opts.exec]
  * @returns {Promise<{ id: string, status: 'ok'|'warn'|'fail'|'info', message: string, detail?: string }[]>}
  */
 export async function runProjectSiteChecks(opts = {}) {
@@ -38,6 +47,41 @@ export async function runProjectSiteChecks(opts = {}) {
     });
   } else {
     checks.push({ id: 'project.modules', status: 'ok', message: `Declared modules: ${formatModules(declared)}` });
+  }
+
+  const php = phpFromStagepassConfig(sp.data);
+  if (php === false) {
+    checks.push({
+      id: 'project.php',
+      status: 'info',
+      message: 'PHP is off for this project (no php_fastcgi on link)',
+    });
+  } else if (php === true) {
+    const resolve = opts.resolveCommand || resolveCommand;
+    const phpPath = await resolve('php', opts.exec);
+    const apiDir = path.join(cwd, 'api');
+    const apiOk = await fs.pathExists(apiDir);
+    if (!phpPath) {
+      checks.push({
+        id: 'project.php',
+        status: 'fail',
+        message: 'Project enables PHP but php was not found on PATH',
+        detail: 'Install PHP (stagepass setup) or set "php": false in stagepass.json',
+      });
+    } else if (!apiOk) {
+      checks.push({
+        id: 'project.php',
+        status: 'warn',
+        message: `PHP enabled (php=${phpPath}) but api/ folder is missing`,
+        detail: 'Create api/ for handlers served via php_fastcgi',
+      });
+    } else {
+      checks.push({
+        id: 'project.php',
+        status: 'ok',
+        message: `PHP enabled for this project (php=${phpPath}, api/ present)`,
+      });
+    }
   }
 
   if (opts.skipSite) return checks;

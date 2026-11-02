@@ -30,6 +30,7 @@ describe('projects', () => {
     );
     expect(created.allowAllOrigins).toBe(false);
     expect(created.origins).toEqual([]);
+    expect(created.php).toBeUndefined();
 
     await upsertProject(
       'app.sp',
@@ -43,6 +44,21 @@ describe('projects', () => {
     const kept = await getProject('app.sp', projectsPath);
     expect(kept.allowAllOrigins).toBe(false);
     expect(kept.origins).toEqual(['example.com']);
+  });
+
+  it('stores explicit php false and true', async () => {
+    const off = await upsertProject(
+      'static.sp',
+      { root: '/Users/dev/Sites/static', isNew: true, phpFlag: false },
+      projectsPath
+    );
+    expect(off.php).toBe(false);
+    const on = await upsertProject(
+      'static.sp',
+      { root: '/Users/dev/Sites/static', phpFlag: true },
+      projectsPath
+    );
+    expect(on.php).toBe(true);
   });
 
   it('merges --origin and removes with --remove-origin', async () => {

@@ -19,6 +19,11 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently).
 - `stagepass daemon` ensures PHP-FPM (never sudo) and reports problems via macOS notifications (`osascript` with argv-safe AppleScript).
 - Dependencies: `inquirer` replaced with `@inquirer/prompts@^8`; `commander@^14`, `execa@^9`, `ora@^9`. CLI `engines.node` is now `>=20.17.0` (required by `@inquirer/prompts@8`). Chalk 6 / Commander 15 / Execa 10 / Ora 10 were not taken (they require Node 22+).
+- `stagepass new`: staging / production origins (`--staging`, `--production`; wizard suggests `<name>.webflow.io`), written to `stagepass.json` as `origin` / `production`. Skipping production prints a short `stagepass link --origin` hint. `stagepass link` with no `--origin` flags uses those hosts. `--site` still works and must match `--staging` when both are set.
+- `stagepass new`: optional PHP (`--php` / `--no-php`, default off). PHP on creates `api/`, stores `"php": true`, and omits `php_fastcgi` when false. Existing linked projects without a `php` setting keep PHP on (non-breaking). Optional `--php-examples` adds secure samples under `examples/php/`.
+- `stagepass new`: interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY). Optional `link` at the end (`--link` or interactive ask, macOS only).
+- Generated projects: `npm run dev` aliases `watch`; `scripts/build.mjs` writes SRI `integrity` (sha384) per file in `dist/manifest.json`.
+- `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
 
 ### `@stagepass/loader`
 

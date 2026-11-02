@@ -1,0 +1,7 @@
+# API (PHP)
+
+This folder is the project document root for PHP handlers served by Caddy `php_fastcgi` on your linked `.sp` domain.
+
+- Put scripts here (for example `api/contact.php` → `https://{{NAME}}.sp/api/contact.php`).
+- Do not commit secrets. Load credentials from environment variables.
+- Prefer JSON responses and escape any HTML you render (`htmlspecialchars`).

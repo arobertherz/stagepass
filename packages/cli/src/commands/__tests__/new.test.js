@@ -36,7 +36,11 @@ describe('resolveNewOptions', () => {
       modules: true,
       git: true,
       install: false,
+      php: false,
+      phpExamples: false,
+      linkAtEnd: false,
       author: 'Ada',
+      productionSkipped: true,
     });
   });
 
@@ -225,12 +229,18 @@ describe('createNew', () => {
     expect(pkg.private).toBe(true);
     expect(pkg.scripts.build).toBeTruthy();
     expect(pkg.scripts.watch).toBeTruthy();
+    expect(pkg.scripts.dev).toBe('npm run watch');
     // Major range only: never derived from the CLI or a staged version.
     expect(pkg.devDependencies['@stagepass/loader']).toBe('^2');
     expect(pkg.devDependencies['@stagepass/modules']).toBe('^2');
     const sp = await fs.readJson(path.join(target, 'stagepass.json'));
     expect(sp.modules).toEqual(['cookies']);
     expect(sp.origin).toBeUndefined();
+    expect(sp.php).toBe(false);
+    expect(await fs.pathExists(path.join(target, 'api'))).toBe(false);
+    const buildScript = await fs.readFile(path.join(target, 'scripts/build.mjs'), 'utf8');
+    expect(buildScript).toContain('sha384-');
+    expect(buildScript).toContain('sriSha384');
     const tsconfig = await fs.readJson(path.join(target, 'tsconfig.json'));
     expect(tsconfig.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
     const rule = await fs.readFile(path.join(target, '.cursor/rules/stagepass.mdc'), 'utf8');
@@ -517,6 +527,15 @@ describe('scaffold e2e build', () => {
       expect(await fs.pathExists(path.join(target, 'dist/manifest.json'))).toBe(true);
       expect(await fs.pathExists(path.join(target, 'dist/main.js'))).toBe(true);
       expect(await fs.pathExists(path.join(target, 'dist/styles.css'))).toBe(true);
+      const manifest = await fs.readJson(path.join(target, 'dist/manifest.json'));
+      expect(manifest['main.js']).toMatchObject({
+        file: expect.stringMatching(/^main\.[a-f0-9]{8}\.js$/),
+        integrity: expect.stringMatching(/^sha384-[A-Za-z0-9+/=]+$/),
+      });
+      expect(manifest['styles.css']).toMatchObject({
+        file: expect.stringMatching(/^styles\.[a-f0-9]{8}\.css$/),
+        integrity: expect.stringMatching(/^sha384-[A-Za-z0-9+/=]+$/),
+      });
     } finally {
       await fs.remove(tmp);
     }
@@ -569,8 +588,9 @@ describe('new: declared modules', () => {
     expect(conflict.ok).toBe(false);
   });
 
-  it('wizard: asks for the site, confirms detected modules', async () => {
-    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', 'y', 'n', 'y'];
+  it('wizard: asks for staging/production, confirms detected modules', async () => {
+    // name, dir, author, lang, styles, staging, production, use detected?, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', '', 'y', 'n', 'n', 'y'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const r = await resolveNewOptions(undefined, {}, {
       isTTY: true,
@@ -581,11 +601,19 @@ describe('new: declared modules', () => {
       log: () => {},
     });
     expect(r.ok).toBe(true);
-    expect(r.config).toMatchObject({ siteModules: ['all'], origin: 'shop.webflow.io', git: false, install: true });
+    expect(r.config).toMatchObject({
+      siteModules: ['all'],
+      origin: 'shop.webflow.io',
+      git: false,
+      install: true,
+      php: false,
+      productionSkipped: true,
+    });
   });
 
   it('wizard: unreachable site falls back to asking for the list', async () => {
-    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', 'cookies', 'n', 'n'];
+    // name, dir, author, lang, styles, staging, production, modules, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', '', 'cookies', 'n', 'n', 'n'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
     const r = await resolveNewOptions(undefined, {}, {
@@ -597,5 +625,287 @@ describe('new: declared modules', () => {
       log: () => {},
     });
     expect(r.config.siteModules).toEqual(['cookies']);
+  });
+});
+
+describe('new: origins, php, preflight', () => {
+  it('accepts --staging and --production', async () => {
+    const r = await resolveNewOptions(
+      'shop',
+      {
+        yes: true,
+        staging: 'shop.webflow.io',
+        production: 'www.example.com',
+        siteModules: 'none',
+      },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), log: () => {} }
+    );
+    expect(r.ok).toBe(true);
+    expect(r.config).toMatchObject({
+      origin: 'shop.webflow.io',
+      production: 'www.example.com',
+      productionSkipped: false,
+    });
+  });
+
+  it('rejects conflicting --site and --staging', async () => {
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'a.webflow.io', staging: 'b.webflow.io' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/disagree/i);
+  });
+
+  it('rejects invalid staging / production hosts', async () => {
+    const badStaging = await resolveNewOptions(
+      'shop',
+      { yes: true, staging: 'https://evil.example/path' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) }
+    );
+    expect(badStaging.ok).toBe(false);
+    const badProd = await resolveNewOptions(
+      'shop',
+      { yes: true, production: 'http://example.com' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) }
+    );
+    expect(badProd.ok).toBe(false);
+    const withPort = await resolveNewOptions(
+      'shop',
+      { yes: true, staging: 'example.com:443' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) }
+    );
+    expect(withPort.ok).toBe(false);
+  });
+
+  it('rejects --php-examples without --php', async () => {
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, php: false, phpExamples: true },
+      { isTTY: false, argv: ['--yes', '--no-php', '--php-examples'], exec: async () => ({ stdout: '' }) }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/php-examples/i);
+  });
+
+  it('dry-run lists php examples and production hint', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dry-'));
+    const logs = [];
+    try {
+      const code = await createNew(
+        'dry-php',
+        {
+          yes: true,
+          dryRun: true,
+          dir: path.join(tmp, 'dry-php'),
+          git: false,
+          php: true,
+          phpExamples: true,
+          staging: 'dry.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--php', '--php-examples', '--dry-run'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: (m) => logs.push(String(m)),
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'linux',
+          detectSite: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      const joined = logs.join('\n');
+      expect(joined).toContain('examples/php/form.php');
+      expect(joined).toContain('examples/php/proxy.php');
+      expect(joined).toContain('api/README.md');
+      expect(joined).toMatch(/Production domain skipped/i);
+      expect(await fs.pathExists(path.join(tmp, 'dry-php'))).toBe(false);
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('scaffolds php api and optional examples', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-php-'));
+    const target = path.join(tmp, 'php-app');
+    try {
+      const logs = [];
+      const code = await createNew(
+        'php-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          php: true,
+          phpExamples: true,
+          staging: 'php-app.webflow.io',
+          production: 'www.example.com',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--php', '--php-examples'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: (m) => logs.push(String(m)),
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'linux',
+          detectSite: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(await fs.pathExists(path.join(target, 'api/README.md'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, 'examples/php/proxy.php'))).toBe(true);
+      const form = await fs.readFile(path.join(target, 'examples/php/form.php'), 'utf8');
+      expect(form).toContain('htmlspecialchars');
+      expect(form).toContain('REQUEST_METHOD');
+      const proxy = await fs.readFile(path.join(target, 'examples/php/proxy.php'), 'utf8');
+      expect(proxy).toContain('STAGEPASS_PROXY_ALLOWLIST');
+      expect(proxy).toContain('CURLOPT_FOLLOWLOCATION');
+      expect(proxy).toContain('CURLPROTO_HTTPS');
+      const sp = await fs.readJson(path.join(target, 'stagepass.json'));
+      expect(sp).toMatchObject({
+        origin: 'php-app.webflow.io',
+        production: 'www.example.com',
+        php: true,
+      });
+      expect(logs.join('\n')).not.toMatch(/Production domain skipped/i);
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('skips doctor preflight and link off macOS / non-interactive', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-pre-'));
+    const target = path.join(tmp, 'pre');
+    const runDoctor = vi.fn();
+    const setup = vi.fn();
+    const link = vi.fn();
+    try {
+      const code = await createNew(
+        'pre-app',
+        { yes: true, dir: target, git: false, link: true },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'linux',
+          runDoctor,
+          setup,
+          link,
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).not.toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+      expect(link).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('offers setup after failing doctor preflight on interactive macOS', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-doc-'));
+    const target = path.join(tmp, 'doc');
+    const setup = vi.fn(async () => {});
+    const runDoctor = vi.fn(async () => ({
+      checks: [{ id: 'caddy', status: 'fail', message: 'missing' }],
+      summary: { ok: 0, warn: 0, fail: 1, info: 0 },
+      exitCode: 1,
+      hints: [],
+    }));
+    // setup?, staging, production, php, link?
+    const wizardAnswers = ['n', 'doc.webflow.io', '', 'n', 'n'];
+    const rl = {
+      question: vi.fn(async () => wizardAnswers.shift() ?? ''),
+      close: vi.fn(),
+    };
+    try {
+      const code = await createNew(
+        'doc-app',
+        {
+          dir: target,
+          lang: 'ts',
+          styles: 'scss',
+          modules: false,
+          git: false,
+          install: false,
+          author: 'Ada',
+        },
+        {
+          isTTY: true,
+          argv: ['--no-modules', '--no-git', '--no-install', '--lang', 'ts', '--styles', 'scss'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: async () => ({ stdout: 'Ada' }),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup,
+          createReadline: () => rl,
+          link: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('calls link on macOS with --link after scaffold', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linknew-'));
+    const target = path.join(tmp, 'linked');
+    const link = vi.fn(async () => 0);
+    try {
+      const code = await createNew(
+        'linked-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          link: true,
+          staging: 'linked-app.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          link,
+          detectSite: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(link).toHaveBeenCalledWith(
+        'linked-app',
+        expect.any(Object),
+        expect.objectContaining({ cwd: target })
+      );
+    } finally {
+      await fs.remove(tmp);
+    }
   });
 });

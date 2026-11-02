@@ -73,8 +73,8 @@ Full command set (keep in sync with the root README, `packages/cli/README.md`, a
 | `stagepass certs renew` | Repair site certs; `--root` / `--remove-orphans` (confirmed) |
 | `stagepass autostart on\|off\|status` | Login LaunchAgent (`io.github.arobertherz.stagepass`) |
 | `stagepass daemon` | Foreground helper (PHP-FPM, certs log-only, `caddy run`; notifications) |
-| `stagepass new [name]` | Scaffold a lean Webflow project (`--yes`, `--dry-run`, flags for every option) |
-| `stagepass build` | Run `npm run build` in the current project |
+| `stagepass new [name]` | Scaffold a lean Webflow project (`--yes`, `--dry-run`, `--staging` / `--production`, `--php` / `--php-examples`, `--link`, flags for every option) |
+| `stagepass build` | Run `npm run build` in the current project (hashed files + SRI in `manifest.json`) |
 | `stagepass watch` | Run `npm run watch` in the current project |
 | `stagepass upgrade` | Bump `@stagepass/*` in `package.json` and print the Webflow snippet |
 

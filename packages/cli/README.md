@@ -88,17 +88,22 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `--lang ts\|js` | Language (default: `ts`). |
 | `--styles scss\|css` | Styles (default: `scss`). |
 | `--modules` / `--no-modules` | Include `@stagepass/modules` as npm dependency (default: yes; forced on when `--site-modules` lists a module). |
-| `--site <host>` | Live Webflow site (https) to detect the loaded modules from. Stored as the project origin. |
+| `--site <host>` | Live Webflow site (https) to detect the loaded modules from. Also sets staging `origin` in `stagepass.json`. |
+| `--staging <domain>` | Staging hostname (hostname only; same validation as `--origin`). Stored as `origin`. Must match `--site` when both are set. |
+| `--production <domain>` | Optional production hostname. Stored as `production`. When omitted, prints a short hint to add it later via `stagepass link --origin`. |
 | `--site-modules <list>` | Modules the site loads: `none`, `all`, or a comma list of `inject`, `cookies`, `maintenance`. Takes precedence over `--site`. |
+| `--php` / `--no-php` | Enable PHP for the project (`api/` + `php_fastcgi` on link). Default: off. Existing linked projects without `"php"` keep PHP on. |
+| `--php-examples` / `--no-php-examples` | Include `examples/php/` samples (requires `--php`). Default: off. |
+| `--link` / `--no-link` | After scaffolding, run `stagepass link` (macOS only). Default: off; interactive macOS may offer it. |
 | `--git` / `--no-git` | `git init` (default: yes). |
 | `--remote <url>` | Set `origin` after git init (rejects URLs with embedded credentials). |
 | `--install` / `--no-install` | Run `npm install` (default: no). |
 | `-y, --yes` | Non-interactive; use defaults for omitted flags. |
 | `--dry-run` | Print the file plan without writing. |
 
-The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2` (same major as the CDN pin `@2`; npm installs the newest published 2.x). Per-module types are written only when the published or installed `@stagepass/modules` ships them (2.2.0 and later); otherwise `types` lists the umbrella `@stagepass/modules`.
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + SRI `integrity` in `manifest.json`), scripts `build` / `watch` / `dev` (`dev` aliases `watch`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2` (same major as the CDN pin `@2`; npm installs the newest published 2.x). Per-module types are written only when the published or installed `@stagepass/modules` ships them (2.2.0 and later); otherwise `types` lists the umbrella `@stagepass/modules`.
 
-Interactively, `new` asks for the live site after the styles question, shows the detected modules and asks for confirmation; otherwise it asks for the list directly. Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint.
+Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `stagepass setup` if the local stack looks incomplete (never automatic, never under `--yes` / no-TTY, never sudo by itself). It then asks for staging (suggests `<name>.webflow.io`) and optional production, detects modules from staging when possible, then PHP / git / install. Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` / `--staging` detection, else `[]` with a hint. `stagepass link` with no `--origin` flags reads `origin` / `production` from `stagepass.json`.
 
 ### Declared modules (`stagepass.json`)
 
@@ -155,6 +160,8 @@ Every change is printed as `file: action` (unchanged files are not listed; skipp
 | `--allow-all-origins` | Enable `Access-Control-Allow-Origin: *` (prints a security warning). Prefer `--origin`. |
 | `--no-allow-all-origins` | Disable allow-all mode and use the origin allowlist. |
 | `-v, --verbose` | Show Caddy reload output / errors. |
+
+When no `--origin` / `--remove-origin` flags are passed, `link` reads `origin` and optional `production` from `stagepass.json` (written by `stagepass new`). The project's `"php"` flag (when set) controls whether the Caddy site block includes `php_fastcgi`; missing `"php"` keeps the legacy PHP-on behaviour.
 
 **`--origin` / `--remove-origin` format:** `example.com`, `www.example.com`, `*.example.com`, or `https://example.com`. Hostnames only (optional leading `*.`); no path, port, or `http://` for live origins.
 

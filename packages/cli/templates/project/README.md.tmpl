@@ -7,17 +7,18 @@ Local Stagepass project for Webflow.
 ```bash
 npm install
 npm run build
-stagepass link {{NAME}} --origin my-project.webflow.io
+stagepass link {{NAME}}
 ```
 
-Activate on your live site: `https://my-project.webflow.io/?stagepass={{NAME}}.sp`
+`stagepass link` without `--origin` uses the hosts from `stagepass.json` (`origin` / optional `production`). Activate on your staging site: `https://{{STAGING_HOST}}/?stagepass={{NAME}}.sp`
 
 ## Scripts
 
 | Script | Description |
 | :--- | :--- |
-| `npm run build` | Bundle JS/CSS into `dist/` with content hashes + `manifest.json` |
+| `npm run build` | Bundle JS/CSS into `dist/` with content hashes, SRI, and `manifest.json` |
 | `npm run watch` | Rebuild on change |
+| `npm run dev` | Alias of `watch` (until a real HMR server ships) |
 
 ## Webflow Custom Code
 
@@ -37,8 +38,36 @@ Optional exact pin (replace `@2` in the URL if you need a locked version): `@{{L
 {{FOOTER_SNIPPET}}
 ```
 
-After each production upload, set `data-src` / `data-href` to your hosted URLs. For content-hashed uploads, read the filenames from `dist/manifest.json`. Local Stagepass swapping can keep using the stable `dist/main.js` and `dist/styles.css` copies.
+After each production upload, set `data-src` / `data-href` to your hosted URLs. For content-hashed uploads, read `file` from `dist/manifest.json`. Local Stagepass swapping can keep using the stable `dist/main.js` and `dist/styles.css` copies.
 
-## PHP
+### Subresource Integrity (SRI)
 
-PHP helpers for this scaffolder are planned for a later Stagepass release. Linked `.sp` sites can still use PHP via the CLI when PHP is installed system-wide.
+`npm run build` writes a sha384 `integrity` per output in `dist/manifest.json`:
+
+```json
+{
+  "main.js": {
+    "file": "main.a1b2c3d4.js",
+    "integrity": "sha384-..."
+  },
+  "styles.css": {
+    "file": "styles.e5f6a7b8.css",
+    "integrity": "sha384-..."
+  }
+}
+```
+
+Use those values on production tags (and keep `crossorigin="anonymous"` when the asset host sends CORS headers):
+
+```html
+<script
+  src="https://cdn.example.com/{{NAME}}/main.a1b2c3d4.js"
+  integrity="sha384-..."
+  crossorigin="anonymous"
+  data-stagepass
+  data-src="https://cdn.example.com/{{NAME}}/main.a1b2c3d4.js"
+  data-stagepass-path="/dist/main.js"
+></script>
+```
+
+{{PHP_SECTION}}

@@ -5,6 +5,8 @@ import fs from 'fs-extra';
 import {
   applyProjectSync,
   declaredModules,
+  originsFromStagepassConfig,
+  phpFromStagepassConfig,
   planProjectSync,
   resolveProjectOrigin,
   resolveUpgradeModules,
@@ -87,6 +89,27 @@ describe('planProjectSync / applyProjectSync', () => {
 
   it('refuses writes outside the project', async () => {
     await expect(applyProjectSync(dir, [{ file: '../evil', content: '' }])).rejects.toThrow(/outside/);
+  });
+});
+
+describe('originsFromStagepassConfig / phpFromStagepassConfig', () => {
+  it('collects origin and production hosts', () => {
+    expect(
+      originsFromStagepassConfig({
+        origin: 'a.webflow.io',
+        production: 'www.example.com',
+      })
+    ).toEqual(['a.webflow.io', 'www.example.com']);
+    expect(originsFromStagepassConfig({ origin: 'https://bad.example/path' })).toEqual([]);
+    expect(
+      originsFromStagepassConfig({
+        origin: 'ok.webflow.io',
+        production: 'https://bad.example/path',
+      })
+    ).toEqual(['ok.webflow.io']);
+    expect(phpFromStagepassConfig({ php: false })).toBe(false);
+    expect(phpFromStagepassConfig({ php: true })).toBe(true);
+    expect(phpFromStagepassConfig({})).toBeUndefined();
   });
 });
 

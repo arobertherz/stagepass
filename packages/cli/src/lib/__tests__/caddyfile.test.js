@@ -39,7 +39,9 @@ describe('renderSiteBlock', () => {
     });
 
     expect(block).toContain(`# stagepass-block: ${BLOCK_VERSION}`);
-    expect(block).toContain('# stagepass-options: allowAllOrigins=false origins=example.com');
+    expect(block).toContain(
+      '# stagepass-options: allowAllOrigins=false php=true origins=example.com'
+    );
     expect(block).toContain(`@blocked path_regexp blocked ${BLOCKED_PATH_REGEXP}`);
     expect(block).toContain('respond 404');
     expect(block).toContain('Access-Control-Allow-Private-Network true');
@@ -57,11 +59,32 @@ describe('renderSiteBlock', () => {
     expect(block).toContain('# END: app.sp');
   });
 
+  it('omits php_fastcgi when php is false', () => {
+    const block = renderSiteBlock('static.sp', '/Users/dev/Sites/static', {
+      allowAllOrigins: false,
+      origins: [],
+      php: false,
+    });
+    expect(block).toContain('php=false');
+    expect(block).not.toContain('php_fastcgi');
+    expect(block).toContain('file_server');
+  });
+
+  it('keeps php_fastcgi when php is omitted (legacy default)', () => {
+    const block = renderSiteBlock('legacy.sp', '/Users/dev/Sites/legacy', {
+      allowAllOrigins: false,
+      origins: [],
+    });
+    expect(block).toContain('php=true');
+    expect(block).toContain('php_fastcgi 127.0.0.1:9000');
+  });
+
   it('renders allow-all-origins block', () => {
     const block = renderSiteBlock('open.sp', '/Users/dev/Sites/open', {
       allowAllOrigins: true,
     });
     expect(block).toContain('allowAllOrigins=true');
+    expect(block).toContain('php=true');
     expect(block).toContain('header Access-Control-Allow-Origin *');
     expect(block).toContain('@blocked path_regexp');
     expect(block).not.toContain('@cors_origin');

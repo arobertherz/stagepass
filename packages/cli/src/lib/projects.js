@@ -4,7 +4,7 @@ import { getProjectsPath } from './paths.js';
 import { validateOriginList } from './origins.js';
 
 /**
- * Per-project CORS settings stored in ~/.stagepass/projects.json
+ * Per-project CORS / PHP settings stored in ~/.stagepass/projects.json
  *
  * Shape:
  * {
@@ -13,10 +13,13 @@ import { validateOriginList } from './origins.js';
  *     "my-app.sp": {
  *       "root": "/absolute/path",
  *       "origins": ["example.com", "*.example.org"],
- *       "allowAllOrigins": false
+ *       "allowAllOrigins": false,
+ *       "php": true
  *     }
  *   }
  * }
+ *
+ * `php` is optional: missing means PHP on (legacy linked projects keep php_fastcgi).
  */
 
 const DEFAULT_DOC = { version: 1, projects: {} };
@@ -57,7 +60,7 @@ export async function saveProjects(doc, filePath = getProjectsPath()) {
 
 /**
  * @param {string} domain
- * @returns {Promise<{ root?: string, origins: string[], allowAllOrigins: boolean }|null>}
+ * @returns {Promise<{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean }|null>}
  */
 export async function getProject(domain, filePath = getProjectsPath()) {
   const doc = await loadProjects(filePath);
@@ -73,6 +76,7 @@ export async function getProject(domain, filePath = getProjectsPath()) {
  * - originsFromFlags: when non-empty, merge into existing (deduped)
  * - originsToRemove: when non-empty, remove matching stored origins (after merge)
  * - allowAllOriginsFlag: true | false | undefined (undefined = keep existing / seed / default)
+ * - phpFlag: true | false | undefined (undefined = keep existing / seed / omit)
  * - seed: when no projects.json entry exists, start from these values (e.g. Caddyfile marker)
  * - isNew: when true and allowAllOriginsFlag is undefined, default allowAllOrigins to false
  * - forceAllowAllOrigins: migration helper; force true once
@@ -83,7 +87,8 @@ export async function getProject(domain, filePath = getProjectsPath()) {
  * @param {string[]} [update.originsFromFlags]
  * @param {string[]} [update.originsToRemove]
  * @param {boolean|undefined} [update.allowAllOriginsFlag]
- * @param {{ origins?: string[], allowAllOrigins?: boolean }|null} [update.seed]
+ * @param {boolean|undefined} [update.phpFlag]
+ * @param {{ origins?: string[], allowAllOrigins?: boolean, php?: boolean }|null} [update.seed]
  * @param {boolean} [update.isNew]
  * @param {boolean} [update.forceAllowAllOrigins]
  */
@@ -124,11 +129,21 @@ export async function upsertProject(domain, update, filePath = getProjectsPath()
     allowAllOrigins = true;
   }
 
-  doc.projects[domain] = {
+  let php = existing.php;
+  if (update.phpFlag === true) php = true;
+  if (update.phpFlag === false) php = false;
+
+  /** @type {Record<string, unknown>} */
+  const next = {
     root: update.root,
     origins,
     allowAllOrigins,
   };
+  if (php === true || php === false) {
+    next.php = php;
+  }
+
+  doc.projects[domain] = next;
 
   await saveProjects(doc, filePath);
   return normalizeProjectEntry(doc.projects[domain]);
@@ -173,9 +188,13 @@ export async function removeProject(domain, filePath = getProjectsPath()) {
 
 function normalizeProjectEntry(entry) {
   const originsResult = validateOriginList(entry.origins || []);
-  return {
+  /** @type {{ root?: string, origins: string[], allowAllOrigins: boolean, php?: boolean }} */
+  const out = {
     root: entry.root,
     origins: originsResult.ok ? originsResult.origins : [],
     allowAllOrigins: entry.allowAllOrigins === true,
   };
+  if (entry.php === true) out.php = true;
+  if (entry.php === false) out.php = false;
+  return out;
 }

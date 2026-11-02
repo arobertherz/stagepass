@@ -224,4 +224,43 @@ kept.sp {
     expect(caddyWrites.at(-1)[1]).toContain('origins=live.example.com');
     expect(caddyWrites.at(-1)[1]).toContain('Access-Control-Allow-Origin *');
   });
+
+  it('reads origin/production from stagepass.json when no --origin flags', async () => {
+    const stagepassPath = path.join('/Users/dev/Sites/project', 'stagepass.json');
+    fs.pathExists.mockImplementation(async (p) => p === stagepassPath);
+    fs.readFile.mockImplementation(async (p) => {
+      if (p === stagepassPath) {
+        return JSON.stringify({
+          name: 'project',
+          origin: 'project.webflow.io',
+          production: 'www.example.com',
+          php: false,
+        });
+      }
+      throw new Error('missing');
+    });
+
+    await link('project', {});
+
+    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const doc = JSON.parse(projectWrites.at(-1)[1]);
+    expect(doc.projects['project.sp'].origins).toEqual([
+      'project.webflow.io',
+      'www.example.com',
+    ]);
+    expect(doc.projects['project.sp'].php).toBe(false);
+
+    const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
+    const block = caddyWrites.at(-1)[1];
+    expect(block).toContain('origins=project.webflow.io,www.example.com');
+    expect(block).toContain('php=false');
+    expect(block).not.toContain('php_fastcgi');
+  });
+
+  it('keeps php_fastcgi for legacy projects without php in stagepass.json', async () => {
+    await link('legacy-php', {});
+    const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
+    expect(caddyWrites.at(-1)[1]).toContain('php_fastcgi 127.0.0.1:9000');
+    expect(caddyWrites.at(-1)[1]).toContain('php=true');
+  });
 });

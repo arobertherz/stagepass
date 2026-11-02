@@ -62,4 +62,38 @@ describe('runProjectSiteChecks', () => {
     expect(checks).toHaveLength(1);
     expect(detectSite).not.toHaveBeenCalled();
   });
+
+  it('reports project PHP off / missing binary / ok with api/', async () => {
+    await write({ modules: [], php: false });
+    let checks = await runProjectSiteChecks({
+      cwd: dir,
+      skipSite: true,
+      loadProjects: noProjects,
+    });
+    expect(checks.find((c) => c.id === 'project.php')).toMatchObject({
+      status: 'info',
+      message: expect.stringMatching(/PHP is off/i),
+    });
+
+    await write({ modules: [], php: true });
+    checks = await runProjectSiteChecks({
+      cwd: dir,
+      skipSite: true,
+      loadProjects: noProjects,
+      resolveCommand: async () => null,
+    });
+    expect(checks.find((c) => c.id === 'project.php').status).toBe('fail');
+
+    await fs.ensureDir(path.join(dir, 'api'));
+    checks = await runProjectSiteChecks({
+      cwd: dir,
+      skipSite: true,
+      loadProjects: noProjects,
+      resolveCommand: async () => '/usr/bin/php',
+    });
+    expect(checks.find((c) => c.id === 'project.php')).toMatchObject({
+      status: 'ok',
+      message: expect.stringContaining('/usr/bin/php'),
+    });
+  });
 });

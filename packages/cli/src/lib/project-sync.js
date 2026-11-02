@@ -25,6 +25,7 @@ import {
   typesForModules,
 } from './project-modules.js';
 import { loadProjects } from './projects.js';
+import { validateOriginEntry, validateOriginList } from './origins.js';
 import { describeDetection, normalizeSiteUrl } from './site-detect.js';
 
 /**
@@ -57,6 +58,47 @@ export function declaredModules(data) {
   if (!data || !Array.isArray(data.modules)) return null;
   const result = normalizeModulesList(data.modules);
   return result.ok ? result.modules : null;
+}
+
+/**
+ * CORS origins declared in stagepass.json for `stagepass link` with no --origin flags.
+ * Reads `origin` (staging) and optional `production`. Invalid entries are skipped.
+ *
+ * @param {Record<string, unknown> | null} data
+ * @returns {string[]}
+ */
+export function originsFromStagepassConfig(data) {
+  if (!data || typeof data !== 'object') return [];
+  const raw = [];
+  for (const key of ['origin', 'production']) {
+    const value = data[key];
+    if (typeof value !== 'string' || value.trim() === '') continue;
+    const check = validateOriginEntry(value);
+    if (check.ok) raw.push(check.value);
+  }
+  const validated = validateOriginList(raw);
+  return validated.ok ? validated.origins : [];
+}
+
+/**
+ * PHP toggle from stagepass.json (`undefined` when unset).
+ * @param {Record<string, unknown> | null} data
+ * @returns {boolean|undefined}
+ */
+export function phpFromStagepassConfig(data) {
+  if (!data || typeof data !== 'object') return undefined;
+  if (data.php === true) return true;
+  if (data.php === false) return false;
+  return undefined;
+}
+
+/**
+ * Validate a staging/production hostname for `stagepass new` (origins.js rules).
+ * @param {string} input
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
+export function validateProjectOriginHost(input) {
+  return validateOriginEntry(input);
 }
 
 /**

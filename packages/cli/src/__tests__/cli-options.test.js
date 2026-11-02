@@ -128,6 +128,13 @@ describe('createProgram scaffold commands (commander)', () => {
       './demo',
       '--remote',
       'https://github.com/org/demo.git',
+      '--staging',
+      'demo.webflow.io',
+      '--production',
+      'www.example.com',
+      '--php',
+      '--php-examples',
+      '--link',
     ]);
     expect(captured.name).toBe('demo');
     expect(captured.options.yes).toBe(true);
@@ -138,6 +145,36 @@ describe('createProgram scaffold commands (commander)', () => {
     expect(captured.options.install).toBe(false);
     expect(captured.options.dir).toBe('./demo');
     expect(captured.options.remote).toBe('https://github.com/org/demo.git');
+    expect(captured.options.staging).toBe('demo.webflow.io');
+    expect(captured.options.production).toBe('www.example.com');
+    expect(captured.options.php).toBe(true);
+    expect(captured.options.phpExamples).toBe(true);
+    expect(captured.options.link).toBe(true);
+  });
+
+  it('parses --no-php and --no-link defaults for new', () => {
+    let captured;
+    const program = createProgram({
+      assertPlatform: () => {},
+      createNew: async (name, options) => {
+        captured = { name, options };
+        return 0;
+      },
+    });
+    program.exitOverride();
+    program.parse([
+      'node',
+      'stagepass',
+      'new',
+      'demo',
+      '--yes',
+      '--no-php',
+      '--no-php-examples',
+      '--no-link',
+    ]);
+    expect(captured.options.php).toBe(false);
+    expect(captured.options.phpExamples).toBe(false);
+    expect(captured.options.link).toBe(false);
   });
 
   it('registers watch and build handlers', () => {
