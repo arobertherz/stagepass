@@ -86,7 +86,7 @@ Shown only while a session is active (including debug). Click clears the session
 - Errors: `sp.error`, `sp.log('error', …)`, uncaught errors, failed resource loads, unhandled rejections.
 - Tooltip: session domain, counts, LNA hint.
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). Respects `prefers-reduced-motion`.
-- The UI lives in `dist/flag.min.js` (about 1.4 KB gzip) and is fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
+- The UI lives in `dist/flag.min.js` (about 1.5 KB gzip) and is fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Runtime API
 

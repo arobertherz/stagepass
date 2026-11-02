@@ -154,6 +154,14 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.0-beta.1] - 2026-11-02
+
+Prerelease of the loader only, on top of 2.3.0-beta.0. CLI and modules are unchanged.
+
+#### Fixed
+
+- Dev flag: the glow could show a straight edge in Chrome (a hard horizontal line next to the pill, most visible on dark pages). The glow is now a radial gradient on its own layer that fades out completely inside its box instead of a large blurred `box-shadow`, and the entry animation fades and scales in place instead of sliding in from above the viewport. The flag sits 12px from the top right corner (was 10px) so the glow fades out before the window edge at the top.
+
 ### [2.3.0-beta.0] - 2026-11-02
 
 Non-breaking minor prerelease of the loader only. `@stagepass/cli` (2.2.1) and `@stagepass/modules` (2.2.0) are unchanged; any 2.x CLI and modules work with it. The public `sp` API, attributes, events and URL swapping behave as in 2.2.0.
