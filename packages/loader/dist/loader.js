@@ -288,7 +288,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.3.0-beta.3" : "0.0.0";
+    const PKG_VERSION = true ? "2.3.0-beta.4" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function getLoaderScript() {
       try {
@@ -312,52 +312,91 @@ var Stagepass = (() => {
     const stagingHosts = parseStagingHosts(attr("staging-hosts"));
     const aliasName = attr("alias");
     const p = new URLSearchParams(loc.search);
-    function getCallerLocation() {
-      try {
-        const stack = (new Error().stack || "").split("\n");
-        for (let i = 3; i < stack.length; i++) {
-          const m = stack[i].match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
-          if (m && !LOADER_RE.test(m[1])) return [m[1], m[2]];
-        }
-      } catch (_) {
-      }
-      return null;
-    }
     let hasActiveSession = false;
-    const flagState = { n: [0, 0], m: [], swapped: 0 };
+    const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION };
     let renderFlag = null;
+    const draw = () => renderFlag && renderFlag();
     const time = () => (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);
     const fileOf = (u) => (u || "").split(/[?#]/)[0].split("/").pop() || "";
-    const str = (a) => {
-      if (typeof a === "string") return a;
-      if (a instanceof Error) return a.message || a.name;
+    const cut = (t, n) => t.length > n ? t.slice(0, n) + "\u2026" : t;
+    const str = (a, depth = 0) => {
       try {
-        const j = JSON.stringify(a);
-        if (j !== void 0) return j;
+        if (typeof a === "string") return depth ? JSON.stringify(a) : a;
+        if (a instanceof Error) return a.name + ": " + a.message;
+        if (!a || typeof a !== "object") return String(a);
+        if (a instanceof Node) return "<" + a.nodeName.toLowerCase() + ">";
+        const arr = Array.isArray(a);
+        if (depth > 2) return arr ? "[\u2026]" : "{\u2026}";
+        const keys = Object.keys(a);
+        const out = keys.slice(0, 20).map((k) => (arr ? "" : k + ": ") + str(a[k], depth + 1));
+        if (keys.length > 20) out.push("\u2026");
+        return cut(arr ? "[" + out.join(", ") + "]" : "{" + out.join(", ") + "}", 1e3);
       } catch (_) {
+        return "[unserializable]";
       }
-      return String(a);
     };
-    const note = (i, text, src = "", line = "") => {
+    const frame = (stack, skip = 0) => {
+      const lines = (stack || "").split("\n");
+      for (let i = skip; i < lines.length; i++) {
+        const m = lines[i].match(/([a-z][\w+.-]*:\/\/[^\s()]+?):(\d+):(\d+)/i);
+        if (m && !LOADER_RE.test(fileOf(m[1]))) return [m[1], m[2], m[3]];
+      }
+      return null;
+    };
+    let dom = null;
+    const srcOf = (u) => !u ? "external" : dom && !u.indexOf(`https://${dom}/`) ? "local" : "live";
+    const note = (i, text, url = "", line = "", col = "", stack = "", src) => {
       flagState.n[i]++;
       const m = flagState.m;
-      m.push({ type: i ? "error" : "warn", time: time(), src, line, text: text.length > 500 ? text.slice(0, 500) + "\u2026" : text });
+      const x = {
+        type: i ? "error" : "warn",
+        time: time(),
+        src: src || (url ? srcOf(url) : ""),
+        file: fileOf(url),
+        url: url.split(/[?#]/)[0],
+        line: line ? String(line) : "",
+        col: col ? String(col) : "",
+        text: cut(text, 500),
+        stack: cut(stack, 2e3),
+        c: 1
+      };
+      const k = (y) => y.type + y.text + y.url + y.line + y.col;
+      for (let j = m.length - 1; j >= 0; j--)
+        if (k(m[j]) === k(x)) {
+          x.c = m[j].c + 1;
+          m.splice(j, 1);
+          break;
+        }
+      m.push(x);
       if (m.length > 50) m.shift();
-      if (renderFlag) renderFlag();
+      draw();
+    };
+    const noteErr = (i, prefix, args, at) => {
+      const er = args.find((a) => a instanceof Error);
+      const st = er && er.stack || "";
+      const f = frame(st) || at;
+      note(i, prefix + args.map((a) => str(a)).join(" "), f ? f[0] : "", f ? f[1] : "", f ? f[2] : "", st);
+    };
+    let busy = false;
+    const print = (fn) => {
+      busy = true;
+      try {
+        fn();
+      } catch (_) {
+      }
+      busy = false;
     };
     function log(level, ...args) {
       if (!hasActiveSession) return;
-      const where = getCallerLocation();
-      if (level === "warn" || level === "error")
-        note(level === "warn" ? 0 : 1, args.map(str).join(" "), where ? where[0] : "", where ? where[1] : "");
-      try {
-        const pre = `[\u{1F3AB} ${time()}${where ? " | " + where.join(":") : ""}]`;
+      const at = frame(new Error().stack || "", 3);
+      if (level === "warn" || level === "error") noteErr(level === "warn" ? 0 : 1, "", args, at);
+      print(() => {
+        const pre = `[\u{1F3AB} ${time()}${at ? " | " + fileOf(at[0]) + ":" + at[1] : ""}]`;
         const c = console;
         if (level === "error") c.log(`%c${pre}`, "color:red;font-weight:bold", ...args);
         else if (c[level]) c[level](pre, ...args);
         else c.log(pre, level, ...args);
-      } catch (_) {
-      }
+      });
     }
     function spLog(...args) {
       const level = args[0] === "warn" || args[0] === "error" ? args.shift() : "log";
@@ -428,7 +467,7 @@ var Stagepass = (() => {
     if (sv && !paramProcessed && !debug) log("log", `\u{1F50C} Stagepass connected to: ${sv}`);
     const dev = !!sv;
     const swap = dev && !debug;
-    const dom = swap ? cleanDomain(sv) : null;
+    dom = swap ? cleanDomain(sv) : null;
     const now = swap ? Date.now() : 0;
     const hostname = loc.hostname;
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("localhost:") || hostname.startsWith("127.0.0.1:");
@@ -536,17 +575,32 @@ var Stagepass = (() => {
           (e) => {
             const t = e.target;
             const u = t && t !== W && (t.src || t.href);
-            if (typeof u === "string")
-              note(
-                1,
-                dom && !u.indexOf(`https://${dom}/`) ? `Local server not reachable: ${fileOf(u)}. Run stagepass doctor` : "Failed to load " + u,
-                fileOf(u)
-              );
-            else note(1, e.message || "Script error", fileOf(e.filename), e.lineno || "");
+            if (typeof u === "string") {
+              if (!mine.has(t)) note(1, "Failed to load " + u.split(/[?#]/)[0], u);
+            } else if (/^Script error\.?$/.test(e.message || "") && !e.filename)
+              note(1, "Error in a cross-origin script (details only in DevTools console)", "", "", "", "", "external");
+            else
+              note(1, e.message || "Script error", e.filename || "", e.lineno, e.colno, e.error && e.error.stack || "");
           },
           true
         );
-        W.addEventListener("unhandledrejection", (e) => note(1, "Unhandled rejection: " + str(e.reason)));
+        W.addEventListener("unhandledrejection", (e) => noteErr(1, "Unhandled rejection: ", [e.reason], null));
+        const c = console;
+        ["warn", "error"].forEach((k, i) => {
+          const o = c[k];
+          if (typeof o !== "function") return;
+          c[k] = function(...args) {
+            if (!busy) {
+              busy = true;
+              try {
+                noteErr(i, "", args, frame(new Error().stack || "", 2));
+              } catch (_) {
+              }
+              busy = false;
+            }
+            return o.apply(this, args);
+          };
+        });
         const s = d.createElement("script");
         s.src = base + "flag.min.js";
         s.async = true;
@@ -569,6 +623,39 @@ var Stagepass = (() => {
         const m = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
         return m ? m[1] : null;
       }
+    }
+    const mine = /* @__PURE__ */ new WeakSet();
+    let lnaState = "";
+    function track(n, live, local, isScript, retry) {
+      const f = { live, local, type: isScript ? "js" : "css", st: "" };
+      const name = fileOf(local);
+      mine.add(n);
+      flagState.f.push(f);
+      n.addEventListener("load", () => {
+        f.st = "ok";
+        flagState.swapped++;
+        draw();
+      });
+      n.addEventListener("error", () => {
+        const fail = (st, i, text) => {
+          f.st = st;
+          note(i, text, local);
+        };
+        const F = W.fetch;
+        if (typeof F !== "function") return fail("failed", 1, `Failed to load ${name}`);
+        F(local, { method: "HEAD", cache: "no-store" }).then(
+          (r) => fail(r.ok ? "failed" : String(r.status), 1, r.ok ? `Failed to load ${name}` : `Local file not found (${r.status}): ${name}`),
+          () => F(local, { method: "HEAD", mode: "no-cors", cache: "no-store" }).then(
+            () => {
+              if (!retry) return fail("failed", 1, `Failed to load ${name}`);
+              flagState.f.splice(flagState.f.indexOf(f), 1);
+              n.replaceWith(retry(false));
+              note(0, `Local server sends no CORS header for ${name}. Loaded without crossorigin, error details are limited`, local);
+            },
+            () => fail("failed", 1, `Local server not reachable: ${name}. Run stagepass doctor` + (lnaHintMessage(lnaState) ? ". " + lnaHintMessage(lnaState) : ""))
+          )
+        );
+      });
     }
     const SKIP = [
       "data-stagepass",
@@ -596,20 +683,26 @@ var Stagepass = (() => {
           }
           const url = resolveAssetUrl(el, ps, lp);
           if (!url) return;
-          if (swap && lp && dom) flagState.swapped++;
-          const n = d.createElement(type);
+          const local = swap && lp && dom;
           const isScript = type === "script";
-          if (isScript) n.src = url;
-          else {
-            n.rel = "stylesheet";
-            n.href = url;
-          }
-          for (const a of Array.from(el.attributes)) {
-            if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== "href")) {
-              n.setAttribute(a.name, a.value);
+          const make = (cors) => {
+            const n2 = d.createElement(type);
+            if (cors) n2.crossOrigin = "anonymous";
+            if (isScript) n2.src = url;
+            else {
+              n2.rel = "stylesheet";
+              n2.href = url;
             }
-          }
-          if (isScript) applyScriptLoadOrder(n, el);
+            for (const a of Array.from(el.attributes)) {
+              if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== "href")) {
+                n2.setAttribute(a.name, a.value);
+              }
+            }
+            if (isScript) applyScriptLoadOrder(n2, el);
+            if (local) track(n2, ps, url, isScript, cors ? make : null);
+            return n2;
+          };
+          const n = make(!!local && !el.hasAttribute("crossorigin"));
           if (el.parentNode) {
             el.parentNode.insertBefore(n, el);
             el.remove();
@@ -631,8 +724,7 @@ var Stagepass = (() => {
     };
     let lnaCheck = null;
     const checkLna = () => lnaCheck = lnaCheck || (swap ? queryLoopbackPermission().then((state) => {
-      const hint = lnaHintMessage(state);
-      if (hint) spWarn(hint);
+      lnaState = state;
     }).catch(() => {
     }) : Promise.resolve());
     const run = () => {

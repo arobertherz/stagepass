@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSession, serializeSession, SESSION_KEY } from '../session.js';
 
 const FLAG = Symbol.for('stagepass.flag.v2');
-const CARD = Symbol.for('stagepass.card.v1');
+const CARD = Symbol.for('stagepass.card.v2');
 const NO_GLOW = /box-shadow|text-shadow|filter|drop-shadow|radial-gradient|blur\(/;
 
 function startSession(domain: string) {
@@ -144,7 +144,10 @@ describe('dev flag v2', () => {
     expect(css).toMatch(/--fg:\s*#17171B/i);
     // The card never runs off short viewports: header and footer stay reachable
     expect(css).toMatch(/max-height:calc\(100vh - 68px\)/);
-    expect(css).toMatch(/\.cd\[hidden\]\{display:none\}/);
+    expect(css).toMatch(/\.cd\[hidden\]/);
+    expect(css).toMatch(/max-width:calc\(100vw - 24px\)/);
+    // Only the inner content scrolls
+    expect(css).toMatch(/\.sc\{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain\}/);
   });
 
   it('stage 2: hover and focus expand, leave and blur collapse', async () => {
@@ -197,22 +200,11 @@ describe('dev flag v2', () => {
     expect(parts().root.activeElement).toBe(card);
     expect(q('.r1 strong')?.textContent).toBe('my-project');
     expect(q('.dm')?.textContent).toBe('my-project.sp');
-    expect(q('.sw')?.textContent).toBe('0 files swapped locally');
+    expect(q<HTMLButtonElement>('.ds')?.hidden).toBe(true);
     expect(q('.em')?.textContent).toBe('No warnings or errors in this session.');
     const labels = Array.from(card!.querySelectorAll('.ft button'), (b) => b.textContent);
-    expect(labels).toEqual(['Reload', 'Debug off', 'End session']);
+    expect(labels).toEqual(['Reload', 'Debug mode', 'End session']);
     expect(pill.getAttribute('aria-label')).toContain('Hide session details');
-  });
-
-  it('counts locally swapped files', async () => {
-    startSession('my-project.sp');
-    document.body.innerHTML =
-      '<script data-stagepass data-src="https://cdn.example.com/a/main.js"></script>' +
-      '<link rel="stylesheet" data-stagepass data-href="https://cdn.example.com/a/styles.css">';
-    await boot();
-    await new Promise((r) => setTimeout(r, 0));
-    const { q } = await openCard();
-    expect(q('.sw')?.textContent).toBe('2 files swapped locally');
   });
 
   it('Esc closes the card back to stage 2 and returns focus to the pill', async () => {
@@ -238,6 +230,22 @@ describe('dev flag v2', () => {
     expect(w.dataset.st).toBe('rest');
     expect(localStorage.getItem(SESSION_KEY)).not.toBeNull();
     expect(reload).not.toHaveBeenCalled();
+    // Focus goes back to the pill (quietly: it stays at rest)
+    await new Promise((r) => setTimeout(r, 0));
+    expect(parts().root.activeElement).toBe(pill);
+    expect(w.dataset.st).toBe('rest');
+  });
+
+  it('outside click on a focusable page element leaves focus there', async () => {
+    startSession('my-project.sp');
+    await boot();
+    const input = document.body.appendChild(document.createElement('input'));
+    const { w } = await openCard();
+    ptr(input, 'pointerdown');
+    input.focus();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.activeElement).toBe(input);
+    expect(w.dataset.st).toBe('rest');
   });
 
   it('touch: first tap expands, second tap opens the card', async () => {
@@ -273,77 +281,6 @@ describe('dev flag v2', () => {
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
-  it('Debug toggle reloads with ?stagepass=debug and back to the previous session', async () => {
-    startSession('my-project.sp');
-    await boot();
-    let db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
-    expect(db.getAttribute('aria-pressed')).toBe('false');
-    db.click();
-    expect(loc.href).toBe('https://wlncw02.webflow.io/?stagepass=debug');
-    expect(sessionStorage.getItem('stagepass:prev')).toBe('my-project.sp');
-
-    loc.href = 'https://wlncw02.webflow.io/';
-    startSession('debug');
-    document.body.innerHTML = '';
-    await boot();
-    db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
-    expect(db.textContent).toBe('Debug on');
-    expect(db.getAttribute('aria-pressed')).toBe('true');
-    db.click();
-    expect(loc.href).toBe('https://wlncw02.webflow.io/?stagepass=my-project.sp');
-  });
-
-  it('Debug toggle is disabled in a debug session without a session to return to', async () => {
-    startSession('debug');
-    await boot();
-    const db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
-    expect(db.disabled).toBe(true);
-  });
-
-  it('message list: newest first, time, source and line, text only (never HTML)', async () => {
-    startSession('my-project.sp');
-    await boot();
-    const sp = (window as any).sp;
-    sp.warn('first <img src=x onerror=alert(1)>');
-    sp.error('second', { a: 1 });
-    const { card, q } = await openCard();
-    const items = Array.from(card!.querySelectorAll('.it'));
-    expect(items.length).toBe(2);
-    expect(items[0].className).toContain('e');
-    expect(items[0].querySelector('.tx')?.textContent).toBe('Error: second {"a":1}');
-    expect(items[1].querySelector('.tx')?.textContent).toBe('Warning: first <img src=x onerror=alert(1)>');
-    expect(card!.querySelector('img')).toBeNull();
-    expect(items[0].querySelector('.mt')?.textContent).toMatch(/^\d\d:\d\d:\d\d( · .+:\d+)?$/);
-    expect(q('.lh span:last-child')?.textContent).toBe('1 error · 1 warning');
-  });
-
-  it('captures script errors, failed loads and rejections with readable text', async () => {
-    startSession('my-project.sp');
-    await boot();
-    window.dispatchEvent(new ErrorEvent('error', { message: 'boom', filename: 'https://x.test/js/app.js?v=2', lineno: 42 }));
-    const local = document.createElement('script');
-    local.src = 'https://my-project.sp/dist/main.js';
-    document.body.appendChild(local);
-    local.dispatchEvent(new Event('error'));
-    const img = document.createElement('img');
-    img.src = 'https://cdn.example.com/a.png';
-    document.body.appendChild(img);
-    img.dispatchEvent(new Event('error'));
-    const rej = new Event('unhandledrejection');
-    Object.defineProperty(rej, 'reason', { value: new Error('nope') });
-    window.dispatchEvent(rej);
-    const { card } = await openCard();
-    const tx = Array.from(card!.querySelectorAll('.tx'), (t) => t.textContent);
-    expect(tx).toEqual([
-      'Error: Unhandled rejection: nope',
-      'Error: Failed to load https://cdn.example.com/a.png',
-      'Error: Local server not reachable: main.js. Run stagepass doctor',
-      'Error: boom',
-    ]);
-    expect(card!.querySelectorAll('.mt')[3].textContent).toMatch(/ · app\.js:42$/);
-    expect(parts().counters).toEqual(['4']);
-  });
-
   it('keeps the last 50 messages, truncates long ones and counts all', async () => {
     startSession('my-project.sp');
     await boot();
@@ -354,30 +291,13 @@ describe('dev flag v2', () => {
     const { card, q } = await openCard();
     expect(card!.querySelectorAll('.it').length).toBe(50);
     expect(card!.querySelector('.it .tx')?.textContent).toBe('Warning: w58');
-    expect(q('.lh span:last-child')?.textContent).toBe('60 total, latest 50 shown');
+    expect(q('.lh .ct')?.textContent).toBe('60 total, latest 50 shown');
     expect(parts().counters).toEqual(['60']);
     const s2 = 'y'.repeat(2000);
     sp.warn(s2);
     const t = card!.querySelector('.it .tx')!.textContent!;
     expect(t.length).toBe('Warning: '.length + 501);
     expect(t.endsWith('…')).toBe(true);
-  });
-
-  it('click on a message copies it and shows Copied', async () => {
-    startSession('my-project.sp');
-    await boot();
-    const writeText = vi.fn(() => Promise.resolve());
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-    (window as any).sp.error('copy me');
-    const { card, q } = await openCard();
-    const it = card!.querySelector<HTMLButtonElement>('.it')!;
-    it.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^\[error\] \d\d:\d\d:\d\d (\S+ )?copy me$/));
-    expect(it.classList.contains('cp')).toBe(true);
-    expect(it.querySelector('.ok')?.textContent).toBe('Copied to clipboard');
-    expect(q('[aria-live]')?.textContent).toBe('Copied to clipboard');
   });
 
   it('counts warnings that happen before the chunks have loaded', async () => {

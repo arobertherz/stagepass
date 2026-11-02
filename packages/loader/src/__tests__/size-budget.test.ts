@@ -10,11 +10,11 @@ import { fileURLToPath } from 'url';
  * Raise these limits only on purpose.
  */
 const BUDGET = {
-  'loader.min.js': { min: 11520, gzip: 5248 },
+  'loader.min.js': { min: 13824, gzip: 6272 },
   // Dev-only chunks, fetched only while a Stagepass session is active
-  'flag.min.js': { min: 6144, gzip: 2624 },
+  'flag.min.js': { min: 6528, gzip: 2816 },
   // Fetched by the flag on the first expand
-  'flag-card.min.js': { min: 7936, gzip: 3584 },
+  'flag-card.min.js': { min: 12288, gzip: 5120 },
 };
 
 const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist');

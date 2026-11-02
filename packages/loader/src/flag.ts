@@ -48,14 +48,34 @@ const NS = 'http://www.w3.org/2000/svg';
 // 12x12 icons: [0] triangle = warning, [1] octagon = error
 const ICONS = ['M6 1.3 11 10.3H1zM6 4.8v2.2m0 1.6v.1', 'M4 1h4l3 3v4l-3 3H4L1 8V4zM6 3.8v2.6m0 1.6v.1'];
 
-/** One captured warning or error (built by the loader, rendered as text only). */
-export type FlagMsg = { type: 'warn' | 'error'; time: string; src: string; line: number | string; text: string };
+/** One captured warning or error, grouped by type, text and location (rendered as text only). */
+export type FlagMsg = {
+  type: 'warn' | 'error';
+  /** Time of the latest occurrence */
+  time: string;
+  /** local (.sp file), live (other readable script), external (sanitized cross-origin), '' unknown */
+  src: string;
+  file: string;
+  url: string;
+  line: string;
+  col: string;
+  text: string;
+  stack: string;
+  /** Occurrences */
+  c: number;
+};
+/** One swapped file. st: '' pending, 'ok', HTTP status like '404', or 'failed' (network). */
+export type FlagFile = { live: string; local: string; type: 'js' | 'css'; st: string };
 
 /** State owned by the loader. `n` = totals [warnings, errors], `m` = latest messages (capped). */
 export type FlagState = {
   n: number[];
   m: FlagMsg[];
+  f: FlagFile[];
+  /** Files that loaded from the local server */
   swapped: number;
+  /** Loader version */
+  v: string;
   debug: boolean;
   domain: string | null;
   /** URL of flag-card.min.js (same pinned path as the loader) */
@@ -81,7 +101,9 @@ export type CreateCard = (api: FlagApi) => FlagCard;
 /** Loader hook contract (versioned symbol, so mismatched cached chunks simply do nothing). */
 export type CreateFlag = typeof createFlag;
 export const FLAG_HOOK = 'stagepass.flag.v2';
-export const CARD_HOOK = 'stagepass.card.v1';
+/** Set by the Debug toggle before it reloads: the pill expands once to show the new mode */
+export const FLASH = 'stagepass:flash';
+export const CARD_HOOK = 'stagepass.card.v2';
 
 export function addCss(root: ShadowRoot, css: string): void {
   try {
@@ -149,6 +171,7 @@ export function createFlag(s: FlagState): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let touch = false;
   let pre: FlagStage = 'rest';
+  let quiet = false;
 
   const render = () => {
     const [v, e] = s.n;
@@ -223,7 +246,7 @@ export function createFlag(s: FlagState): () => void {
     if (e.pointerType == 'mouse' && st == 'exp' && !is(b, ':focus-visible')) go('rest');
   });
   b.addEventListener('focus', () => {
-    if (!touch && st == 'rest') go('exp');
+    if (!touch && !quiet && st == 'rest') go('exp');
   });
   b.addEventListener('blur', () => {
     if (st == 'exp' && !is(b, ':hover')) go('rest');
@@ -246,7 +269,19 @@ export function createFlag(s: FlagState): () => void {
   d.addEventListener(
     'pointerdown',
     (e) => {
-      if (st != 'rest' && e.composedPath().indexOf(host) < 0) go('rest');
+      if (st == 'rest' || e.composedPath().indexOf(host) >= 0) return;
+      const had = d.activeElement == host;
+      go('rest');
+      // Focus goes back to the pill unless the click moved it somewhere on the page
+      if (had)
+        setTimeout(() => {
+          const a = d.activeElement;
+          if (!a || a == d.body || a == host) {
+            quiet = true;
+            b.focus({ preventScroll: true });
+            quiet = false;
+          }
+        });
     },
     true
   );
@@ -254,6 +289,13 @@ export function createFlag(s: FlagState): () => void {
   const mount = () => {
     if (!host.isConnected) (d.body || d.documentElement).appendChild(host);
     render();
+    try {
+      if (sessionStorage.getItem(FLASH)) {
+        sessionStorage.removeItem(FLASH);
+        go('exp');
+        timer = setTimeout(() => go('rest'), 3e3);
+      }
+    } catch (_) {}
   };
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', mount);
   else mount();
