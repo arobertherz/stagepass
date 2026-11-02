@@ -129,10 +129,14 @@ export async function dev(options = {}, deps = {}) {
     return 1;
   }
 
-  let cleaned = false;
-  const cleanup = async () => {
-    if (cleaned) return;
-    cleaned = true;
+  /** @type {Promise<void>|null} */
+  let cleaning = null;
+  // Idempotent: every caller awaits the same run, so the Caddy block is restored before exit.
+  const cleanup = () => {
+    if (!cleaning) cleaning = runCleanup();
+    return cleaning;
+  };
+  const runCleanup = async () => {
     try {
       await live.close();
     } catch {

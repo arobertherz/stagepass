@@ -52,7 +52,8 @@ export function swapLocalStylesheets(localBase: string, doc: Document = document
   const stamp = String(Date.now());
   for (const old of links) {
     const href = old.href || old.getAttribute('href') || '';
-    if (!href.startsWith(base) && !href.startsWith(localBase)) continue;
+    // Only the exact local origin (trailing slash prevents https://demo.sp.example.com matches)
+    if (!href.startsWith(base)) continue;
     try {
       const u = new URL(href, doc.baseURI);
       u.searchParams.set('t', stamp);
