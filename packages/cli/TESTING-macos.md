@@ -4,7 +4,7 @@ Use this after installing a local build of `@stagepass/cli` on macOS with Homebr
 
 ## Prerequisites
 
-- Node 18+ on PATH
+- Node 20.17+ on PATH (22 or 24 recommended)
 - Homebrew installed
 - A throwaway project folder (example: `~/Sites/my-project`)
 
@@ -25,20 +25,33 @@ stagepass start
 - [ ] Port 443 section reports the listener (or warns if empty / permission denied). Doctor must never ask for sudo
 - [ ] Linked project whose folder was deleted surfaces as fail
 - [ ] Chrome Local Network Access hint is printed
-- [ ] CDN check reports recommended snippets use `@2` (not `@latest`)
+- [ ] CDN check reports recommended snippets use `@2` (not `@latest` / `@1` / bare)
+- [ ] With a project `README.md` containing `@stagepass/loader@latest` (or `@1` / bare), doctor warns on `cdn.project`
 
 ## certs
 
 - [ ] `stagepass certs check` reports root path under `~/Library/Application Support/Caddy/pki/authorities/local/root.crt`
 - [ ] Warns when root expires in under 90 days (use a lab machine or mock if needed)
 - [ ] Reports System keychain trust status for "Caddy Local Authority"
-- [ ] Orphaned old Caddy roots are listed with SHA-1 and SHA-256 (never deleted by the CLI)
+- [ ] Orphaned old Caddy roots are listed with SHA-1 and SHA-256 (not deleted by `check`)
 - [ ] Optional TLS handshake lines appear for each linked `.sp` domain while Caddy is running
 - [ ] `stagepass certs check --json` works
 - [ ] `stagepass certs trust` asks for confirmation; declining does nothing
 - [ ] `stagepass certs trust --yes` runs `caddy trust`
 - [ ] After trust, Safari / Chrome / Firefox show a valid certificate for `https://my-project.sp`
-- [ ] There is **no** `certs renew` command in 2.1.0
+- [ ] `stagepass certs renew` with a failing site cert deletes only `certificates/local/<domain>` after confirmation, then reloads Caddy
+- [ ] `stagepass certs renew --root` asks twice (or needs `--yes --i-understand-root-renewal`); CA folder is moved to a `.backup.*` path, not deleted; prints hint to run `certs trust`
+- [ ] `stagepass certs renew --remove-orphans` confirms per SHA-1 (or `--yes`) and runs `security delete-certificate -Z <sha1>` (never by CN)
+
+## start / stop / port conflict
+
+- [ ] `stagepass start` prints certificate findings; interactive TTY can offer trust/renew
+- [ ] Non-interactive `start` prints findings + hint and does not repair
+- [ ] Port 443 conflict shows **process name and PID** and requires confirmation before any signal
+- [ ] Confirmed conflict uses SIGTERM first; SIGKILL only after a second confirmation (or process already gone)
+- [ ] `start` does not call `sudo -v` unless a confirmed kill (or similar) needs it
+- [ ] With autostart enabled, `start` uses `launchctl kickstart` and prints that fact
+- [ ] With autostart enabled, `stop` uses `launchctl bootout` and says services return at next login; `autostart off` removes permanently
 
 ## autostart / daemon
 
@@ -47,12 +60,13 @@ stagepass start
 - [ ] Plist has `RunAtLoad` and `KeepAlive` / `SuccessfulExit` false
 - [ ] Logs appear under `~/.stagepass/logs/`
 - [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
-- [ ] `stagepass stop` still stops services; when autostart is on it prints a hint that login may restart Caddy
+- [ ] Daemon ensures PHP-FPM without sudo
+- [ ] Daemon shows a macOS notification on cert trust failure / PHP-FPM failure / permanent bind failure (notification must not block or crash the daemon)
 - [ ] `stagepass autostart off` boots out the agent and removes the plist
 - [ ] If port 443 cannot be bound, daemon logs a clear message and exits `0` (no KeepAlive restart-loop; not a silent success)
 - [ ] Cold-start daemon logs cert root/trust only (no TLS handshake attempts before `caddy run`)
 
 ## Regression (must stay unchanged)
 
-- [ ] `stagepass start` / `stop` / `link` / `unlink` / `reload` / `setup` behave as in 2.0.0
-- [ ] No dependency major upgrades required for these commands
+- [ ] `stagepass link` / `unlink` / `reload` / `setup` behave as before
+- [ ] Loader CDN `@2` behaviour is untouched by this CLI work

@@ -42,11 +42,21 @@ my-project.sp {
     expect(assessCaddyfileStructure('').status).toBe('warn');
   });
 
-  it('flags @latest in recommended snippets', () => {
+  it('flags @latest, @1, and bare package in recommended snippets', () => {
     expect(findUnpinnedCdnSnippets().ok).toBe(true);
     expect(
       findUnpinnedCdnSnippets([
         'https://cdn.jsdelivr.net/npm/@stagepass/loader@latest/dist/loader.min.js',
+      ]).ok
+    ).toBe(false);
+    expect(
+      findUnpinnedCdnSnippets([
+        'https://cdn.jsdelivr.net/npm/@stagepass/loader@1/dist/loader.min.js',
+      ]).ok
+    ).toBe(false);
+    expect(
+      findUnpinnedCdnSnippets([
+        'https://cdn.jsdelivr.net/npm/@stagepass/loader/dist/loader.min.js',
       ]).ok
     ).toBe(false);
   });
@@ -102,6 +112,8 @@ demo.sp {
       rootCaPath: '/tmp/missing-root.crt',
       plistPath: '/tmp/missing.plist',
       skipHandshake: true,
+      projectChecks: false,
+      projectCdnResult: { ok: true, offenders: [] },
       pathExists: async (p) => {
         if (p === '/tmp/demo-site') return true;
         if (p === '/tmp/missing-root.crt') return false;

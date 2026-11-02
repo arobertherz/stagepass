@@ -66,6 +66,24 @@ export function getCaddyRootCaPath(opts = {}) {
 }
 
 /**
+ * Caddy local CA authority directory (contains root.crt / intermediate).
+ * @param {{ home?: string, env?: NodeJS.ProcessEnv, dataDir?: string }} [opts]
+ */
+export function getCaddyPkiAuthoritiesLocalDir(opts = {}) {
+  const dataDir = opts.dataDir || getCaddyDataDir(opts);
+  return path.join(dataDir, 'pki', 'authorities', 'local');
+}
+
+/**
+ * Caddy on-disk site certificate store for the internal ("local") issuer.
+ * @param {{ home?: string, env?: NodeJS.ProcessEnv, dataDir?: string }} [opts]
+ */
+export function getCaddyCertificatesLocalDir(opts = {}) {
+  const dataDir = opts.dataDir || getCaddyDataDir(opts);
+  return path.join(dataDir, 'certificates', 'local');
+}
+
+/**
  * Common secondary data dir when Homebrew's Caddy service sets XDG_DATA_HOME.
  * Report-only helper for doctor/certs (never delete).
  * @param {{ brewPrefix?: string|null }} [opts]

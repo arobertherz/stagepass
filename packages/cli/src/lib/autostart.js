@@ -65,6 +65,17 @@ export function buildLaunchctlPrintArgs(uid, label = LAUNCH_AGENT_LABEL) {
 }
 
 /**
+ * launchctl kickstart arguments (gui domain).
+ * `-k` kills any existing instance before starting.
+ * @param {number|string} uid
+ * @param {string} [label]
+ * @returns {string[]}
+ */
+export function buildLaunchctlKickstartArgs(uid, label = LAUNCH_AGENT_LABEL) {
+  return ['kickstart', '-k', `gui/${uid}/${label}`];
+}
+
+/**
  * Render a LaunchAgent plist that runs `stagepass daemon` at login.
  *
  * Port 443: existing `stagepass start` runs `caddy start` as the user (sudo is

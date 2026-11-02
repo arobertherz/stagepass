@@ -4,7 +4,7 @@ This guide explains how to set up Stagepass for local development.
 
 ## Prerequisites
 
-- Node.js **22 or 24** for development and CI (Vitest 5 and related tooling need Node `>=22.12`). The published CLI still declares `engines.node`: `>=18.0.0` for consumers; do not bump that field casually.
+- Node.js **22 or 24** for development and CI (Vitest 5 and related tooling need Node `>=22.12`). The published CLI declares `engines.node`: `>=20.17.0` (required by `@inquirer/prompts@8`).
 - npm (comes with Node.js)
 - macOS only for running system CLI commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`, `doctor`, `certs`, `autostart`, `daemon`). Project helpers (`new`, `build`, `watch`, `upgrade`) are also available. Tests in Linux Docker inject the platform or set `STAGEPASS_SKIP_PLATFORM_CHECK=1` (tests/CI only).
 - Homebrew (for dependency management)
@@ -62,16 +62,17 @@ Full command set (keep in sync with the root README, `packages/cli/README.md`, a
 | Command | Role |
 | :--- | :--- |
 | `stagepass setup` | Install dependencies and configure the `.sp` resolver |
-| `stagepass start` | Start background Caddy and PHP |
-| `stagepass stop` | Stop background services (hints when autostart is enabled) |
+| `stagepass start` | Start Caddy and PHP (certs check; kickstart when autostart is on) |
+| `stagepass stop` | Stop services (bootout until next login when autostart is on) |
 | `stagepass reload` | Reload Caddy configuration |
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain |
 | `stagepass unlink [domain]` | Unlink a `.sp` domain |
 | `stagepass doctor` | Read-only diagnostics; `--json`; exit 1 on fail |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks |
 | `stagepass certs trust` | Run `caddy trust` after confirmation or `--yes` |
+| `stagepass certs renew` | Repair site certs; `--root` / `--remove-orphans` (confirmed) |
 | `stagepass autostart on\|off\|status` | Login LaunchAgent (`io.github.arobertherz.stagepass`) |
-| `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`; never sudo) |
+| `stagepass daemon` | Foreground helper (PHP-FPM, certs log-only, `caddy run`; notifications) |
 | `stagepass new [name]` | Scaffold a lean Webflow project (`--yes`, `--dry-run`, flags for every option) |
 | `stagepass build` | Run `npm run build` in the current project |
 | `stagepass watch` | Run `npm run watch` in the current project |

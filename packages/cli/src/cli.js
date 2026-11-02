@@ -11,6 +11,7 @@ import { doctor as defaultDoctor } from './commands/doctor.js';
 import {
   certsCheck as defaultCertsCheck,
   certsTrust as defaultCertsTrust,
+  certsRenew as defaultCertsRenew,
 } from './commands/certs.js';
 import { autostart as defaultAutostart } from './commands/autostart.js';
 import { daemon as defaultDaemon } from './commands/daemon.js';
@@ -73,6 +74,7 @@ export function rewriteArgvForUpgrade(argv) {
  * @param {typeof defaultDoctor} [deps.doctor]
  * @param {typeof defaultCertsCheck} [deps.certsCheck]
  * @param {typeof defaultCertsTrust} [deps.certsTrust]
+ * @param {typeof defaultCertsRenew} [deps.certsRenew]
  * @param {typeof defaultAutostart} [deps.autostart]
  * @param {typeof defaultDaemon} [deps.daemon]
  * @param {typeof defaultUpgrade} [deps.upgrade]
@@ -92,6 +94,7 @@ export function createProgram(deps = {}) {
   const doctor = deps.doctor || defaultDoctor;
   const certsCheck = deps.certsCheck || defaultCertsCheck;
   const certsTrust = deps.certsTrust || defaultCertsTrust;
+  const certsRenew = deps.certsRenew || defaultCertsRenew;
   const autostart = deps.autostart || defaultAutostart;
   const daemon = deps.daemon || defaultDaemon;
   const upgrade = deps.upgrade || defaultUpgrade;
@@ -176,7 +179,9 @@ export function createProgram(deps = {}) {
 
   program
     .command('start')
-    .description('Start background services (Caddy & PHP)')
+    .description(
+      'Start background services (Caddy & PHP). Runs certs check; uses launchctl kickstart when autostart is enabled.'
+    )
     .option('-v, --verbose', 'Show detailed Caddy server logs')
     .action(async (options) => {
       await start(options);
@@ -184,7 +189,9 @@ export function createProgram(deps = {}) {
 
   program
     .command('stop')
-    .description('Stop all background services')
+    .description(
+      'Stop background services. With autostart enabled, boots out the LaunchAgent until next login.'
+    )
     .option('-v, --verbose', 'Show detailed stop logs')
     .action(async (options) => {
       await stop(options);
@@ -228,6 +235,27 @@ export function createProgram(deps = {}) {
       process.exitCode = code;
     });
 
+  certsCmd
+    .command('renew')
+    .description(
+      'Repair site/intermediate certs, optionally renew the root CA (move to backup), or remove orphaned keychain roots by SHA-1'
+    )
+    .option('--root', 'Move the local CA folder to a timestamped backup (double confirmation)')
+    .option(
+      '--i-understand-root-renewal',
+      'Required with --yes for non-interactive --root'
+    )
+    .option(
+      '--remove-orphans',
+      'Delete orphaned Caddy roots from the System keychain by SHA-1 (confirmation per cert)'
+    )
+    .option('-y, --yes', 'Skip interactive confirmation where allowed')
+    .option('-v, --verbose', 'Show detailed output')
+    .action(async (options) => {
+      const code = await certsRenew(options);
+      process.exitCode = code;
+    });
+
   program
     .command('autostart')
     .description('Manage login LaunchAgent for Stagepass (macOS)')
@@ -247,7 +275,9 @@ export function createProgram(deps = {}) {
 
   program
     .command('daemon')
-    .description('Foreground daemon for LaunchAgent (non-interactive; never uses sudo)')
+    .description(
+      'Foreground daemon for LaunchAgent (ensures PHP-FPM, certs log-only, caddy run; never sudo; macOS notifications on problems)'
+    )
     .action(async () => {
       const code = await daemon();
       process.exitCode = code;

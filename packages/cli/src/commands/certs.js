@@ -1,9 +1,57 @@
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { confirm as defaultConfirmPrompt } from '../lib/prompts.js';
 import { defaultExec } from '../lib/exec.js';
 import { loadProjects } from '../lib/projects.js';
-import { getProjectsPath } from '../lib/paths.js';
-import { runCertsCheck, assertNoDestructiveCertOps } from '../lib/certs.js';
+import { getProjectsPath, getCaddyfilePath } from '../lib/paths.js';
+import {
+  runCertsCheck,
+  assertReadOnlyCertOps,
+  assertDestructiveCertOpAllowed,
+  domainsNeedingSiteCertRenewal,
+  renewSiteCertificates,
+  moveLocalCaAuthorityToBackup,
+  deleteKeychainCertificateBySha1,
+  normalizeSha1Fingerprint,
+} from '../lib/certs.js';
+
+/**
+ * @param {object} [options]
+ * @returns {(message: string, opts?: { default?: boolean }) => Promise<boolean>}
+ */
+function resolveConfirm(options = {}) {
+  if (typeof options.confirm === 'function') return options.confirm;
+  // Legacy injectable: options.prompt([{ type: 'confirm', name, message, default }])
+  if (typeof options.prompt === 'function') {
+    return async (message, opts = {}) => {
+      const answers = await options.prompt([
+        {
+          type: 'confirm',
+          name: 'ok',
+          message,
+          default: opts.default === true,
+        },
+      ]);
+      return answers?.ok === true;
+    };
+  }
+  return (message, opts = {}) =>
+    defaultConfirmPrompt(message, { default: opts.default === true });
+}
+
+/**
+ * Resolve Homebrew prefix the same way doctor does (`brew --prefix`, failure tolerated).
+ * @param {import('../lib/exec.js').ExecFn} exec
+ * @returns {Promise<string|null>}
+ */
+export async function resolveBrewPrefix(exec) {
+  try {
+    const { stdout } = await exec('brew', ['--prefix']);
+    const prefix = String(stdout || '').trim();
+    return prefix || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read-only certificate report.
@@ -14,15 +62,22 @@ import { runCertsCheck, assertNoDestructiveCertOps } from '../lib/certs.js';
  * @returns {Promise<number>}
  */
 export async function certsCheck(options = {}) {
-  assertNoDestructiveCertOps();
+  assertReadOnlyCertOps();
 
+  const exec = options.exec || defaultExec;
   const projectsPath = getProjectsPath();
   const doc = await loadProjects(projectsPath);
   const domains = Object.keys(doc.projects || {});
+  const brewPrefix =
+    options.brewPrefix !== undefined
+      ? options.brewPrefix
+      : await resolveBrewPrefix(exec);
 
   const report = await runCertsCheck({
+    exec,
     domains: options.skipHandshake ? [] : domains,
     skipHandshake: options.skipHandshake === true,
+    brewPrefix,
   });
 
   let exitCode = 0;
@@ -87,7 +142,7 @@ export async function certsCheck(options = {}) {
 
   if (report.orphans?.length) {
     console.log(
-      `[${chalk.yellow('warn')}] Orphaned Caddy roots in keychain (report only; never deleted):`
+      `[${chalk.yellow('warn')}] Orphaned Caddy roots in keychain (list only; remove via certs renew --remove-orphans):`
     );
     for (const orphan of report.orphans) {
       console.log(
@@ -130,16 +185,20 @@ export async function certsCheck(options = {}) {
  * @param {boolean} [options.verbose]
  * @param {import('../lib/exec.js').ExecFn} [options.exec]
  * @param {(q: object[]) => Promise<object>} [options.prompt]
+ * @param {(message: string, opts?: object) => Promise<boolean>} [options.confirm]
  * @returns {Promise<number>}
  */
 export async function certsTrust(options = {}) {
-  assertNoDestructiveCertOps();
+  assertReadOnlyCertOps();
   const exec = options.exec || defaultExec;
-  const prompt = options.prompt || ((questions) => inquirer.prompt(questions));
+  const confirm = resolveConfirm(options);
 
   let confirmed = options.yes === true;
   if (!confirmed) {
-    const canPrompt = typeof options.prompt === 'function' || process.stdin.isTTY;
+    const canPrompt =
+      typeof options.confirm === 'function' ||
+      typeof options.prompt === 'function' ||
+      process.stdin.isTTY;
     if (!canPrompt) {
       console.log(
         chalk.red(
@@ -148,16 +207,10 @@ export async function certsTrust(options = {}) {
       );
       return 1;
     }
-    const answers = await prompt([
-      {
-        type: 'confirm',
-        name: 'ok',
-        message:
-          'Install/trust the Caddy local root CA in the System keychain via `caddy trust`?',
-        default: false,
-      },
-    ]);
-    confirmed = answers.ok === true;
+    confirmed = await confirm(
+      'Install/trust the Caddy local root CA in the System keychain via `caddy trust`?',
+      { default: false }
+    );
   }
 
   if (!confirmed) {
@@ -182,4 +235,284 @@ export async function certsTrust(options = {}) {
     );
     return 1;
   }
+}
+
+/**
+ * Repair certificates: site dirs, optional root move, optional orphan SHA-1 deletes.
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.root]
+ * @param {boolean} [options.removeOrphans]
+ * @param {boolean} [options.yes]
+ * @param {boolean} [options.iUnderstandRootRenewal]
+ * @param {boolean} [options.verbose]
+ * @param {import('../lib/exec.js').ExecFn} [options.exec]
+ * @param {(message: string, opts?: object) => Promise<boolean>} [options.confirm]
+ * @param {(q: object[]) => Promise<object>} [options.prompt]
+ * @param {typeof runCertsCheck} [options.runCheck]
+ * @returns {Promise<number>}
+ */
+export async function certsRenew(options = {}) {
+  const exec = options.exec || defaultExec;
+  const confirm = resolveConfirm(options);
+  const runCheck = options.runCheck || runCertsCheck;
+  const projectsPath = options.projectsPath || getProjectsPath();
+  const doc = await (options.loadProjects || loadProjects)(projectsPath);
+  const linkedDomains = Object.keys(doc.projects || {});
+
+  const canPrompt =
+    typeof options.confirm === 'function' ||
+    typeof options.prompt === 'function' ||
+    process.stdin.isTTY;
+
+  // --- root renewal (move CA folder) ---
+  if (options.root === true) {
+    assertDestructiveCertOpAllowed('renewRootMoveBackup');
+
+    let confirmed = false;
+    if (
+      options.yes === true &&
+      options.iUnderstandRootRenewal === true
+    ) {
+      confirmed = true;
+    } else if (!canPrompt) {
+      console.log(
+        chalk.red(
+          'certs renew --root requires two interactive confirmations, or --yes --i-understand-root-renewal.'
+        )
+      );
+      return 1;
+    } else {
+      const first = await confirm(
+        'Move the Caddy local CA folder to a timestamped backup? Browsers will need `stagepass certs trust` afterwards.',
+        { default: false }
+      );
+      if (!first) {
+        console.log(chalk.dim('Cancelled.'));
+        return 1;
+      }
+      const second = await confirm(
+        'Confirm again: Stagepass will MOVE (not delete) pki/authorities/local. Continue?',
+        { default: false }
+      );
+      confirmed = second === true;
+    }
+
+    if (!confirmed) {
+      console.log(chalk.dim('Cancelled.'));
+      return 1;
+    }
+
+    const moved = await (options.moveLocalCaAuthorityToBackup ||
+      moveLocalCaAuthorityToBackup)({
+      authorityDir: options.authorityDir,
+      now: options.now,
+      move: options.move,
+      pathExists: options.pathExists,
+      lstat: options.lstat,
+    });
+
+    if (!moved.ok) {
+      console.log(chalk.red(`Root renew failed: ${moved.error}`));
+      return 1;
+    }
+
+    console.log(chalk.green('Local CA folder moved to backup.'));
+    console.log(chalk.dim(`   From: ${moved.authorityDir}`));
+    console.log(chalk.dim(`   To:   ${moved.backupDir}`));
+    console.log(
+      chalk.yellow(
+        'Next: start or reload Caddy so it regenerates a CA, then run `stagepass certs trust`.'
+      )
+    );
+    return 0;
+  }
+
+  // --- orphan keychain removal by SHA-1 ---
+  if (options.removeOrphans === true) {
+    assertDestructiveCertOpAllowed('deleteKeychainItemBySha1');
+
+    const brewPrefix =
+      options.brewPrefix !== undefined
+        ? options.brewPrefix
+        : await resolveBrewPrefix(exec);
+
+    const report = await runCheck({
+      exec,
+      domains: [],
+      skipHandshake: true,
+      rootPath: options.rootPath,
+      keychainPath: options.keychainPath,
+      pathExists: options.pathExists,
+      readFile: options.readFile,
+      brewPrefix,
+    });
+    const orphans = report.orphans || [];
+    if (orphans.length === 0) {
+      console.log(chalk.green('No orphaned Caddy roots to remove.'));
+      return 0;
+    }
+
+    console.log(
+      chalk.bold(
+        `\nRemoving ${orphans.length} orphaned Caddy root(s) by SHA-1 (never by CN):\n`
+      )
+    );
+
+    let removed = 0;
+    for (const orphan of orphans) {
+      const normalized = normalizeSha1Fingerprint(orphan.sha1 || '');
+      if (!normalized.ok) {
+        console.log(
+          chalk.yellow(
+            `Skipping orphan without valid SHA-1 (SHA-256 ${orphan.sha256 || '?'}).`
+          )
+        );
+        continue;
+      }
+
+      let ok = options.yes === true;
+      if (!ok) {
+        if (!canPrompt) {
+          console.log(
+            chalk.red(
+              'certs renew --remove-orphans requires interactive confirmation per certificate or --yes.'
+            )
+          );
+          return 1;
+        }
+        ok = await confirm(
+          `Delete keychain certificate SHA-1 ${normalized.sha1}?`,
+          { default: false }
+        );
+      }
+      if (!ok) {
+        console.log(chalk.dim(`Skipped ${normalized.sha1}`));
+        continue;
+      }
+
+      // System keychain deletes typically need sudo; warm only when acting.
+      if (options.skipSudo !== true) {
+        try {
+          await exec('sudo', ['-v'], { stdio: 'inherit' });
+        } catch {
+          console.log(chalk.red('sudo required to delete System keychain items.'));
+          return 1;
+        }
+      }
+
+      const result = await (options.deleteKeychainCertificateBySha1 ||
+        deleteKeychainCertificateBySha1)({
+        sha1: normalized.sha1,
+        exec,
+        keychainPath: options.keychainPath,
+      });
+      if (!result.ok) {
+        console.log(
+          chalk.red(`Failed to delete ${normalized.sha1}: ${result.error}`)
+        );
+        return 1;
+      }
+      console.log(chalk.green(`Deleted SHA-1 ${normalized.sha1}`));
+      console.log(chalk.dim(`   security ${result.args.join(' ')}`));
+      removed += 1;
+    }
+
+    console.log(chalk.bold(`\nRemoved ${removed} orphan(s).`));
+    return 0;
+  }
+
+  // --- default: site certificate repair for failing linked domains ---
+  assertDestructiveCertOpAllowed('renewSiteCertDir');
+
+  if (linkedDomains.length === 0) {
+    console.log(chalk.yellow('No linked .sp domains; nothing to renew.'));
+    return 0;
+  }
+
+  const report = await runCheck({
+    exec,
+    domains: linkedDomains,
+    skipHandshake: false,
+    rootPath: options.rootPath,
+    keychainPath: options.keychainPath,
+    pathExists: options.pathExists,
+    readFile: options.readFile,
+    connect: options.connect,
+    handshakeHost: options.handshakeHost,
+    handshakePort: options.handshakePort,
+    handshakeTimeoutMs: options.handshakeTimeoutMs,
+  });
+
+  const needing = domainsNeedingSiteCertRenewal(report.handshakes || []);
+  if (needing.length === 0) {
+    console.log(
+      chalk.green(
+        'No failing site/intermediate certificates detected for linked domains.'
+      )
+    );
+    if (report.root.status === 'fail') {
+      console.log(
+        chalk.dim(
+          'Root CA looks broken; use `stagepass certs renew --root` (double confirmation).'
+        )
+      );
+    }
+    return 0;
+  }
+
+  console.log(
+    chalk.yellow(
+      `\nFailing TLS for: ${needing.join(', ')}\nScoped delete of certificates/local/<domain> then caddy reload.\n`
+    )
+  );
+
+  let confirmed = options.yes === true;
+  if (!confirmed) {
+    if (!canPrompt) {
+      console.log(
+        chalk.red(
+          'certs renew requires interactive confirmation or --yes (refusing non-TTY without --yes).'
+        )
+      );
+      return 1;
+    }
+    confirmed = await confirm(
+      `Delete on-disk site cert dirs for ${needing.join(', ')} and reload Caddy?`,
+      { default: false }
+    );
+  }
+  if (!confirmed) {
+    console.log(chalk.dim('Cancelled.'));
+    return 1;
+  }
+
+  const result = await (options.renewSiteCertificates || renewSiteCertificates)({
+    domains: needing,
+    linkedDomains,
+    exec,
+    certificatesLocalDir: options.certificatesLocalDir,
+    caddyfilePath: options.caddyfilePath || getCaddyfilePath(),
+    remove: options.remove,
+    lstat: options.lstat,
+    pathExists: options.pathExists,
+  });
+
+  for (const d of result.deleted) {
+    console.log(chalk.green(`Removed ${d.dir}`));
+  }
+  for (const err of result.errors) {
+    console.log(chalk.red(`${err.domain}: ${err.error}`));
+  }
+  if (result.deleted.length > 0) {
+    if (result.reloaded) {
+      console.log(chalk.green('caddy reload completed.'));
+    } else {
+      console.log(
+        chalk.red(`caddy reload failed: ${result.reloadError || 'unknown error'}`)
+      );
+      return 1;
+    }
+  }
+  return result.errors.length > 0 && result.deleted.length === 0 ? 1 : 0;
 }

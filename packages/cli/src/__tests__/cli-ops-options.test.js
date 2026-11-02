@@ -19,6 +19,10 @@ function parseArgv(argv) {
       captured = { cmd: 'certsTrust', options };
       return 0;
     },
+    certsRenew: async (options) => {
+      captured = { cmd: 'certsRenew', options };
+      return 0;
+    },
     autostart: async (action, options) => {
       captured = { cmd: 'autostart', action, options };
       return 0;
@@ -50,6 +54,22 @@ describe('createProgram cli-ops commands', () => {
     const captured = parseArgv(['certs', 'trust', '--yes']);
     expect(captured.cmd).toBe('certsTrust');
     expect(captured.options.yes).toBe(true);
+  });
+
+  it('registers certs renew flags', () => {
+    const captured = parseArgv([
+      'certs',
+      'renew',
+      '--root',
+      '--yes',
+      '--i-understand-root-renewal',
+      '--remove-orphans',
+    ]);
+    expect(captured.cmd).toBe('certsRenew');
+    expect(captured.options.root).toBe(true);
+    expect(captured.options.yes).toBe(true);
+    expect(captured.options.iUnderstandRootRenewal).toBe(true);
+    expect(captured.options.removeOrphans).toBe(true);
   });
 
   it('registers autostart status', () => {

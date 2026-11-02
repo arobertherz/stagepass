@@ -97,9 +97,10 @@ describe('certificate helpers', () => {
     expect(result.fingerprint256).toBeTruthy();
   });
 
-  it('never enables destructive cert ops', () => {
+  it('keeps permanent deletes disabled on the read-only path', () => {
     expect(DESTRUCTIVE_CERT_OPS.deleteRoot).toBe(false);
     expect(DESTRUCTIVE_CERT_OPS.deleteKeychainItem).toBe(false);
+    expect(DESTRUCTIVE_CERT_OPS.deleteKeychainItemByCn).toBe(false);
     expect(DESTRUCTIVE_CERT_OPS.renewRoot).toBe(false);
     expect(assertNoDestructiveCertOps()).toBe(true);
   });
@@ -135,5 +136,63 @@ describe('certificate helpers', () => {
           !String(c.args || []).includes('remove')
       )
     ).toBe(true);
+  });
+
+  it('excludes Homebrew secondary root fingerprint from orphans', async () => {
+    const rootPath = path.join(fixturesDir, 'test-ca.crt');
+    const secondaryPem = path.join(fixturesDir, 'test-ca-short.crt');
+    const brewPrefix = '/opt/homebrew';
+    const secondaryPath = path.join(
+      brewPrefix,
+      'var',
+      'lib',
+      'caddy',
+      'pki',
+      'authorities',
+      'local',
+      'root.crt'
+    );
+    const securityOut = fs.readFileSync(
+      path.join(fixturesDir, 'security-find-certificate.txt'),
+      'utf8'
+    );
+    const rootCert = loadCertificate(fs.readFileSync(rootPath));
+    const secondaryCert = loadCertificate(fs.readFileSync(secondaryPem));
+    const secondaryFp = normalizeFingerprint(secondaryCert.fingerprint256);
+    const now = new Date(
+      new Date(rootCert.validFrom).getTime() + 24 * 60 * 60 * 1000
+    );
+
+    const withoutSecondary = await runCertsCheck({
+      rootPath,
+      skipHandshake: true,
+      now,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(withoutSecondary.orphans.some((o) => o.sha256 === secondaryFp)).toBe(
+      true
+    );
+
+    const withSecondary = await runCertsCheck({
+      rootPath,
+      brewPrefix,
+      skipHandshake: true,
+      now,
+      pathExists: async (p) => p === rootPath || p === secondaryPath,
+      readFile: async (p, enc) => {
+        if (p === rootPath) return fs.readFileSync(rootPath, enc);
+        if (p === secondaryPath) return fs.readFileSync(secondaryPem, enc);
+        throw new Error(`unexpected read: ${p}`);
+      },
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+
+    expect(withSecondary.secondaryRoots).toHaveLength(1);
+    expect(withSecondary.secondaryRoots[0].fingerprint256).toBe(secondaryFp);
+    expect(
+      withSecondary.orphans.every((o) => o.sha256 !== secondaryFp)
+    ).toBe(true);
+    expect(withSecondary.orphans).toHaveLength(0);
+    expect(withSecondary.trust.orphans).toHaveLength(0);
   });
 });
