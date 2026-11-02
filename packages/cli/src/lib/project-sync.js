@@ -179,9 +179,20 @@ export async function resolveUpgradeModules(input, deps) {
     source = 'stagepass.json';
   }
 
+  // Legacy `"modules": true` (CLI 2.0/2.1) meant "modules included", typed via
+  // `@stagepass/modules` (all modules). Keep that as `["all"]` so an upgrade
+  // without a live site result never removes types the project relied on.
+  if (!candidate && data?.modules === true) {
+    candidate = ['all'];
+    source = 'legacy "modules": true in stagepass.json';
+  }
+
   if (!deps.interactive) {
     if (candidate) {
       log(`Modules: ${formatModules(candidate)} (inferred from ${source}). Check it, or pass --site-modules.`);
+      if (candidate.includes('all') && source.startsWith('legacy')) {
+        log('Hint: narrow it to the module tags your site loads, e.g. stagepass upgrade --site-modules cookies.');
+      }
       return { ok: true, modules: candidate, source, origin, detection };
     }
     if (hasModulesDep) {

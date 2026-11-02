@@ -183,8 +183,21 @@ describe('upgrade command', () => {
     expect(logs.join('\n')).toContain('inferred from stagepass.json');
   });
 
+  it('non-TTY keeps legacy "modules": true as ["all"] with a hint', async () => {
+    await oldStyleProject({ modulesDep: true, tsconfigTypes: ['@stagepass/loader', '@stagepass/modules'] });
+    const logs = [];
+    await upgrade({}, baseDeps(logs));
+    expect((await fsx.readJson(path.join(dir, 'stagepass.json'))).modules).toEqual(['all']);
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
+    const out = logs.join('\n');
+    expect(out).toContain('legacy "modules": true');
+    expect(out).toContain('--site-modules cookies');
+  });
+
   it('non-TTY without anything falls back to [] with a hint', async () => {
     await oldStyleProject({ modulesDep: true });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', version: 1 });
     const logs = [];
     await upgrade({}, baseDeps(logs));
     expect((await fsx.readJson(path.join(dir, 'stagepass.json'))).modules).toEqual([]);
