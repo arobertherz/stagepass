@@ -43,6 +43,7 @@ describe('classifyChange / toUrlPath / formatSseEvent', () => {
     );
     expect(toUrlPath('/Users/dev/Sites/other/x.css', root, out)).toBeNull();
     expect(toUrlPath('/Users/dev/Sites/app/dist/.DS_Store', root, out)).toBeNull();
+    expect(toUrlPath('/Users/dev/Sites/app/dist/manifest.json', root, out)).toBeNull();
   });
 
   it('formats SSE data frames', () => {
@@ -156,5 +157,101 @@ describe('createLiveServer', () => {
     expect(text).not.toContain('<img>');
     expect(text).not.toContain('alert');
     await reader.cancel();
+  });
+
+  /**
+   * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+   * @param {number} ms
+   */
+  async function collectEvents(reader, ms) {
+    const events = [];
+    const dec = new TextDecoder();
+    let buf = '';
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(resolve, ms);
+    });
+    const pump = (async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() || '';
+        for (const part of parts) {
+          const line = part.split('\n').find((l) => l.startsWith('data: '));
+          if (line) events.push(JSON.parse(line.slice(6)));
+        }
+      }
+    })();
+    await timeout;
+    clearTimeout(timer);
+    await reader.cancel();
+    await pump.catch(() => {});
+    return events;
+  }
+
+  it('identical main.js rewrite + real CSS change => css event only', async () => {
+    const dist = path.join(tmp, 'dist');
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(1)');
+    await fs.writeFile(path.join(dist, 'styles.css'), 'body{color:red}');
+    const server = createLiveServer({ projectRoot: tmp, debounceMs: 40 });
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    // Drain the connected comment
+    await reader.read();
+
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(1)');
+    await fs.writeFile(path.join(dist, 'styles.css'), 'body{color:blue}');
+    const events = await collectEvents(reader, 180);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('css');
+    expect(events[0].paths).toEqual(['/dist/styles.css']);
+  });
+
+  it('identical rewrite only => no event', async () => {
+    const dist = path.join(tmp, 'dist');
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(1)');
+    const server = createLiveServer({ projectRoot: tmp, debounceMs: 40 });
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    await reader.read();
+
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(1)');
+    const events = await collectEvents(reader, 180);
+    expect(events).toEqual([]);
+  });
+
+  it('manifest.json change is ignored', async () => {
+    const dist = path.join(tmp, 'dist');
+    await fs.writeFile(path.join(dist, 'manifest.json'), '{"a":1}\n');
+    const server = createLiveServer({ projectRoot: tmp, debounceMs: 40 });
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    await reader.read();
+
+    await fs.writeFile(path.join(dist, 'manifest.json'), '{"a":2}\n');
+    const events = await collectEvents(reader, 180);
+    expect(events).toEqual([]);
+  });
+
+  it('JS content change => reload', async () => {
+    const dist = path.join(tmp, 'dist');
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(1)');
+    const server = createLiveServer({ projectRoot: tmp, debounceMs: 40 });
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    await reader.read();
+
+    await fs.writeFile(path.join(dist, 'main.js'), 'console.log(2)');
+    const events = await collectEvents(reader, 180);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('reload');
+    expect(events[0].paths).toEqual(['/dist/main.js']);
   });
 });

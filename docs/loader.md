@@ -16,7 +16,7 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
 
-unpkg serves the same paths if you need an alternative CDN.
+unpkg serves the same paths if you need an alternative CDN. Always use the **full file path** ending in `/dist/loader.min.js` (as above). Short package URLs such as `https://unpkg.com/@stagepass/loader@2` redirect to the file, but the script element keeps the short URL, so session chunks (`flag.min.js`, `flag-card.min.js`, `live.min.js`) resolve from the wrong folder and 404. Same rule for any CDN that redirects. Alternatively set `data-stagepass-flag-base` to the folder that contains those chunks.
 
 See [MIGRATION.md](../MIGRATION.md) for breaking changes from 1.x. `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version).
 

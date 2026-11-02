@@ -124,6 +124,8 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
 ></script>
 ```
 
+Use the full `/dist/loader.min.js` path on unpkg and any CDN that redirects (short package URLs keep the pre-redirect location on the script element, so `flag.min.js` / `live.min.js` 404). Or set `data-stagepass-flag-base`.
+
 **Option 2: Local** (to avoid cross-domain issues):
 
 ```bash

@@ -13,6 +13,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### `@stagepass/cli`
 
+- Live reload: content-based change detection in `live-server` (sha256 per file under `outDir`). Identical rewrites are ignored; `manifest.json` is ignored; CSS-only real changes emit `{type:"css"}`, other real changes emit `{type:"reload"}`.
+- Scaffold `scripts/build.mjs --watch`: rebuild only the affected part (JS entry/imports via esbuild watch, CSS entry separately); write dist files and `manifest.json` only when bytes change, so CSS-only edits do not rewrite `main.js` and do not force a full page reload.
+- `LOADER_VERSION` / `MODULES_VERSION` are generated into `package-versions.js` from the monorepo package.json files (`scripts/sync-cli-versions.mjs`; CLI `prepack` + release workflow). Snippets and `data-stagepass-version` use the loader version. `STAGEPASS_PACKAGES_VERSION` remains a deprecated alias of `LOADER_VERSION`. Drift test fails if the generated file is stale.
 - `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version) in recommended snippets and in the current project's snippet-bearing files (`README.md`, `stagepass.json`, generated snippet HTML).
 - `stagepass certs renew`: scoped repair of failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`); `renew --root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`; `renew --remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`).
 - `stagepass start` runs a read-only `certs check` and, when interactive, can offer `certs trust` / site `renew`. Non-interactive prints findings and a hint. Sudo is requested only when a confirmed port conflict kill (or orphan delete) needs it. Port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation.
@@ -41,7 +44,8 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### Repo
 
-- Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does.
+- Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does; also covers CSS hot-swap SSE on a generated js project (`node scripts/build.mjs --watch` + packed `createLiveServer`, with hard timeout and process-group cleanup).
+- Docs: always embed the full `/dist/loader.min.js` path on unpkg / redirecting CDNs (or set `data-stagepass-flag-base`); short package URLs break session chunk resolution. Live reload docs note content-hash classification and selective watch builds.
 - Docs split under `docs/` (#11): getting started, CLI, loader, modules, migration pointer, troubleshooting, live reload. README keeps a short intro and index.
 - Headless Playwright E2E under `e2e/` (Chromium, Firefox, WebKit locally). CI `e2e` job on `[self-hosted, cerebro]` runs Chromium only (#11).
 

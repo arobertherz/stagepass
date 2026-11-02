@@ -1,5 +1,5 @@
 import { normalizeModulesList } from './project-modules.js';
-import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
+import { LOADER_VERSION, MODULES_VERSION } from './versions.js';
 
 /**
  * Safe token for CDN pins and data-stagepass-version (blocks HTML/attr injection).
@@ -27,7 +27,7 @@ export function sanitizeSnippetVersion(version) {
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
  */
 export function buildWebflowSnippets(options) {
-  const version = sanitizeSnippetVersion(options.version || STAGEPASS_PACKAGES_VERSION);
+  const version = sanitizeSnippetVersion(options.version || LOADER_VERSION);
   /** @type {string[]} */
   let moduleFiles = [];
   if (Array.isArray(options.moduleList)) {
@@ -89,6 +89,6 @@ export function printWebflowSnippets(snippets, log = console.log) {
   log('\nWebflow Custom Code (Footer):');
   log(snippets.footer);
   log(
-    `\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @${STAGEPASS_PACKAGES_VERSION}).`
+    `\nOptional exact pin example (instead of @2): loader @${LOADER_VERSION}, modules @${MODULES_VERSION}.`
   );
 }

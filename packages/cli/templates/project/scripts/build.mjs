@@ -3,6 +3,9 @@
  * Stagepass project build: esbuild (+ optional sass) → content-hashed dist files + manifest.json.
  * Also writes stable dist/main.js and dist/styles.css copies for local Stagepass paths.
  * Manifest entries include Subresource Integrity (sha384) for production Webflow tags.
+ *
+ * Watch mode rebuilds only the affected part (JS entry/imports → JS, CSS entry → CSS)
+ * and writes a dist file only when its bytes changed.
  */
 import { createHash } from 'node:crypto';
 import { watch as fsWatch, promises as fs } from 'node:fs';
@@ -19,6 +22,12 @@ const ENTRY_JS = process.env.STAGEPASS_ENTRY_JS || '{{ENTRY_JS}}';
 const ENTRY_CSS = process.env.STAGEPASS_ENTRY_CSS || '{{ENTRY_CSS}}';
 const USE_SASS = (process.env.STAGEPASS_USE_SASS || '{{USE_SASS}}') === 'true';
 
+/** @type {{ 'main.js': { file: string, integrity: string } | null, 'styles.css': { file: string, integrity: string } | null }} */
+const manifestState = {
+  'main.js': null,
+  'styles.css': null,
+};
+
 async function ensureDist() {
   await fs.mkdir(distDir, { recursive: true });
 }
@@ -31,6 +40,28 @@ function sriSha384(buf) {
   return `sha384-${createHash('sha384').update(buf).digest('base64')}`;
 }
 
+/**
+ * Write only when contents differ from the existing file (preserves mtime when unchanged).
+ * @param {string} filePath
+ * @param {Buffer} buf
+ * @returns {Promise<boolean>} true when written
+ */
+async function writeIfChanged(filePath, buf) {
+  try {
+    const existing = await fs.readFile(filePath);
+    if (existing.equals(buf)) return false;
+  } catch {
+    /* missing or unreadable → write */
+  }
+  await fs.writeFile(filePath, buf);
+  return true;
+}
+
+/**
+ * @param {string} stableName
+ * @param {Buffer|string} contents
+ * @param {BufferEncoding} [encoding]
+ */
 async function writeHashed(stableName, contents, encoding = undefined) {
   const buf = Buffer.isBuffer(contents)
     ? contents
@@ -39,18 +70,30 @@ async function writeHashed(stableName, contents, encoding = undefined) {
   const ext = path.extname(stableName);
   const base = path.basename(stableName, ext);
   const hashedName = `${base}.${hash}${ext}`;
-  await fs.writeFile(path.join(distDir, hashedName), buf);
-  await fs.writeFile(path.join(distDir, stableName), buf);
+  await writeIfChanged(path.join(distDir, hashedName), buf);
+  await writeIfChanged(path.join(distDir, stableName), buf);
   return {
     file: hashedName,
     integrity: sriSha384(buf),
   };
 }
 
-async function buildJs() {
-  const entry = path.join(root, ENTRY_JS);
-  const result = await esbuild.build({
-    entryPoints: [entry],
+async function writeManifest() {
+  if (!manifestState['main.js'] || !manifestState['styles.css']) return;
+  const text = `${JSON.stringify(
+    {
+      'main.js': manifestState['main.js'],
+      'styles.css': manifestState['styles.css'],
+    },
+    null,
+    2
+  )}\n`;
+  await writeIfChanged(path.join(distDir, 'manifest.json'), Buffer.from(text, 'utf8'));
+}
+
+function jsBuildOptions() {
+  return {
+    entryPoints: [path.join(root, ENTRY_JS)],
     bundle: true,
     write: false,
     format: 'iife',
@@ -58,9 +101,22 @@ async function buildJs() {
     target: ['es2018'],
     sourcemap: false,
     logLevel: 'warning',
-  });
+  };
+}
+
+/**
+ * @param {Buffer} contents
+ */
+async function applyJsOutput(contents) {
+  manifestState['main.js'] = await writeHashed('main.js', contents);
+  await writeManifest();
+  return manifestState['main.js'];
+}
+
+async function buildJsOnce() {
+  const result = await esbuild.build(jsBuildOptions());
   const out = result.outputFiles[0];
-  return writeHashed('main.js', out.contents);
+  return applyJsOutput(out.contents);
 }
 
 async function buildCss() {
@@ -73,46 +129,145 @@ async function buildCss() {
   } else {
     css = await fs.readFile(entry, 'utf8');
   }
-  return writeHashed('styles.css', css, 'utf8');
+  manifestState['styles.css'] = await writeHashed('styles.css', css, 'utf8');
+  await writeManifest();
+  return manifestState['styles.css'];
 }
 
 async function buildOnce() {
   await ensureDist();
-  const mainFile = await buildJs();
-  const stylesFile = await buildCss();
-  const manifest = {
-    'main.js': mainFile,
-    'styles.css': stylesFile,
+  await buildJsOnce();
+  await buildCss();
+  return {
+    'main.js': manifestState['main.js'],
+    'styles.css': manifestState['styles.css'],
   };
-  await fs.writeFile(
-    path.join(distDir, 'manifest.json'),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    'utf8'
-  );
-  return manifest;
 }
 
-const manifest = await buildOnce();
-console.log('[stagepass] build ok', manifest);
+/**
+ * Serialize async rebuild work so overlapping esbuild / CSS events stay ordered.
+ * @type {Promise<void>}
+ */
+let chain = Promise.resolve();
+function enqueue(label, fn) {
+  chain = chain
+    .then(async () => {
+      try {
+        const next = await fn();
+        console.log(`[stagepass] rebuild ${label} ok`, next);
+      } catch (err) {
+        console.error(`[stagepass] rebuild ${label} failed`, err);
+      }
+    })
+    .catch(() => {});
+  return chain;
+}
 
-if (watchMode) {
-  let pending = false;
-  const rebuild = async () => {
-    if (pending) return;
-    pending = true;
+if (!watchMode) {
+  const manifest = await buildOnce();
+  console.log('[stagepass] build ok', manifest);
+} else {
+  await ensureDist();
+
+  /** Skip the first onEnd from context.watch (we seed via rebuild below). */
+  let jsWatchReady = false;
+  /** @type {import('esbuild').BuildContext|null} */
+  let ctx = null;
+  /** @type {import('node:fs').FSWatcher|null} */
+  let cssWatcher = null;
+  let shuttingDown = false;
+
+  async function shutdown(code = 0) {
+    if (shuttingDown) return;
+    shuttingDown = true;
     try {
-      const next = await buildOnce();
-      console.log('[stagepass] rebuild ok', next);
-    } catch (err) {
-      console.error('[stagepass] rebuild failed', err);
-    } finally {
-      pending = false;
+      cssWatcher?.close();
+    } catch {
+      /* ignore */
     }
-  };
-  for (const rel of [ENTRY_JS, ENTRY_CSS]) {
-    fsWatch(path.join(root, rel), () => {
-      rebuild().catch(() => {});
+    cssWatcher = null;
+    try {
+      if (ctx) await ctx.dispose();
+    } catch {
+      /* ignore */
+    }
+    ctx = null;
+    // Allow pending enqueue work to settle briefly, then exit hard.
+    await Promise.race([chain, new Promise((r) => setTimeout(r, 500))]);
+    process.exit(code);
+  }
+
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, () => {
+      void shutdown(0);
     });
   }
+
+  ctx = await esbuild.context({
+    ...jsBuildOptions(),
+    plugins: [
+      {
+        name: 'stagepass-js-watch',
+        setup(build) {
+          build.onEnd((result) => {
+            if (!jsWatchReady || shuttingDown) return;
+            if (result.errors.length > 0) {
+              console.error('[stagepass] rebuild js failed');
+              return;
+            }
+            const out = result.outputFiles && result.outputFiles[0];
+            if (!out) {
+              enqueue('full', buildOnce);
+              return;
+            }
+            const contents = Buffer.from(out.contents);
+            enqueue('js', () => applyJsOutput(contents));
+          });
+        },
+      },
+    ],
+  });
+
+  // Initial full build (JS via context.rebuild so the graph is warm for watch).
+  const initial = await ctx.rebuild();
+  if (initial.errors.length > 0 || !initial.outputFiles?.[0]) {
+    await shutdown(1);
+    throw new Error('[stagepass] initial js build failed');
+  }
+  await applyJsOutput(initial.outputFiles[0].contents);
+  await buildCss();
+  console.log('[stagepass] build ok', {
+    'main.js': manifestState['main.js'],
+    'styles.css': manifestState['styles.css'],
+  });
+
+  jsWatchReady = true;
+  await ctx.watch();
+
+  let cssPending = false;
+  const scheduleCss = () => {
+    if (cssPending || shuttingDown) return;
+    cssPending = true;
+    setTimeout(() => {
+      cssPending = false;
+      if (shuttingDown) return;
+      enqueue('css', async () => {
+        await buildCss();
+        return manifestState['styles.css'];
+      });
+    }, 40);
+  };
+
+  try {
+    cssWatcher = fsWatch(path.join(root, ENTRY_CSS), () => {
+      scheduleCss();
+    });
+  } catch (err) {
+    console.error('[stagepass] css watch failed; falling back to full rebuilds', err);
+    cssWatcher = fsWatch(path.join(root, ENTRY_CSS), () => {
+      enqueue('full', buildOnce);
+    });
+  }
+
   console.log('[stagepass] watching…');
 }
