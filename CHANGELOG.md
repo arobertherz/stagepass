@@ -154,6 +154,34 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.0] - 2026-11-02
+
+Stable release of the 2.3 loader, identical in behaviour to 2.3.0-beta.4 (only the embedded version string changes). Non-breaking minor release: the public `sp` API, attributes, events, session handling and URL swapping behave as in 2.2.0. `@stagepass/cli` (2.2.1) and `@stagepass/modules` (2.2.0) are unchanged; the published modules peer range `>=2.0.0` accepts 2.3.0 without `--legacy-peer-deps`.
+
+Visitors without a session load only `loader.min.js`, see nothing and get no extra listeners, no console wrapping and no `crossorigin` changes. Everything below appears only while a session (`?stagepass=<project>.sp` or `?stagepass=debug`) is active.
+
+Summary of 2.3.0-beta.0 to 2.3.0-beta.4:
+
+#### Changed
+
+- New dev flag in three stages instead of the `STAGEPASS ACTIVE` / `STAGEPASS DEBUG` badge: a small pass-icon pill with a status dot at rest (amber for warnings, red for errors), expanded on hover or keyboard focus with `LOCAL` / `DEBUG` and the counters, and a session card on click. On touch devices the first tap expands and the second opens the card.
+- No glow, shadow, blur or filter in any state; dark ink text and icons on the gradient, 1px low-opacity border.
+- Clicking the flag no longer ends the session. Only "End session" in the card disconnects (same as `?stagepass=off`); Esc or a click outside closes the card and returns focus to the pill.
+- The flag UI moved out of the loader into `dist/flag.min.js` and `dist/flag-card.min.js`, fetched only during a session (the card on first expand).
+- The Chrome Local Network Access check runs once per page, and its hint is shown in the card only when a local file fails at the network level.
+- "Script error." from another origin is shown as "Error in a cross-origin script (details only in DevTools console)" with source `external`.
+
+#### Added
+
+- Session card: project, session domain, a collapsed list of swapped files (live → local, `js`/`css`, `ok` / `404` / `failed`; only loaded files count as swapped) and the latest 50 message groups. Fixed header and footer with an inner scroll area that stays inside the viewport; `max-width: calc(100vw - 24px)` and 44px touch targets on mobile.
+- Inspector with error context: each message keeps its source (`local`, `live`, `external`), `file:line:col` and a collapsible stack; repeats are grouped as `×N` with the last time. "Always expanded" (stored per origin), "Copy all" and per-message "Copy" as Markdown (page URL without query, project, loader version, messages; no cookies or storage).
+- Locally swapped files load with `crossorigin="anonymous"` for full error details. Without a CORS header from the local server the file loads again without it and a warning says so.
+- Counters and messages from `sp.warn` / `sp.error` / `sp.log`, `console.warn` / `console.error` (the original console still runs; arguments are serialized safely with limits), uncaught errors, failed resource loads and unhandled rejections (with stack). Failed local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor".
+- Card footer: Reload, "Debug mode" / "Back to local" (works in both directions, also from a new tab or a restored session; disabled with a reason when there is no session to return to) and End session.
+- Shadow DOM rendering with DOM APIs only (no `innerHTML`, no `eval`), keyboard and screen reader support, `prefers-reduced-motion`.
+- Size budget tests in CI for `loader.min.js`, `flag.min.js` and `flag-card.min.js`.
+- Sizes: `loader.min.js` 13.1 KB minified / 5.9 KB gzip (2.2.0: 12.1 KB / 5.0 KB), `flag.min.js` 2.7 KB gzip, `flag-card.min.js` 4.8 KB gzip.
+
 ### [2.3.0-beta.4] - 2026-11-02
 
 Prerelease of the loader only, on top of 2.3.0-beta.3. CLI and modules are unchanged. Visitors without a session see no change: no console wrapping, no `crossorigin`, no extra requests.

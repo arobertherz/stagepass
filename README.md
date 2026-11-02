@@ -124,10 +124,10 @@ See [MIGRATION.md](MIGRATION.md) for breaking changes from 1.x.
 
 ### Optional exact pin
 
-For maximum control (freeze one publish), use an exact version such as `@2.2.0`:
+For maximum control (freeze one publish), use an exact version such as `@2.3.0`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.2.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.3.0/dist/loader.min.js"></script>
 ```
 
 jsDelivr may cache alias versions such as `@2` for a while after a new publish. Exact pins are not affected the same way. To force a refresh of the major alias, purge:
@@ -150,7 +150,7 @@ Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 Why `@2`:
 * **Compatible updates**: minor/patch releases within v2 stay backward compatible under strict semver.
 * **One intentional major bump**: breaking changes require a new major (v3) and a deliberate URL change.
-* **Exact pin when needed**: use `@2.2.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.2.0-beta.1`).
+* **Exact pin when needed**: use `@2.3.0` (or any exact version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.3.0-beta.4`).
 
 ---
 

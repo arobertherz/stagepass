@@ -148,7 +148,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   **Important:** Core loader should be loaded first. Without it, `inject`/`cookies` still attach APIs and warn; `maintenance` skips registration.
 -   **Module Registration:** Modules register via `stagepass.use(...)` when available (e.g. `sp.inject`, `sp.cookies` / `sp.cookie`, `sp.maintenance`)
 -   **Global Variable:** `sp` is preferred; `stagepass` and `window.stagepass` remain available; optional `data-stagepass-alias`
--   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.2.0`) is optional for maximum control. jsDelivr may cache `@2` briefly; purge via `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See README "Version pinning".
+-   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.3.0`) is optional for maximum control. jsDelivr may cache `@2` briefly; purge via `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See README "Version pinning".
 
 ### CLI: Commands
 -   `stagepass setup` - Install dependencies and configure .sp domain
