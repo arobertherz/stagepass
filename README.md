@@ -58,6 +58,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * [🛠 CLI Reference](#-cli-reference)
 * [🔒 Security Architecture](#-security-architecture)
 * [🎛 Loader Runtime API](#-loader-runtime-api)
+* [⚡️ Zero-cost production mode](#️-zero-cost-production-mode)
 * [🧩 Modules](#-modules)
 * [🤖 AGENTS.md Templates](#-agentsmd-templates)
 * [🤝 Contributing](#-contributing)
@@ -267,6 +268,7 @@ In the Webflow Designer, instead of hardcoding your script `src` or stylesheet `
 * `data-stagepass-session-hours` (loader tag): Optional session lifetime in hours (default `12`).
 * `data-stagepass-flag-base` (loader tag, 2.3.1+): Optional folder for `flag.min.js` and `flag-card.min.js`, only needed when the loader is inlined or bundled into another file. Only `http(s)` or relative URLs; anything else is ignored with a warning.
 * `data-stagepass-mute-console="true"` (loader tag): Opt-in legacy global console mute in production when no session.
+* `data-stagepass-live-src="true"` (loader tag): Opt-in [zero-cost production mode](#️-zero-cost-production-mode) (native `src` / `href` instead of `data-src` / `data-href`).
 
 ### 5. Activate Dev Mode
 Go to your live Webflow URL and append the parameter:
@@ -388,7 +390,9 @@ sp.vars.version     // string - Loader version
 sp.vars.client      // object - Client runtime info (theme/browser/os/device/viewport/locale/capabilities)
 ```
 
-Optional loader attributes: `data-stagepass-staging-hosts`, `data-stagepass-alias` (custom global when free).
+Optional loader attributes: `data-stagepass-staging-hosts`, `data-stagepass-alias` (custom global when free), `data-stagepass-live-src="true"` (zero-cost mode).
+
+`sp` and `stagepass` are always assigned (2.x compatibility). Prefer the flat helpers below for new code; in `?stagepass=debug`, reading `sp.vars` once logs a short hint toward those helpers.
 
 ### Flat helpers
 
@@ -430,6 +434,68 @@ Notes:
 - Browser/OS/device detection is heuristic (best effort).
 - `client` values are runtime data, not analytics consent/tracking signals.
 - `theme.current` and `viewport.*` are refreshed while the page is running.
+
+### Zero-cost production mode
+
+Opt-in so production visitors load normal `src` / `href` tags (and optional SRI) without depending on the loader to rewrite them. The swap runtime only runs while a Stagepass session is active. Default markup stays `data-src` / `data-href` (unchanged).
+
+**Requirements**
+- Loader tag is a classic synchronous script in `<head>` **before** tagged assets.
+- Opt-in: `data-stagepass-live-src="true"` on the loader tag.
+- Assets: `data-stagepass` plus a normal `src` (scripts) or `href` (stylesheets). Do **not** set `data-src` / `data-href` on those tags.
+
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  data-stagepass-live-src="true"
+></script>
+<script
+  data-stagepass
+  src="https://cdn.example.com/js/app.min.js"
+  integrity="sha384-…"
+  crossorigin="anonymous"
+  data-stagepass-path="js/app.js"
+></script>
+<link
+  rel="stylesheet"
+  data-stagepass
+  href="https://cdn.example.com/css/app.css"
+  integrity="sha384-…"
+  crossorigin="anonymous"
+  data-stagepass-path="css/app.css"
+/>
+```
+
+**Migration from `data-src`**
+1. Add `data-stagepass-live-src="true"` on the loader tag.
+2. Move each production URL from `data-src` / `data-href` to `src` / `href`.
+3. Keep `data-stagepass` and optional `data-stagepass-path` / `data-stagepass-v`.
+4. Optionally add `integrity` (and `crossorigin="anonymous"`) from your build manifest.
+
+**Behaviour**
+- No session: the browser loads production URLs as usual; the loader does not rewrite those tags and does not fetch the flag chunks.
+- Active session: tags are rewritten to `https://<domain.sp>/…` before classic scripts run. `integrity` is removed (local files will not match production hashes). `crossorigin="anonymous"` is set when missing (same as legacy swap).
+- Chromium / WebKit: `MutationObserver` before the parser prepares the script. Firefox: `beforescriptexecute` (may still fetch the production URL, but must not execute it).
+
+**Limitations**
+- The loader must appear synchronously before tagged assets. If a script is already executing when seen, Stagepass warns and skips the rewrite.
+- Firefox may remove `beforescriptexecute` in a future release; watch release notes if you rely on live-src there.
+- Mixed pages can keep legacy `data-src` tags alongside live-src tags; both work when the opt-in is on.
+
+**Integrity from the build manifest**
+
+After `stagepass build` (or your own hashed build), copy the file digest into the tag, for example:
+
+```html
+<script
+  data-stagepass
+  src="https://cdn.example.com/js/app.abc123.js"
+  integrity="sha256-<base64-from-manifest>"
+  crossorigin="anonymous"
+></script>
+```
+
+Use `crossorigin="anonymous"` whenever `integrity` is set on a cross-origin URL. During a local session Stagepass strips `integrity` on the swapped element.
 
 ### Local URL helper (`sp.resolveLocalUrl`)
 
@@ -538,6 +604,8 @@ sp.cookies.throw('token', { path: '/' });
 sp.cookies.jar(); // copy of known cookies
 sp.cookies.crumbs('tok'); // known names with prefix
 sp.cookies.throwAll({ category: 'analytics' });
+const off = sp.cookies.on('bake', ({ name, category }) => { /* … */ });
+off();
 ```
 
 API reference:
@@ -552,6 +620,8 @@ API reference:
 - `sp.cookies.list(options?)`  
   Returns all visible cookies as an object map.
 - `sp.cookies.throwAll({ category? })` / `jar()` / `crumbs(prefix)`
+- `sp.cookies.on('bake' | 'throw', fn)`  
+  Subscribe after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Returns unsubscribe. Listener errors do not break the operation.
 
 `bake` options:
 - `days?: number` - Expiration in days.

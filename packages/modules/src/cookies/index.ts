@@ -87,6 +87,32 @@
     const known = new Map<string, KnownCookie>();
     const queue: KnownCookie[] = [];
     let consentFn: ConsentFn = () => true;
+    type CookieEventName = 'bake' | 'throw';
+    type CookieEventPayload = { name: string; category?: string };
+    const cookieListeners: Record<CookieEventName, Set<(payload: CookieEventPayload) => void>> = {
+      bake: new Set(),
+      throw: new Set(),
+    };
+
+    function emitCookie(event: CookieEventName, payload: CookieEventPayload): void {
+      cookieListeners[event].forEach((fn) => {
+        try {
+          fn(payload);
+        } catch (_) {}
+      });
+    }
+
+    function onCookie(
+      event: string,
+      fn: (payload: CookieEventPayload) => void
+    ): () => void {
+      const set = cookieListeners[event as CookieEventName];
+      if (!set || typeof fn !== 'function') return () => {};
+      set.add(fn);
+      return () => {
+        set.delete(fn);
+      };
+    }
 
     function writeCookie(name: string, value: any, options: CookieWriteOptions = {}): void {
       if (!name || typeof name !== 'string' || name.includes(';') || /[\r\n]/.test(name)) {
@@ -153,6 +179,7 @@
       // Drop from queue if previously pending
       const qIdx = queue.findIndex((q) => q.name === name);
       if (qIdx >= 0) queue.splice(qIdx, 1);
+      emitCookie('bake', category ? { name, category } : { name });
     }
 
     /**
@@ -195,6 +222,7 @@
     }
 
     function throwCookie(name: string, options: CookieDeleteOptions = {}): void {
+      const prev = known.get(name);
       writeCookie(name, '', {
         days: -1,
         maxAge: 0,
@@ -206,6 +234,10 @@
       known.delete(name);
       const qIdx = queue.findIndex((q) => q.name === name);
       if (qIdx >= 0) queue.splice(qIdx, 1);
+      emitCookie(
+        'throw',
+        prev?.category ? { name, category: prev.category } : { name }
+      );
     }
 
     /**
@@ -260,6 +292,7 @@
       throwAll,
       jar,
       crumbs,
+      on: onCookie,
     };
 
     const consentApi = {

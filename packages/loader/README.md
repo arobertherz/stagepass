@@ -49,13 +49,14 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-stagepass-staging-hosts` | Comma-separated hostnames treated as staging (in addition to `*.webflow.io`). |
 | `data-stagepass-alias` | Optional custom global name (valid JS identifier). Assigned only when that global is free. |
 | `data-stagepass-flag-base` | Folder for `flag.min.js` / `flag-card.min.js` when the loader is inlined or bundled (2.3.1+). `http(s)` or relative only; also `window.stagepassFlagBase`. Read only during a session. |
+| `data-stagepass-live-src="true"` | Opt-in zero-cost mode: tagged assets use native `src` / `href`; the loader rewrites them only while a swap session is active. |
 
 ## Asset attributes
 
 | Attribute | Effect |
 | :--- | :--- |
 | `data-stagepass` | Marks the element for processing (any value). |
-| `data-src` / `data-href` | Production URL (required for processing). |
+| `data-src` / `data-href` | Production URL for legacy mode (default). Required unless live-src opt-in uses native `src` / `href`. |
 | `data-stagepass-path` | Local path under the linked project root (optional). |
 | `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
 | `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
@@ -93,9 +94,13 @@ Shown only while a session is active (including debug).
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
 - The UI lives in `dist/flag.min.js` (about 2.7 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the three files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
 
+## Zero-cost production mode
+
+Opt-in with `data-stagepass-live-src="true"` on the loader tag. Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See the root README section “Zero-cost production mode” for migration, SRI, and limitations.
+
 ## Runtime API
 
-Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`). Optional custom alias via `data-stagepass-alias` when free. Types ship in `global.d.ts` (complete `sp` API with JSDoc and examples, typed `sp.on(...)` events). Add `"@stagepass/loader"` to `compilerOptions.types` (or `/// <reference types="@stagepass/loader" />`).
+Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`; both always assigned in 2.x). Optional custom alias via `data-stagepass-alias` when free. Types ship in `global.d.ts` (complete `sp` API with JSDoc and examples, typed `sp.on(...)` events). Add `"@stagepass/loader"` to `compilerOptions.types` (or `/// <reference types="@stagepass/loader" />`). In debug mode, reading `sp.vars` once hints toward the flat helpers.
 
 ```js
 sp.vars.isLocal     // boolean: session swap active or page on localhost

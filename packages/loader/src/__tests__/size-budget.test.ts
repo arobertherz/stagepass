@@ -10,9 +10,13 @@ import { fileURLToPath } from 'url';
  * Raise these limits only on purpose.
  * 2.3.0 loader.min.js: 13395 B min / 6067 B gzip / 5407 B brotli.
  * 2.3.1 adds flag base resolution (loader folder, option, fallback): 13798 / 6257 / 5588.
+ * Unreleased: opt-in live-src (MutationObserver + in-place rewrite must stay in the core so
+ * the callback runs before the HTML parser prepares a script; Firefox uses beforescriptexecute
+ * preventDefault + re-insert; session-only at runtime) and a one-time debug vars hint.
+ * Measured ~16160 / 7100 / 6350; headroom below.
  */
 const BUDGET = {
-  'loader.min.js': { min: 14080, gzip: 6400, br: 5760 },
+  'loader.min.js': { min: 16384, gzip: 7296, br: 6528 },
   // Dev-only chunks, fetched only while a Stagepass session is active
   'flag.min.js': { min: 6528, gzip: 2816, br: 2496 },
   // Fetched by the flag on the first expand

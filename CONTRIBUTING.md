@@ -25,6 +25,24 @@ docker run --rm -v "$PWD":/w \
 
 Also verify on Node 24 (`node:24-bookworm-slim`) to match CI. Development and CI use Node 22 or 24; do not change published `engines` fields (CLI stays `>=18.0.0`) without a deliberate compatibility decision. If you change `package-lock.json`, generate it inside Docker and commit it.
 
+## Browser E2E (Playwright)
+
+Headless tests live under `e2e/` (own `package.json`, not part of the npm workspaces). They serve fixture pages via Playwright routing (no real network) and cover zero-cost live-src, legacy `data-src`, and flag chunk resolution. Run inside the Playwright Docker image (Chromium, Firefox, and WebKit):
+
+```bash
+docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
+  'npm ci && npm run build && cd e2e && npm ci && npm run e2e'
+```
+
+Or, if dependencies and `packages/loader/dist` are already built:
+
+```bash
+docker run --rm -v "$PWD":/w -w /w/e2e mcr.microsoft.com/playwright:v1.56.1-noble bash -lc \
+  'npm ci && npm run e2e'
+```
+
+These E2E tests are not wired into GitHub Actions yet.
+
 ## Commit style
 
 - Prefer small, logical commits.

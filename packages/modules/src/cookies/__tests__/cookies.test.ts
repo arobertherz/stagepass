@@ -125,6 +125,63 @@ describe('Cookies Module', () => {
       /Invalid cookie value/
     );
   });
+
+  it('on(bake|throw) fires after successful write/delete and supports unsubscribe', () => {
+    const cookies = (window as any).stagepass.cookies;
+    const baked: unknown[] = [];
+    const thrown: unknown[] = [];
+    const offBake = cookies.on('bake', (p: unknown) => baked.push(p));
+    const offThrow = cookies.on('throw', (p: unknown) => thrown.push(p));
+
+    cookies.bake('ev', '1', { path: '/', category: 'analytics' });
+    expect(baked).toEqual([{ name: 'ev', category: 'analytics' }]);
+    cookies.throw('ev', { path: '/' });
+    expect(thrown).toEqual([{ name: 'ev', category: 'analytics' }]);
+
+    offBake();
+    offThrow();
+    cookies.bake('ev2', '2', { path: '/' });
+    cookies.throw('ev2', { path: '/' });
+    expect(baked).toHaveLength(1);
+    expect(thrown).toHaveLength(1);
+  });
+
+  it('on(bake) fires for queued bake only after consent.update flushes', () => {
+    const sp = (window as any).stagepass;
+    const cookies = sp.cookies;
+    const baked: unknown[] = [];
+    cookies.on('bake', (p: unknown) => baked.push(p));
+    sp.consent.set((category: string) => category !== 'marketing');
+    cookies.bake('m', 'queued', { path: '/', category: 'marketing' });
+    expect(baked).toEqual([]);
+    sp.consent.set(() => true);
+    sp.consent.update();
+    expect(baked).toEqual([{ name: 'm', category: 'marketing' }]);
+  });
+
+  it('on(throw) fires per cookie for throwAll', () => {
+    const cookies = (window as any).stagepass.cookies;
+    const thrown: string[] = [];
+    cookies.on('throw', (p: { name: string }) => thrown.push(p.name));
+    cookies.bake('a', '1', { path: '/', category: 'analytics' });
+    cookies.bake('b', '2', { path: '/', category: 'analytics' });
+    cookies.throwAll({ category: 'analytics' });
+    expect(thrown.sort()).toEqual(['a', 'b']);
+  });
+
+  it('listener errors do not break bake/throw', () => {
+    const cookies = (window as any).stagepass.cookies;
+    cookies.on('bake', () => {
+      throw new Error('listener boom');
+    });
+    cookies.on('throw', () => {
+      throw new Error('listener boom');
+    });
+    expect(() => cookies.bake('ok', '1', { path: '/' })).not.toThrow();
+    expect(cookies.eat('ok')).toBe('1');
+    expect(() => cookies.throw('ok', { path: '/' })).not.toThrow();
+    expect(cookies.eat('ok')).toBeNull();
+  });
 });
 
 describe('Cookies Module without loader', () => {

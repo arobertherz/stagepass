@@ -105,6 +105,8 @@ export type StagepassModuleFactory = (api: StagepassAPI) => void;
 export interface StagepassAPI {
   /**
    * Frozen runtime variables.
+   * Prefer flat helpers (`env` / `is` / `can` / `client` / `on`) for new code.
+   * In `?stagepass=debug`, the first read logs a one-time hint toward those helpers.
    * @example
    * if (sp.vars.isLocal) sp.log('local session on', sp.vars.domain);
    */

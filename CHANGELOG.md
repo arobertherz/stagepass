@@ -11,10 +11,24 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-- `@stagepass/modules`: the peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
+### `@stagepass/loader`
+
+- Opt-in **zero-cost production mode** via `data-stagepass-live-src="true"` on the loader tag: tagged assets keep a normal `src` / `href` (optional `integrity`); without a session the loader does not touch them; with an active swap session they are rewritten to the local `.sp` URL before classic scripts run (MutationObserver; Firefox uses `beforescriptexecute`). Legacy `data-src` / `data-href` is unchanged and remains the default.
+- One-time debug hint when reading `sp.vars` in `?stagepass=debug`, pointing at the flat helpers. `vars` stays frozen. Client detection stays eager (2.0.0 behaviour).
+- `sp` and `stagepass` remain always assigned (2.x compatibility; custom `data-stagepass-alias` still only when free).
+
+### `@stagepass/modules`
+
+- Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
+- The peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
+
+### Repo
+
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does.
+- Headless Playwright E2E under `e2e/` (Chromium, Firefox, WebKit; not wired into CI yet).
 
 ---
+
 
 ## `@stagepass/cli`
 

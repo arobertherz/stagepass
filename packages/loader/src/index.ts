@@ -65,6 +65,8 @@ declare const __STAGEPASS_VERSION__: string;
   const loaderVersionAttr = attr('version');
   const stagingHosts = parseStagingHosts(attr('staging-hosts'));
   const aliasName = attr('alias');
+  // Opt-in zero-cost mode: native src/href in production; swap only while a session is active
+  const liveSrc = attr('live-src') === 'true';
 
   const p = new URLSearchParams(loc.search);
 
@@ -272,7 +274,9 @@ declare const __STAGEPASS_VERSION__: string;
       } catch (_) {}
     });
 
-  // Eager client detection (2.0.0 behaviour: available at boot with live theme/viewport)
+  // Eager client detection (2.0.0 behaviour: available at boot with live theme/viewport).
+  // Lazy init was considered and rejected: theme/viewport listeners must run from boot anyway,
+  // and deferring UA parsing would not shrink the core or stay trivially behaviour-identical.
   const clientInfo = getClientInfo();
 
   try {
@@ -295,13 +299,26 @@ declare const __STAGEPASS_VERSION__: string;
   const stagepassObj = W.stagepass || {};
   const registry = createModuleRegistry(PKG_VERSION, spWarn);
 
-  stagepassObj.vars = Object.freeze({
+  const varsFrozen = Object.freeze({
     isLocal,
     env,
     domain: dom || hostname,
     timestamp: now,
     version: PKG_VERSION,
     client: clientInfo,
+  });
+  // One-time debug hint toward flat helpers; never in production without debug. vars stays frozen.
+  let varsHinted = false;
+  Object.defineProperty(stagepassObj, 'vars', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      if (debug && !varsHinted) {
+        varsHinted = true;
+        spWarn('Prefer sp.env()/is()/can()/client()/on() over reading sp.vars directly.');
+      }
+      return varsFrozen;
+    },
   });
 
   stagepassObj.log = spLog;
@@ -311,7 +328,7 @@ declare const __STAGEPASS_VERSION__: string;
   /** Local HTTPS URL for a project-relative path, or '' without a swap session. */
   stagepassObj.resolveLocalUrl = (relativePath: string): string =>
     swap && dom && relativePath
-      ? buildLocalAssetUrl(dom, relativePath, stagepassObj.vars.timestamp || Date.now())
+      ? buildLocalAssetUrl(dom, relativePath, varsFrozen.timestamp || Date.now())
       : '';
 
   stagepassObj.env = () => detectRuntimeEnv(hostname, dom, stagingHosts);
@@ -490,25 +507,118 @@ declare const __STAGEPASS_VERSION__: string;
     'data-stagepass-v',
   ];
 
+  const DUP =
+    'Multiple assets resolve to local file "%s" without data-stagepass-path. Set unique paths to avoid collisions.';
+  function noteDup(lp: string, explicit: boolean, seen: Map<string, number>) {
+    if (!swap || !lp || explicit || !hasActiveSession) return;
+    const n = (seen.get(lp) || 0) + 1;
+    seen.set(lp, n);
+    if (n === 2) spWarn(DUP.replace('%s', lp));
+  }
+
+  // Live-src rewrite stays in core: MO must run before the parser prepares a script (size-budget.test.ts).
+  const LIVE_SEL =
+    'script[data-stagepass]:not([data-stagepass-processed]),link[rel="stylesheet"][data-stagepass]:not([data-stagepass-processed])';
+  function isLiveAsset(el: Element): boolean {
+    if (!el?.hasAttribute?.('data-stagepass') || el.hasAttribute('data-stagepass-processed')) return false;
+    const t = el.tagName;
+    if (t === 'SCRIPT') return el.hasAttribute('src') && !el.hasAttribute('data-src');
+    return (
+      t === 'LINK' &&
+      (el.getAttribute('rel') || '').toLowerCase() === 'stylesheet' &&
+      el.hasAttribute('href') &&
+      !el.hasAttribute('data-href')
+    );
+  }
+  // Firefox: MO often runs after prepare; in-place src rewrite then races beforescriptexecute.
+  // Skip MO script rewrites there and cancel/re-insert via beforescriptexecute instead.
+  // Feature-detect the event itself (InstallTrigger is hidden in current Firefox releases).
+  const ff = 'onbeforescriptexecute' in d;
+
+  function rewriteLive(el: Element, seen: Map<string, number>) {
+    try {
+      if (!swap || !dom || !isLiveAsset(el)) return;
+      const js = el.tagName === 'SCRIPT';
+      if (js && ff) return;
+      if (js && d.currentScript === el) {
+        spWarn('Live-src script already executing; put the loader sync in <head> before tagged assets.');
+        return;
+      }
+      const ps = el.getAttribute(js ? 'src' : 'href');
+      if (!ps) return;
+      el.setAttribute('data-stagepass-processed', 'true');
+      let lp = el.getAttribute('data-stagepass-path');
+      const ex = !!lp;
+      if (!lp) lp = extractLocalFilename(ps);
+      noteDup(lp || '', ex, seen);
+      if (!lp) return;
+      const url = buildLocalAssetUrl(dom, lp, now);
+      el.removeAttribute('integrity');
+      if (!el.hasAttribute('crossorigin')) el.setAttribute('crossorigin', 'anonymous');
+      if (js) (el as HTMLScriptElement).src = url;
+      else (el as HTMLLinkElement).href = url;
+      track(el, ps, url, js, null);
+    } catch (_) {}
+  }
+  function scanLive(root: ParentNode, seen: Map<string, number>) {
+    if (root.nodeType === 1 && isLiveAsset(root as Element)) rewriteLive(root as Element, seen);
+    try {
+      (root as Element).querySelectorAll?.(LIVE_SEL).forEach((el) => rewriteLive(el, seen));
+    } catch (_) {}
+  }
+  const liveSeen = new Map<string, number>();
+  if (swap && liveSrc) {
+    try {
+      // Chromium / WebKit: MO runs at the parser microtask checkpoint before "prepare a script".
+      new MutationObserver((ms) => {
+        for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) scanLive(n as Element, liveSeen);
+      }).observe(d.documentElement, { childList: true, subtree: true });
+      // Firefox: MO is often too late. beforescriptexecute (deprecated) can still cancel
+      // the production run and re-insert a local script. Production may already be fetched.
+      d.addEventListener(
+        'beforescriptexecute',
+        (e: Event) => {
+          const el = e.target as HTMLScriptElement;
+          if (!el || el.tagName !== 'SCRIPT' || !dom) return;
+          if (!el.hasAttribute('data-stagepass') || el.hasAttribute('data-src')) return;
+          const ps = el.getAttribute('src');
+          if (!ps || ps.indexOf('https://' + dom + '/') === 0) return;
+          e.preventDefault();
+          let lp = el.getAttribute('data-stagepass-path');
+          const ex = !!lp;
+          if (!lp) lp = extractLocalFilename(ps);
+          noteDup(lp || '', ex, liveSeen);
+          if (!lp) return;
+          el.setAttribute('data-stagepass-processed', 'true');
+          const url = buildLocalAssetUrl(dom, lp, now);
+          const n = d.createElement('script');
+          n.src = url;
+          n.setAttribute('data-stagepass-processed', 'true');
+          n.crossOrigin = el.getAttribute('crossorigin') || 'anonymous';
+          applyScriptLoadOrder(n, el);
+          if (el.parentNode) {
+            el.parentNode.insertBefore(n, el);
+            el.remove();
+          }
+          track(n, ps, url, true, null);
+        },
+        true
+      );
+      scanLive(d, liveSeen);
+    } catch (_) {}
+  }
+
   function swapEl(sel: string, srcAttr: string, type: 'script' | 'link', seen: Map<string, number>) {
     d.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el: any) => {
       try {
-        el.setAttribute('data-stagepass-processed', 'true');
         let lp = el.getAttribute('data-stagepass-path');
         const hadExplicitPath = !!lp;
         const ps = el.getAttribute(srcAttr);
+        // Do not mark processed when data-src/data-href is missing (live-src tags need a later pass)
         if (!ps) return;
+        el.setAttribute('data-stagepass-processed', 'true');
         if (!lp && swap && dom) lp = extractLocalFilename(ps);
-        // Two tagged assets resolve to the same local file without data-stagepass-path
-        if (swap && lp && !hadExplicitPath && hasActiveSession) {
-          const count = (seen.get(lp) || 0) + 1;
-          seen.set(lp, count);
-          if (count === 2) {
-            spWarn(
-              `Multiple assets resolve to local file "${lp}" without data-stagepass-path. Set unique paths to avoid collisions.`
-            );
-          }
-        }
+        noteDup(lp || '', hadExplicitPath, seen);
         const url = resolveAssetUrl(el, ps, lp);
         if (!url) return;
         const local = swap && lp && dom;
@@ -527,6 +637,7 @@ declare const __STAGEPASS_VERSION__: string;
               n.setAttribute(a.name, a.value);
             }
           }
+          if (local) n.removeAttribute('integrity');
           if (isScript) applyScriptLoadOrder(n, el);
           if (local) track(n, ps, url, isScript, cors ? make : null);
           return n;
@@ -549,6 +660,7 @@ declare const __STAGEPASS_VERSION__: string;
       const seen = new Map<string, number>();
       swapEl('script[data-stagepass]', 'data-src', 'script', seen);
       swapEl('link[rel="stylesheet"][data-stagepass]', 'data-href', 'link', seen);
+      if (swap && liveSrc) scanLive(d, liveSeen);
       if (renderFlag) renderFlag();
     } catch (_) {}
   };

@@ -53,6 +53,15 @@ We use a monorepo workspace structure to manage these distinct packages:
 **Rationale:** Prevents double-loading (both production and local versions). The new element is inserted before the original, then the original is removed. This ensures clean DOM state and prevents conflicts.  
 **Pattern:** `parentNode.insertBefore(newElement, originalElement)` → `originalElement.remove()`
 
+### Zero-cost production mode (opt-in)
+**Decision:** Optional `data-stagepass-live-src="true"` on the loader tag. Tagged assets then use a normal `src` / `href` (optional `integrity`). Without a session the loader does not touch them; with a swap session they are rewritten before classic scripts run. Default remains `data-src` / `data-href`.  
+**Rationale:** Production visitors should not depend on the loader to start assets. Must stay opt-in so existing `@2` sites are unchanged.  
+**Constraint:** Loader is a sync script in `<head>` before tagged assets. Live-src rewrite stays in the core (MutationObserver timing; Firefox uses `beforescriptexecute`).
+
+### Globals `sp` / `stagepass`
+**Decision:** Always assign both `sp` and `stagepass` (2.x compatibility). Custom `data-stagepass-alias` only when that name is free.  
+**Rationale:** Changing to “`sp` only when free” would break live sites.
+
 ### Cache Busting: Timestamp in session, version in production
 **Decision:** While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`.  
 **Rationale:** Per-view `Date.now()` busting on every production page load defeats CDN caching.  
@@ -110,6 +119,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `data-stagepass-cachebust="true"` - Legacy; no longer timestamps every production page view
 -   `data-stagepass-staging-hosts` - Optional comma-separated hostnames treated as staging (in addition to `*.webflow.io`)
 -   `data-stagepass-alias` - Optional custom global alias (valid JS identifier; assigned only when free)
+-   `data-stagepass-live-src="true"` - Opt-in zero-cost mode: assets use native `src`/`href`; swap only while a session is active
 -   `data-stagepass-processed` - Internal flag set after processing (prevents double-processing)
 
 ### Loader: CSS Selectors

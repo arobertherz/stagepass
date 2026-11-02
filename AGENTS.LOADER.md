@@ -21,6 +21,7 @@ unpkg serves the same paths if you need an alternative CDN.
 Optional loader attributes:
 - `data-stagepass-staging-hosts="preview.example.com,staging.example.com"`
 - `data-stagepass-alias="$sp"` (valid identifier; assigned only when that global is free)
+- `data-stagepass-live-src="true"` (zero-cost production mode: native `src`/`href` on tagged assets)
 
 ## Capability Profile
 - Profile: `loader-only`
@@ -30,7 +31,7 @@ Optional loader attributes:
 
 ## Available Global API
 - Preferred global: `sp`
-- Backward-compatible aliases: `stagepass`, `window.stagepass`
+- Backward-compatible aliases: `stagepass`, `window.stagepass` (always assigned in 2.x)
 - Optional custom alias via `data-stagepass-alias` when free
 
 ## Capabilities (`sp.*`)
@@ -67,6 +68,7 @@ Optional loader attributes:
 - Injected scripts keep order (`async = false` unless the original had `async`).
 - `splog` / `spwarn` / `sperror` are removed.
 - With an active session, duplicate local filenames (no `data-stagepass-path`) emit a debug warning.
+- Zero-cost mode (`data-stagepass-live-src="true"`): production uses native `src`/`href` (optional `integrity`); swap only while a session is active. Loader must be sync in `<head>` before tagged assets. Prefer flat helpers over reading `sp.vars` (one-time hint in debug mode).
 
 ## Constraints (hard limits)
 - `sp.inject(...)` is not available in this profile.
