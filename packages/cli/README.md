@@ -91,13 +91,13 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `-y, --yes` | Non-interactive; use defaults for omitted flags. |
 | `--dry-run` | Print the file plan without writing. |
 
-The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2` with `loader/dist/loader.min.js` and optional `modules/dist/{inject,cookies}.min.js`; also document `all` / `maintenance`), and an `AGENTS.md` with safe development rules.
+The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + `manifest.json`), Webflow head/footer snippets (jsDelivr `@2` with `loader/dist/loader.min.js` and optional `modules/dist/{inject,cookies}.min.js`; also document `all` / `maintenance`), an `AGENTS.md` with safe development rules, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2.0.0` (same major as the CDN pin `@2`).
 
 ### `upgrade` options
 
 | Option | Behaviour |
 | :--- | :--- |
-| `--version <x>` | Target version (default: this CLI version from its `package.json`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
+| `--version <x>` | Target version (default: the `@stagepass/loader` / `@stagepass/modules` version this CLI targets, currently `2.1.0`). Dist-tags such as `latest` resolve via `npm view`. (Implemented as `--target` internally so it does not collide with `stagepass --version`.) |
 | `--dry-run` | Show changes without writing `package.json`. |
 
 Only `package.json` is modified. `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.

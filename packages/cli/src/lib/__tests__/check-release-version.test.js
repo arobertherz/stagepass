@@ -4,6 +4,7 @@ import {
   checkReleaseVersion,
   distTagForVersion,
   readPackageVersions,
+  releasePlan,
 } from '../../../../../scripts/check-release-version.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,5 +37,15 @@ describe('check-release-version', () => {
     const result = checkReleaseVersion('v0.0.0-never', ROOT);
     expect(result.ok).toBe(false);
     expect(result.mismatches.length).toBeGreaterThan(0);
+  });
+
+  it('plans a partial release for packages matching the tag', () => {
+    const packages = readPackageVersions(ROOT);
+    const cli = packages.find((p) => p.dir === 'cli');
+    const plan = releasePlan(`v${cli.version}`, ROOT);
+    expect(plan.stage.map((p) => p.dir)).toContain('cli');
+    expect(plan.stage.length + plan.skip.length).toBe(3);
+    for (const p of plan.skip) expect(p.version).not.toBe(cli.version);
+    expect(releasePlan('v0.0.0-nope', ROOT).stage).toHaveLength(0);
   });
 });

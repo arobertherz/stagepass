@@ -3,7 +3,6 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import chalk from 'chalk';
-import { createRequire } from 'module';
 import { defaultExec } from '../lib/exec.js';
 import { defaultSpawn } from '../lib/spawn.js';
 import { validateProjectName } from '../lib/project-name.js';
@@ -18,8 +17,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require('../../package.json');
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 
 /**
  * Resolve a boolean flag that may appear as --foo / --no-foo.
@@ -203,7 +201,8 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       remote: remoteCheck.remote,
       install,
       dryRun: options.dryRun === true,
-      loaderVersion: deps.cliVersion || cliVersion,
+      loaderVersion:
+        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
     },
   };
 }
@@ -247,7 +246,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     ) {
       throw new Error(`Template path escapes templates root: ${rel}`);
     }
-    return fse.readFile(abs, 'utf8');
+    try {
+      return await fse.readFile(abs, 'utf8');
+    } catch (err) {
+      if (err && err.code === 'ENOENT') {
+        throw new Error(
+          `Template "${rel}" is missing from the @stagepass/cli install (${templatesRootResolved}). ` +
+            'Reinstall the CLI (npm install -g @stagepass/cli) and try again. Nothing was written.'
+        );
+      }
+      throw err;
+    }
   };
 
   let files;

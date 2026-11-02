@@ -36,7 +36,11 @@ git tag v2.1.0-beta.1
 git push origin v2.1.0-beta.1
 ```
 
-The tag **without** the leading `v` must equal every package `version`. CI fails otherwise (`scripts/check-release-version.mjs`).
+The tag **without** the leading `v` must equal the `version` of the packages you release. CI stages only the packages whose version matches the tag and fails if none match (`scripts/check-release-version.mjs`).
+
+**Partial release** (e.g. a CLI-only patch): bump only that package (e.g. `@stagepass/cli` to `2.1.1`), tag `v2.1.1`. The other packages are skipped and keep their staged/published version. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
+
+Before staging, CI runs `scripts/test-cli-packed.mjs` (packs the CLI, installs the tarball globally into a temp prefix, runs `stagepass new` for ts and js with `--install`, then `npm run build`). Run it locally with `node scripts/test-cli-packed.mjs`.
 
 ### 1c. CI stages with `--tag next`
 

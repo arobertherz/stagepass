@@ -15,6 +15,22 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.1.1] - 2026-11-02
+
+Patch release. No breaking changes; `@stagepass/loader` and `@stagepass/modules` stay at 2.1.0.
+
+#### Fixed
+
+- `stagepass new` failed with `ENOENT … templates/project/.gitignore` when installed from npm: npm pack drops `.gitignore` files, so the template never shipped. Dotfile templates are now stored without the leading dot (`templates/project/gitignore`) and written as `.gitignore`.
+- A missing template now fails with a clear message ("reinstall the CLI") before anything is written.
+- Generated projects no longer pin `@stagepass/loader` / `@stagepass/modules` to the CLI's own version (a CLI-only patch such as 2.1.1 would make `npm install` fail). They use the major range `^2.0.0`, matching the CDN default `@2`.
+- `stagepass upgrade` without `--version` and the `data-stagepass-version` in printed snippets use the loader/modules version this CLI targets (2.1.0), not the CLI version.
+
+#### Changed
+
+- CI and the release workflow run a packed-tarball smoke test (`scripts/test-cli-packed.mjs`): `npm pack`, global install into a temp prefix, `stagepass new` for ts and js with `--install`, then `npm run build`.
+- The release workflow supports partial releases: a tag stages only the packages whose version matches it.
+
 ### [2.1.0] - 2026-11-02
 
 Non-breaking minor release. Existing commands, flags, defaults, and output contracts from 2.0.0 keep working.

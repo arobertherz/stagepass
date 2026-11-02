@@ -45,7 +45,11 @@ jobs:
       - name: Run Modules tests
         run: npm test --workspace=packages/modules
 
+      - name: Packed CLI smoke test (npm pack, global install, new + install + build)
+        run: node scripts/test-cli-packed.mjs
+
       - name: Verify tag matches package versions
+        id: versions
         run: node scripts/check-release-version.mjs "${GITHUB_REF_NAME}"
 
       - name: Determine dist-tag
@@ -62,18 +66,21 @@ jobs:
       # npm provenance (--provenance) requires a supported cloud CI OIDC
       # environment. Self-hosted runners are not supported, so we omit it.
       - name: Stage @stagepass/modules
+        if: steps.versions.outputs.stage_modules == 'true'
         working-directory: packages/modules
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
 
       - name: Stage @stagepass/loader
+        if: steps.versions.outputs.stage_loader == 'true'
         working-directory: packages/loader
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm stage publish --tag ${{ steps.disttag.outputs.tag }} --access public
 
       - name: Stage @stagepass/cli
+        if: steps.versions.outputs.stage_cli == 'true'
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

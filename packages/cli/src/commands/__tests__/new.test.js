@@ -223,8 +223,11 @@ describe('createNew', () => {
     expect(pkg.private).toBe(true);
     expect(pkg.scripts.build).toBeTruthy();
     expect(pkg.scripts.watch).toBeTruthy();
-    expect(pkg.devDependencies['@stagepass/loader']).toBe('2.0.0');
-    expect(pkg.devDependencies['@stagepass/modules']).toBe('2.0.0');
+    // Major caret range (matches CDN @2), never the CLI's own patch version.
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2.0.0');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('^2.0.0');
+    const gitignore = await fs.readFile(path.join(target, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('node_modules/');
     expect(pkg.devDependencies.sass).toBeTruthy();
     expect(pkg.devDependencies.esbuild).toBeTruthy();
 
@@ -274,10 +277,73 @@ describe('createNew', () => {
     expect(await fs.pathExists(path.join(target, 'src/main.js'))).toBe(true);
     expect(await fs.pathExists(path.join(target, 'src/styles.css'))).toBe(true);
     expect(await fs.pathExists(path.join(target, 'jsconfig.json'))).toBe(true);
+    expect(await fs.pathExists(path.join(target, '.gitignore'))).toBe(true);
     const pkg = JSON.parse(await fs.readFile(path.join(target, 'package.json'), 'utf8'));
     expect(pkg.devDependencies['@stagepass/modules']).toBeUndefined();
     expect(pkg.devDependencies.sass).toBeUndefined();
     expect(pkg.devDependencies.typescript).toBeUndefined();
+  });
+});
+
+describe('createNew robustness', () => {
+  it('fails clearly and writes nothing when a template is missing', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-missing-'));
+    const templates = path.join(tmp, 'templates');
+    await fs.copy(defaultTemplatesRoot(), templates);
+    await fs.remove(path.join(templates, 'gitignore'));
+    const target = path.join(tmp, 'broken');
+    const errors = [];
+    const spawn = vi.fn();
+    try {
+      const code = await createNew(
+        'broken-app',
+        { yes: true, dir: target, git: false, install: true },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--install'],
+          templatesRoot: templates,
+          cwd: tmp,
+          log: () => {},
+          error: (msg) => errors.push(String(msg)),
+          exec: vi.fn(),
+          spawn,
+        }
+      );
+      expect(code).toBe(1);
+      expect(errors.join('\n')).toMatch(/Template "gitignore" is missing/);
+      expect(errors.join('\n')).toMatch(/Reinstall the CLI/);
+      expect(await fs.pathExists(target)).toBe(false);
+      expect(spawn).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('defaults snippets to the loader/modules version, not the CLI version', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-ver-'));
+    const target = path.join(tmp, 'ver');
+    try {
+      const code = await createNew(
+        'ver-app',
+        { yes: true, dir: target, git: false },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+      const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
+      expect(readme).toContain(`data-stagepass-version="${STAGEPASS_PACKAGES_VERSION}"`);
+    } finally {
+      await fs.remove(tmp);
+    }
   });
 });
 

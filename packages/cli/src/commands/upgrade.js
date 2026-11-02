@@ -1,6 +1,5 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { createRequire } from 'module';
 import chalk from 'chalk';
 import { defaultExec } from '../lib/exec.js';
 import {
@@ -8,8 +7,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-const require = createRequire(import.meta.url);
-const { version: cliVersion } = require('../../package.json');
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 
 const STAGEPASS_SCOPE = '@stagepass/';
 
@@ -28,18 +26,21 @@ function needsNpmView(version) {
 }
 
 /**
- * Resolve target version. Uses CLI package version by default.
+ * Resolve target version. Defaults to the @stagepass/loader + modules version
+ * this CLI targets (not the CLI's own version, which can differ on CLI patches).
  * Contacts the network only when `--version` is an npm dist-tag (e.g. latest).
  *
  * @param {string|undefined} requested
  * @param {object} deps
  * @param {import('../lib/exec.js').ExecFn} [deps.exec]
- * @param {string} [deps.cliVersion]
+ * @param {string} [deps.packagesVersion]
+ * @param {string} [deps.cliVersion] Legacy alias for packagesVersion (tests)
  * @returns {Promise<string>}
  */
 export async function resolveUpgradeVersion(requested, deps = {}) {
   const exec = deps.exec || defaultExec;
-  const fallback = deps.cliVersion || cliVersion;
+  const fallback =
+    deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION;
 
   if (!requested || String(requested).trim() === '') {
     return fallback;
@@ -140,7 +141,7 @@ export async function upgrade(options = {}, deps = {}) {
   try {
     targetVersion = await resolveUpgradeVersion(options.version, {
       exec: deps.exec || defaultExec,
-      cliVersion: deps.cliVersion || cliVersion,
+      packagesVersion: deps.packagesVersion || deps.cliVersion,
     });
   } catch (error) {
     log(chalk.red(error instanceof Error ? error.message : String(error)));
