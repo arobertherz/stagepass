@@ -288,7 +288,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.3.0-beta.2" : "0.0.0";
+    const PKG_VERSION = true ? "2.3.0-beta.3" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function getLoaderScript() {
       try {
@@ -317,25 +317,41 @@ var Stagepass = (() => {
         const stack = (new Error().stack || "").split("\n");
         for (let i = 3; i < stack.length; i++) {
           const m = stack[i].match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
-          if (m && !LOADER_RE.test(m[1])) return ` ${m[1]}:${m[2]}`;
+          if (m && !LOADER_RE.test(m[1])) return [m[1], m[2]];
         }
       } catch (_) {
       }
-      return "";
+      return null;
     }
     let hasActiveSession = false;
-    const flagState = { n: [0, 0], tip: "" };
+    const flagState = { n: [0, 0], m: [], swapped: 0 };
     let renderFlag = null;
-    const bump = (i) => {
+    const time = () => (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);
+    const fileOf = (u) => (u || "").split(/[?#]/)[0].split("/").pop() || "";
+    const str = (a) => {
+      if (typeof a === "string") return a;
+      if (a instanceof Error) return a.message || a.name;
+      try {
+        const j = JSON.stringify(a);
+        if (j !== void 0) return j;
+      } catch (_) {
+      }
+      return String(a);
+    };
+    const note = (i, text, src = "", line = "") => {
       flagState.n[i]++;
+      const m = flagState.m;
+      m.push({ type: i ? "error" : "warn", time: time(), src, line, text: text.length > 500 ? text.slice(0, 500) + "\u2026" : text });
+      if (m.length > 50) m.shift();
       if (renderFlag) renderFlag();
     };
     function log(level, ...args) {
       if (!hasActiveSession) return;
-      if (level === "warn" || level === "error") bump(level === "warn" ? 0 : 1);
+      const where = getCallerLocation();
+      if (level === "warn" || level === "error")
+        note(level === "warn" ? 0 : 1, args.map(str).join(" "), where ? where[0] : "", where ? where[1] : "");
       try {
-        const where = getCallerLocation();
-        const pre = `[\u{1F3AB} ${(/* @__PURE__ */ new Date()).toTimeString().split(" ")[0]}${where ? " |" + where : ""}]`;
+        const pre = `[\u{1F3AB} ${time()}${where ? " | " + where.join(":") : ""}]`;
         const c = console;
         if (level === "error") c.log(`%c${pre}`, "color:red;font-weight:bold", ...args);
         else if (c[level]) c[level](pre, ...args);
@@ -489,28 +505,50 @@ var Stagepass = (() => {
     }
     if (dev) {
       try {
-        const FLAG = /* @__PURE__ */ Symbol.for("stagepass.flag");
+        const FLAG = /* @__PURE__ */ Symbol.for("stagepass.flag.v2");
+        const src = loaderScript && loaderScript.src || "";
+        const base = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0]) ? new URL("./", src).href : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+        Object.assign(flagState, {
+          debug,
+          domain: dom,
+          card: base + "flag-card.min.js",
+          // End session is the only flag action that disconnects
+          end: () => {
+            clearSession();
+            hasActiveSession = true;
+            log("log", "\u{1F50C} Stagepass disconnected.");
+            emit("session", { active: false, domain: null, swap: false, debug: false });
+            loc.reload();
+          }
+        });
         Object.defineProperty(stagepassObj, FLAG, {
           configurable: true,
           value: (create) => {
             delete stagepassObj[FLAG];
             try {
-              renderFlag = create(debug ? "DEBUG" : "LOCAL", dom, flagState, () => {
-                clearSession();
-                hasActiveSession = true;
-                log("log", "\u{1F50C} Stagepass disconnected.");
-                emit("session", { active: false, domain: null, swap: false, debug: false });
-                loc.reload();
-              });
+              renderFlag = create(flagState);
             } catch (_) {
             }
           }
         });
-        W.addEventListener("error", () => bump(1), true);
-        W.addEventListener("unhandledrejection", () => bump(1));
-        const src = loaderScript && loaderScript.src || "";
+        W.addEventListener(
+          "error",
+          (e) => {
+            const t = e.target;
+            const u = t && t !== W && (t.src || t.href);
+            if (typeof u === "string")
+              note(
+                1,
+                dom && !u.indexOf(`https://${dom}/`) ? `Local server not reachable: ${fileOf(u)}. Run stagepass doctor` : "Failed to load " + u,
+                fileOf(u)
+              );
+            else note(1, e.message || "Script error", fileOf(e.filename), e.lineno || "");
+          },
+          true
+        );
+        W.addEventListener("unhandledrejection", (e) => note(1, "Unhandled rejection: " + str(e.reason)));
         const s = d.createElement("script");
-        s.src = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0]) ? new URL("flag.min.js", src).href : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/flag.min.js`;
+        s.src = base + "flag.min.js";
         s.async = true;
         s.onerror = () => spWarn("Stagepass flag could not be loaded: " + s.src);
         (d.head || d.documentElement).appendChild(s);
@@ -558,6 +596,7 @@ var Stagepass = (() => {
           }
           const url = resolveAssetUrl(el, ps, lp);
           if (!url) return;
+          if (swap && lp && dom) flagState.swapped++;
           const n = d.createElement(type);
           const isScript = type === "script";
           if (isScript) n.src = url;
@@ -586,16 +625,14 @@ var Stagepass = (() => {
         const seen = /* @__PURE__ */ new Map();
         swapEl("script[data-stagepass]", "data-src", "script", seen);
         swapEl('link[rel="stylesheet"][data-stagepass]', "data-href", "link", seen);
+        if (renderFlag) renderFlag();
       } catch (_) {
       }
     };
     let lnaCheck = null;
     const checkLna = () => lnaCheck = lnaCheck || (swap ? queryLoopbackPermission().then((state) => {
       const hint = lnaHintMessage(state);
-      if (hint) {
-        flagState.tip = hint;
-        spWarn(hint);
-      }
+      if (hint) spWarn(hint);
     }).catch(() => {
     }) : Promise.resolve());
     const run = () => {

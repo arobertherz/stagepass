@@ -13,7 +13,7 @@ import { detectRuntimeEnv, parseStagingHosts } from './env.js';
 import { isGlobalFree, isValidJsIdentifier } from './alias.js';
 import { canCapability, getClientInfo, getThemeInfo } from './client.js';
 import { createModuleRegistry } from './registry.js';
-import type { CreateFlag } from './flag.js';
+import type { CreateFlag, FlagState } from './flag.js';
 
 declare const __STAGEPASS_VERSION__: string;
 
@@ -51,32 +51,49 @@ declare const __STAGEPASS_VERSION__: string;
 
   const p = new URLSearchParams(loc.search);
 
-  function getCallerLocation(): string {
+  /** [file, line] of the first caller outside the loader */
+  function getCallerLocation(): string[] | null {
     try {
       const stack = (new Error().stack || '').split('\n');
       for (let i = 3; i < stack.length; i++) {
         const m = stack[i].match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
-        if (m && !LOADER_RE.test(m[1])) return ` ${m[1]}:${m[2]}`;
+        if (m && !LOADER_RE.test(m[1])) return [m[1], m[2]];
       }
     } catch (_) {}
-    return '';
+    return null;
   }
 
   let hasActiveSession = false;
-  // Dev flag counters (rendered by the lazy flag chunk once it has loaded)
-  const flagState = { n: [0, 0], tip: '' };
+  // Dev flag state (rendered by the lazy flag chunk once it has loaded).
+  // Messages are plain text, capped to the latest 50 and truncated; the flag never parses HTML.
+  const flagState = { n: [0, 0], m: [], swapped: 0 } as unknown as FlagState;
   let renderFlag: (() => void) | null = null;
-  const bump = (i: number) => {
+  const time = () => new Date().toTimeString().slice(0, 8);
+  const fileOf = (u: string) => (u || '').split(/[?#]/)[0].split('/').pop() || '';
+  const str = (a: unknown): string => {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return a.message || a.name;
+    try {
+      const j = JSON.stringify(a);
+      if (j !== undefined) return j;
+    } catch (_) {}
+    return String(a);
+  };
+  const note = (i: number, text: string, src = '', line: string | number = '') => {
     flagState.n[i]++;
+    const m = flagState.m;
+    m.push({ type: i ? 'error' : 'warn', time: time(), src, line, text: text.length > 500 ? text.slice(0, 500) + '…' : text });
+    if (m.length > 50) m.shift();
     if (renderFlag) renderFlag();
   };
 
   function log(level: string, ...args: unknown[]) {
     if (!hasActiveSession) return;
-    if (level === 'warn' || level === 'error') bump(level === 'warn' ? 0 : 1);
+    const where = getCallerLocation();
+    if (level === 'warn' || level === 'error')
+      note(level === 'warn' ? 0 : 1, args.map(str).join(' '), where ? where[0] : '', where ? where[1] : '');
     try {
-      const where = getCallerLocation();
-      const pre = `[🎫 ${new Date().toTimeString().split(' ')[0]}${where ? ' |' + where : ''}]`;
+      const pre = `[🎫 ${time()}${where ? ' | ' + where.join(':') : ''}]`;
       const c = console as any;
       if (level === 'error') c.log(`%c${pre}`, 'color:red;font-weight:bold', ...args);
       else if (c[level]) c[level](pre, ...args);
@@ -272,30 +289,55 @@ declare const __STAGEPASS_VERSION__: string;
   // Dev flag: UI lives in flag.min.js next to the loader, fetched only during a session
   if (dev) {
     try {
-      const FLAG = Symbol.for('stagepass.flag');
+      const FLAG = Symbol.for('stagepass.flag.v2');
+      const src = (loaderScript && loaderScript.src) || '';
+      // Flag chunks come from the same pinned path as the loader
+      const base = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0])
+        ? new URL('./', src).href
+        : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/`;
+      Object.assign(flagState, {
+        debug,
+        domain: dom,
+        card: base + 'flag-card.min.js',
+        // End session is the only flag action that disconnects
+        end: () => {
+          clearSession();
+          hasActiveSession = true;
+          log('log', '🔌 Stagepass disconnected.');
+          emit('session', { active: false, domain: null, swap: false, debug: false });
+          loc.reload();
+        },
+      });
       Object.defineProperty(stagepassObj, FLAG, {
         configurable: true,
         value: (create: CreateFlag) => {
           delete stagepassObj[FLAG];
           try {
-            renderFlag = create(debug ? 'DEBUG' : 'LOCAL', dom, flagState, () => {
-              clearSession();
-              hasActiveSession = true;
-              log('log', '🔌 Stagepass disconnected.');
-              emit('session', { active: false, domain: null, swap: false, debug: false });
-              loc.reload();
-            });
+            renderFlag = create(flagState);
           } catch (_) {}
         },
       });
       // Capture phase also sees failed <script>/<link>/<img> loads
-      W.addEventListener('error', () => bump(1), true);
-      W.addEventListener('unhandledrejection', () => bump(1));
-      const src = (loaderScript && loaderScript.src) || '';
+      W.addEventListener(
+        'error',
+        (e: any) => {
+          const t = e.target;
+          const u = t && t !== W && (t.src || t.href);
+          if (typeof u === 'string')
+            note(
+              1,
+              dom && !u.indexOf(`https://${dom}/`)
+                ? `Local server not reachable: ${fileOf(u)}. Run stagepass doctor`
+                : 'Failed to load ' + u,
+              fileOf(u)
+            );
+          else note(1, e.message || 'Script error', fileOf(e.filename), e.lineno || '');
+        },
+        true
+      );
+      W.addEventListener('unhandledrejection', (e: any) => note(1, 'Unhandled rejection: ' + str(e.reason)));
       const s = d.createElement('script');
-      s.src = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0])
-        ? new URL('flag.min.js', src).href
-        : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/flag.min.js`;
+      s.src = base + 'flag.min.js';
       s.async = true;
       s.onerror = () => spWarn('Stagepass flag could not be loaded: ' + s.src);
       (d.head || d.documentElement).appendChild(s);
@@ -350,6 +392,7 @@ declare const __STAGEPASS_VERSION__: string;
         }
         const url = resolveAssetUrl(el, ps, lp);
         if (!url) return;
+        if (swap && lp && dom) flagState.swapped++;
         const n: any = d.createElement(type);
         const isScript = type === 'script';
         if (isScript) n.src = url;
@@ -380,6 +423,7 @@ declare const __STAGEPASS_VERSION__: string;
       const seen = new Map<string, number>();
       swapEl('script[data-stagepass]', 'data-src', 'script', seen);
       swapEl('link[rel="stylesheet"][data-stagepass]', 'data-href', 'link', seen);
+      if (renderFlag) renderFlag();
     } catch (_) {}
   };
 
@@ -390,10 +434,7 @@ declare const __STAGEPASS_VERSION__: string;
       ? queryLoopbackPermission()
           .then((state) => {
             const hint = lnaHintMessage(state);
-            if (hint) {
-              flagState.tip = hint;
-              spWarn(hint);
-            }
+            if (hint) spWarn(hint);
           })
           .catch(() => {})
       : Promise.resolve()));
