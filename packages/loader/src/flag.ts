@@ -64,8 +64,8 @@ export type FlagMsg = {
   /** Occurrences */
   c: number;
 };
-/** One swapped file. st: '' pending, 'ok', HTTP status like '404', or 'failed' (network). */
-export type FlagFile = { live: string; local: string; type: 'js' | 'css'; st: string };
+/** One swapped file. st: '' pending, 'ok', HTTP status like '404', or 'failed' (network). x: path was explicit. */
+export type FlagFile = { live: string; local: string; type: 'js' | 'css'; st: string; x?: boolean };
 
 /** State owned by the loader. `n` = totals [warnings, errors], `m` = latest messages (capped). */
 export type FlagState = {

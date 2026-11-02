@@ -299,6 +299,7 @@ declare const __STAGEPASS_VERSION__: string;
   const stagepassObj = W.stagepass || {};
   const registry = createModuleRegistry(PKG_VERSION, spWarn);
 
+  // Plain property (2.3.1 form): writable/configurable. Debug sessions get a one-time getter hint from the flag chunk.
   const varsFrozen = Object.freeze({
     isLocal,
     env,
@@ -307,19 +308,7 @@ declare const __STAGEPASS_VERSION__: string;
     version: PKG_VERSION,
     client: clientInfo,
   });
-  // One-time debug hint toward flat helpers; never in production without debug. vars stays frozen.
-  let varsHinted = false;
-  Object.defineProperty(stagepassObj, 'vars', {
-    configurable: true,
-    enumerable: true,
-    get() {
-      if (debug && !varsHinted) {
-        varsHinted = true;
-        spWarn('Prefer sp.env()/is()/can()/client()/on() over reading sp.vars directly.');
-      }
-      return varsFrozen;
-    },
-  });
+  stagepassObj.vars = varsFrozen;
 
   stagepassObj.log = spLog;
   stagepassObj.warn = spWarn;
@@ -438,39 +427,7 @@ declare const __STAGEPASS_VERSION__: string;
       s.async = true;
       s.onerror = () => spWarn('Stagepass flag could not be loaded: ' + s.src);
       (d.head || d.documentElement).appendChild(s);
-
-      // Live reload: same folder as the flag, only during a swap session (not debug).
-      // Always probe while swapping; EventSource closes on first error when `stagepass dev` is off.
-      // Keeps the core small (no new URL param); the chunk is lazy and never loads without a session.
-      if (swap && dom) {
-        const LIVE = Symbol.for('stagepass.live.v1');
-        const liveUrl = 'https://' + dom + '/__stagepass/live';
-        const localBase = 'https://' + dom;
-        Object.defineProperty(stagepassObj, LIVE, {
-          configurable: true,
-          value: (start: (opts: {
-            url: string;
-            localBase: string;
-            debug?: boolean;
-            log?: (...a: unknown[]) => void;
-          }) => void) => {
-            delete stagepassObj[LIVE];
-            try {
-              start({
-                url: liveUrl,
-                localBase,
-                debug,
-                log: (...a: unknown[]) => spLog(...a),
-              });
-            } catch (_) {}
-          },
-        });
-        const live = d.createElement('script');
-        live.src = base + 'live.min.js';
-        live.async = true;
-        // Silent onerror: missing chunk or offline CDN must not spam production consoles
-        (d.head || d.documentElement).appendChild(live);
-      }
+      // Live reload is bootstrapped by the flag chunk (same folder as flag-card.min.js).
     } catch (_) {}
   }
 
@@ -494,14 +451,23 @@ declare const __STAGEPASS_VERSION__: string;
     }
   }
 
-  // Swapped files: status per file; "swapped" counts only files that loaded
+  // Swapped files: status per file; "swapped" counts only files that loaded.
+  // f.x = true when data-stagepass-path was explicit (flag chunk warns on non-explicit dups).
   const mine = new WeakSet<Element>();
   let lnaState = '';
-  function track(n: any, live: string, local: string, isScript: boolean, retry: ((cors: boolean) => any) | null) {
-    const f = { live, local, type: isScript ? 'js' : 'css', st: '' };
+  function track(
+    n: any,
+    live: string,
+    local: string,
+    isScript: boolean,
+    retry: ((cors: boolean) => any) | null,
+    explicit?: boolean
+  ) {
+    const f: any = { live, local, type: isScript ? 'js' : 'css', st: '' };
+    if (explicit) f.x = true;
     const name = fileOf(local);
     mine.add(n);
-    flagState.f.push(f as any);
+    flagState.f.push(f);
     n.addEventListener('load', () => {
       f.st = 'ok';
       flagState.swapped++;
@@ -522,7 +488,7 @@ declare const __STAGEPASS_VERSION__: string;
             () => {
               // Reachable but without CORS headers: load again without crossorigin
               if (!retry) return fail('failed', 1, `Failed to load ${name}`);
-              flagState.f.splice(flagState.f.indexOf(f as any), 1);
+              flagState.f.splice(flagState.f.indexOf(f), 1);
               n.replaceWith(retry(false));
               note(0, `Local server sends no CORS header for ${name}. Loaded without crossorigin, error details are limited`, local);
             },
@@ -540,108 +506,40 @@ declare const __STAGEPASS_VERSION__: string;
     'data-stagepass-v',
   ];
 
-  const DUP =
-    'Multiple assets resolve to local file "%s" without data-stagepass-path. Set unique paths to avoid collisions.';
-  function noteDup(lp: string, explicit: boolean, seen: Map<string, number>) {
-    if (!swap || !lp || explicit || !hasActiveSession) return;
-    const n = (seen.get(lp) || 0) + 1;
-    seen.set(lp, n);
-    if (n === 2) spWarn(DUP.replace('%s', lp));
-  }
-
-  // Live-src rewrite stays in core: MO must run before the parser prepares a script (size-budget.test.ts).
-  const LIVE_SEL =
-    'script[data-stagepass]:not([data-stagepass-processed]),link[rel="stylesheet"][data-stagepass]:not([data-stagepass-processed])';
-  function isLiveAsset(el: Element): boolean {
-    if (!el?.hasAttribute?.('data-stagepass') || el.hasAttribute('data-stagepass-processed')) return false;
-    const t = el.tagName;
-    if (t === 'SCRIPT') return el.hasAttribute('src') && !el.hasAttribute('data-src');
-    return (
-      t === 'LINK' &&
-      (el.getAttribute('rel') || '').toLowerCase() === 'stylesheet' &&
-      el.hasAttribute('href') &&
-      !el.hasAttribute('data-href')
-    );
-  }
-  // Firefox: MO often runs after prepare; in-place src rewrite then races beforescriptexecute.
-  // Skip MO script rewrites there and cancel/re-insert via beforescriptexecute instead.
-  // Feature-detect the event itself (InstallTrigger is hidden in current Firefox releases).
+  // live-src tags: native src/href, not legacy data-src/data-href, not processed yet
+  const LS =
+    'script[data-stagepass][src]:not([data-src]):not([data-stagepass-processed]),link[rel="stylesheet" i][data-stagepass][href]:not([data-href]):not([data-stagepass-processed])';
+  // Firefox: MO often runs after prepare; feature-detect beforescriptexecute (InstallTrigger is hidden).
   const ff = 'onbeforescriptexecute' in d;
 
-  function rewriteLive(el: Element, seen: Map<string, number>) {
+  // Minimal live-src hook must stay in core (MO before parser prepares a script). Only called in swap sessions.
+  function rewriteLive(el: any) {
     try {
-      if (!swap || !dom || !isLiveAsset(el)) return;
       const js = el.tagName === 'SCRIPT';
-      if (js && ff) return;
-      if (js && d.currentScript === el) {
-        spWarn('Live-src script already executing; put the loader sync in <head> before tagged assets.');
-        return;
-      }
-      const ps = el.getAttribute(js ? 'src' : 'href');
+      // Firefox scripts: beforescriptexecute path. Already-executing script: silent skip.
+      if (js && (ff || d.currentScript === el)) return;
+      const k = js ? 'src' : 'href';
+      const ps = el.getAttribute(k);
       if (!ps) return;
       el.setAttribute('data-stagepass-processed', 'true');
-      let lp = el.getAttribute('data-stagepass-path');
-      const ex = !!lp;
-      if (!lp) lp = extractLocalFilename(ps);
-      noteDup(lp || '', ex, seen);
+      const x = el.getAttribute('data-stagepass-path');
+      const lp = x || extractLocalFilename(ps);
       if (!lp) return;
-      const url = buildLocalAssetUrl(dom, lp, now);
+      const url = buildLocalAssetUrl(dom as string, lp, now);
       el.removeAttribute('integrity');
       if (!el.hasAttribute('crossorigin')) el.setAttribute('crossorigin', 'anonymous');
-      if (js) (el as HTMLScriptElement).src = url;
-      else (el as HTMLLinkElement).href = url;
-      track(el, ps, url, js, null);
+      el[k] = url;
+      track(el, ps, url, js, null, !!x);
     } catch (_) {}
   }
-  function scanLive(root: ParentNode, seen: Map<string, number>) {
-    if (root.nodeType === 1 && isLiveAsset(root as Element)) rewriteLive(root as Element, seen);
+  const scanLive = (r: any) => {
     try {
-      (root as Element).querySelectorAll?.(LIVE_SEL).forEach((el) => rewriteLive(el, seen));
+      if (r.matches && r.matches(LS)) rewriteLive(r);
+      r.querySelectorAll(LS).forEach(rewriteLive);
     } catch (_) {}
-  }
-  const liveSeen = new Map<string, number>();
-  if (swap && liveSrc) {
-    try {
-      // Chromium / WebKit: MO runs at the parser microtask checkpoint before "prepare a script".
-      new MutationObserver((ms) => {
-        for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) scanLive(n as Element, liveSeen);
-      }).observe(d.documentElement, { childList: true, subtree: true });
-      // Firefox: MO is often too late. beforescriptexecute (deprecated) can still cancel
-      // the production run and re-insert a local script. Production may already be fetched.
-      d.addEventListener(
-        'beforescriptexecute',
-        (e: Event) => {
-          const el = e.target as HTMLScriptElement;
-          if (!el || el.tagName !== 'SCRIPT' || !dom) return;
-          if (!el.hasAttribute('data-stagepass') || el.hasAttribute('data-src')) return;
-          const ps = el.getAttribute('src');
-          if (!ps || ps.indexOf('https://' + dom + '/') === 0) return;
-          e.preventDefault();
-          let lp = el.getAttribute('data-stagepass-path');
-          const ex = !!lp;
-          if (!lp) lp = extractLocalFilename(ps);
-          noteDup(lp || '', ex, liveSeen);
-          if (!lp) return;
-          el.setAttribute('data-stagepass-processed', 'true');
-          const url = buildLocalAssetUrl(dom, lp, now);
-          const n = d.createElement('script');
-          n.src = url;
-          n.setAttribute('data-stagepass-processed', 'true');
-          n.crossOrigin = el.getAttribute('crossorigin') || 'anonymous';
-          applyScriptLoadOrder(n, el);
-          if (el.parentNode) {
-            el.parentNode.insertBefore(n, el);
-            el.remove();
-          }
-          track(n, ps, url, true, null);
-        },
-        true
-      );
-      scanLive(d, liveSeen);
-    } catch (_) {}
-  }
+  };
 
-  function swapEl(sel: string, srcAttr: string, type: 'script' | 'link', seen: Map<string, number>) {
+  function swapEl(sel: string, srcAttr: string, type: 'script' | 'link') {
     d.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el: any) => {
       try {
         let lp = el.getAttribute('data-stagepass-path');
@@ -651,7 +549,6 @@ declare const __STAGEPASS_VERSION__: string;
         if (!ps) return;
         el.setAttribute('data-stagepass-processed', 'true');
         if (!lp && swap && dom) lp = extractLocalFilename(ps);
-        noteDup(lp || '', hadExplicitPath, seen);
         const url = resolveAssetUrl(el, ps, lp);
         if (!url) return;
         const local = swap && lp && dom;
@@ -666,13 +563,14 @@ declare const __STAGEPASS_VERSION__: string;
             n.href = url;
           }
           for (const a of Array.from(el.attributes as NamedNodeMap)) {
-            if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== 'href')) {
+            // Never copy production src onto the new script (Firefox live-src converts via data-src)
+            // Never copy the production src/href (live-src tags converted to data-src keep none, but be safe)
+            if (a.name !== srcAttr && !SKIP.includes(a.name) && a.name !== (isScript ? 'src' : 'href'))
               n.setAttribute(a.name, a.value);
-            }
           }
           if (local) n.removeAttribute('integrity');
           if (isScript) applyScriptLoadOrder(n, el);
-          if (local) track(n, ps, url, isScript, cors ? make : null);
+          if (local) track(n, ps, url, isScript, cors ? make : null, hadExplicitPath);
           return n;
         };
         const n = make(!!local && !el.hasAttribute('crossorigin'));
@@ -688,12 +586,37 @@ declare const __STAGEPASS_VERSION__: string;
     });
   }
 
+  if (swap && liveSrc) {
+    try {
+      // Chromium / WebKit: MO runs at the parser microtask checkpoint before "prepare a script".
+      new MutationObserver((ms) => {
+        for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) scanLive(n);
+      }).observe(d.documentElement, { childList: true, subtree: true });
+      // Firefox: cancel production run, convert to legacy data-src, let swapEl create the replacement.
+      if (ff)
+        d.addEventListener(
+          'beforescriptexecute',
+          (e: Event) => {
+            const el = e.target as HTMLScriptElement;
+            if (!el || !el.matches || !el.matches(LS)) return;
+            const ps = el.getAttribute('src');
+            if (!ps || ps.indexOf('https://' + dom + '/') === 0) return;
+            e.preventDefault();
+            el.setAttribute('data-src', ps);
+            el.removeAttribute('src');
+            swapEl('script[data-stagepass]', 'data-src', 'script');
+          },
+          true
+        );
+      scanLive(d);
+    } catch (_) {}
+  }
+
   const process = () => {
     try {
-      const seen = new Map<string, number>();
-      swapEl('script[data-stagepass]', 'data-src', 'script', seen);
-      swapEl('link[rel="stylesheet"][data-stagepass]', 'data-href', 'link', seen);
-      if (swap && liveSrc) scanLive(d, liveSeen);
+      swapEl('script[data-stagepass]', 'data-src', 'script');
+      swapEl('link[rel="stylesheet"][data-stagepass]', 'data-href', 'link');
+      if (swap && liveSrc) scanLive(d);
       if (renderFlag) renderFlag();
     } catch (_) {}
   };
