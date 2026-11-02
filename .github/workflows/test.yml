@@ -41,3 +41,33 @@ jobs:
 
       - name: Packed CLI smoke test (npm pack, global install, new + install + build)
         run: node scripts/test-cli-packed.mjs
+
+  e2e:
+    runs-on: [self-hosted, cerebro]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright (Chromium only)
+        working-directory: e2e
+        run: npx playwright test --project=chromium

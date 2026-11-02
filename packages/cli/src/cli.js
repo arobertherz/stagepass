@@ -21,6 +21,7 @@ import {
   build as defaultBuild,
 } from './commands/npm-run.js';
 import { createNew as defaultCreateNew } from './commands/new.js';
+import { dev as defaultDev } from './commands/dev.js';
 import { assertSupportedPlatform } from './lib/platform.js';
 
 const require = createRequire(import.meta.url);
@@ -81,6 +82,7 @@ export function rewriteArgvForUpgrade(argv) {
  * @param {typeof defaultWatch} [deps.watch]
  * @param {typeof defaultBuild} [deps.build]
  * @param {typeof defaultCreateNew} [deps.createNew]
+ * @param {typeof defaultDev} [deps.dev]
  * @param {string} [deps.version]
  * @param {() => void} [deps.assertPlatform]
  */
@@ -101,6 +103,7 @@ export function createProgram(deps = {}) {
   const watch = deps.watch || defaultWatch;
   const build = deps.build || defaultBuild;
   const createNew = deps.createNew || defaultCreateNew;
+  const runDev = deps.dev || defaultDev;
   const version = deps.version || packageVersion;
   const assertPlatform =
     deps.assertPlatform || (() => assertSupportedPlatform());
@@ -316,6 +319,17 @@ export function createProgram(deps = {}) {
     .option('-v, --verbose', 'Show the underlying npm command')
     .action(async (options) => {
       const code = await watch(options);
+      process.exitCode = code;
+    });
+
+  program
+    .command('dev')
+    .description(
+      'Run project watch plus live reload (SSE via /__stagepass/live on the linked .sp domain). No Vite.'
+    )
+    .option('-v, --verbose', 'Show detailed output')
+    .action(async (options) => {
+      const code = await runDev(options);
       process.exitCode = code;
     });
 

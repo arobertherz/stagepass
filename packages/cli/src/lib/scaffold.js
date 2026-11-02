@@ -124,7 +124,7 @@ export function buildPackageJson(options) {
     scripts: {
       build: 'node scripts/build.mjs',
       watch: 'node scripts/build.mjs --watch',
-      // Alias of watch until a real HMR server exists (stagepass dev).
+      // Prefer `stagepass dev` for live reload on the linked .sp domain.
       dev: 'npm run watch',
     },
     devDependencies,

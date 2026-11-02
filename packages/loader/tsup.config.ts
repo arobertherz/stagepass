@@ -55,4 +55,15 @@ export default defineConfig([
       return { js: '.min.js' };
     },
   },
+  // 5. Live reload (live.min.js): EventSource client, only while a swap session is active
+  {
+    entry: { live: 'src/live-entry.ts' },
+    format: ['iife'],
+    clean: false,
+    minify: true,
+    define,
+    outExtension() {
+      return { js: '.min.js' };
+    },
+  },
 ]);

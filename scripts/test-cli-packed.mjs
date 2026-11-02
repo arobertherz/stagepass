@@ -89,7 +89,13 @@ try {
   };
   const loaderPack = packLocal(LOADER_DIR);
   const modulesPack = packLocal(MODULES_DIR);
-  for (const f of ['global.d.ts', 'dist/loader.min.js', 'dist/flag.min.js', 'dist/flag-card.min.js']) {
+  for (const f of [
+    'global.d.ts',
+    'dist/loader.min.js',
+    'dist/flag.min.js',
+    'dist/flag-card.min.js',
+    'dist/live.min.js',
+  ]) {
     assert(loaderPack.files.has(f), `loader tarball has ${f}`);
   }
   for (const f of ['global.d.ts', 'inject.d.ts', 'cookies.d.ts', 'maintenance.d.ts', 'dist/all.min.js', 'dist/cookies.min.js']) {

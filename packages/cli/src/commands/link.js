@@ -11,7 +11,7 @@ import {
   getStagepassDir,
   getProjectsPath,
 } from '../lib/paths.js';
-import { upsertProject, getProject } from '../lib/projects.js';
+import { upsertProject, getProject, clearStaleDevPorts } from '../lib/projects.js';
 import {
   validateOriginList,
   isBroadWebflowWildcard,
@@ -128,6 +128,7 @@ export async function link(domain, options = {}, deps = {}) {
 
     spinner.stop();
     await ensureCaddyfileMigrated({ caddyfilePath: caddyFilePath, projectsPath });
+    await clearStaleDevPorts(projectsPath);
     spinner.start(`Linking ${chalk.bold(targetDomain)}...`);
 
     let content = '';
@@ -170,6 +171,7 @@ export async function link(domain, options = {}, deps = {}) {
       allowAllOrigins: project.allowAllOrigins,
       origins: project.origins,
       php: isPhpEnabled(project.php),
+      devPort: project.devPort,
     });
 
     content = upsertBlock(content, targetDomain, newBlock);
