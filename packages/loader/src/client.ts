@@ -33,39 +33,37 @@ export type StagepassClientInfo = {
   };
 };
 
+type BrowserFamily = StagepassClientInfo['browser']['family'];
+type OsFamily = StagepassClientInfo['os']['family'];
+
+// Order matters: Edge/Opera UAs also contain "Chrome", Chrome UAs contain "Safari".
+const BROWSERS: [BrowserFamily, RegExp][] = [
+  ['edge', /Edg\/(\d+)/],
+  ['opera', /OPR\/(\d+)/],
+  ['firefox', /Firefox\/(\d+)/],
+  ['chrome', /Chrome\/(\d+)/],
+  ['safari', /Version\/(\d+).+Safari\//],
+];
+
+const OSES: [OsFamily, RegExp][] = [
+  ['android', /Android/i],
+  ['ios', /iPhone|iPad|iPod/i],
+  ['macos', /Mac OS X|Macintosh/i],
+  ['windows', /Windows NT/i],
+  ['linux', /Linux/i],
+];
+
 function getBrowserInfo(ua: string): StagepassClientInfo['browser'] {
-  let family: StagepassClientInfo['browser']['family'] = 'unknown';
-  let major: number | null = null;
-  let m: RegExpMatchArray | null = null;
-
-  if (/Edg\/(\d+)/.test(ua)) {
-    family = 'edge';
-    m = ua.match(/Edg\/(\d+)/);
-  } else if (/OPR\/(\d+)/.test(ua)) {
-    family = 'opera';
-    m = ua.match(/OPR\/(\d+)/);
-  } else if (/Firefox\/(\d+)/.test(ua)) {
-    family = 'firefox';
-    m = ua.match(/Firefox\/(\d+)/);
-  } else if (/Chrome\/(\d+)/.test(ua)) {
-    family = 'chrome';
-    m = ua.match(/Chrome\/(\d+)/);
-  } else if (/Version\/(\d+).+Safari\//.test(ua)) {
-    family = 'safari';
-    m = ua.match(/Version\/(\d+)/);
+  for (const [family, re] of BROWSERS) {
+    const m = ua.match(re);
+    if (m) return { family, major: Number(m[1]), userAgent: ua };
   }
-
-  if (m && m[1]) major = Number(m[1]);
-  return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+  return { family: 'unknown', major: null, userAgent: ua };
 }
 
 function getOsInfo(ua: string): StagepassClientInfo['os'] {
-  if (/Android/i.test(ua)) return { family: 'android' };
-  if (/iPhone|iPad|iPod/i.test(ua)) return { family: 'ios' };
-  if (/Mac OS X|Macintosh/i.test(ua)) return { family: 'macos' };
-  if (/Windows NT/i.test(ua)) return { family: 'windows' };
-  if (/Linux/i.test(ua)) return { family: 'linux' };
-  return { family: 'unknown' };
+  const hit = OSES.find(([, re]) => re.test(ua));
+  return { family: hit ? hit[0] : 'unknown' };
 }
 
 function getDeviceInfo(ua: string): StagepassClientInfo['device'] {
@@ -81,20 +79,12 @@ function getDeviceInfo(ua: string): StagepassClientInfo['device'] {
  * Read prefers-color-scheme.
  */
 export function getThemeInfo(): StagepassClientTheme {
-  let preferred: StagepassClientTheme['preferred'] = 'no-preference';
-  let current: StagepassClientTheme['current'] = 'unknown';
+  let v: 'light' | 'dark' | null = null;
   try {
-    if (window.matchMedia) {
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        preferred = 'dark';
-        current = 'dark';
-      } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-        preferred = 'light';
-        current = 'light';
-      }
-    }
+    const mq = (scheme: string) => matchMedia(`(prefers-color-scheme: ${scheme})`).matches;
+    v = mq('dark') ? 'dark' : mq('light') ? 'light' : null;
   } catch (_) {}
-  return { preferred, current };
+  return { preferred: v || 'no-preference', current: v || 'unknown' };
 }
 
 /**

@@ -10,11 +10,21 @@ const packagesDir = path.join(
 );
 
 describe('STAGEPASS_PACKAGES_VERSION', () => {
-  it.each(['loader', 'modules'])('matches packages/%s/package.json', (dir) => {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(packagesDir, dir, 'package.json'), 'utf8')
-    );
-    expect(STAGEPASS_PACKAGES_VERSION).toBe(pkg.version);
+  const readVersion = (dir) =>
+    JSON.parse(fs.readFileSync(path.join(packagesDir, dir, 'package.json'), 'utf8')).version;
+  const core = (v) => v.split('-')[0].split('.').map(Number);
+
+  it('matches packages/modules/package.json', () => {
+    expect(STAGEPASS_PACKAGES_VERSION).toBe(readVersion('modules'));
+  });
+
+  // The loader may run ahead (minor/prerelease) within the same major: the CLI
+  // scaffolds `^major`, so any loader 2.x satisfies it.
+  it('stays within the loader major and never ahead of it', () => {
+    const [lMaj, lMin, lPatch] = core(readVersion('loader'));
+    const [cMaj, cMin, cPatch] = core(STAGEPASS_PACKAGES_VERSION);
+    expect(lMaj).toBe(cMaj);
+    expect(lMin * 1e6 + lPatch).toBeGreaterThanOrEqual(cMin * 1e6 + cPatch);
   });
 
   it('builds the major range (never a minor that may only be staged)', () => {

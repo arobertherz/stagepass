@@ -138,36 +138,30 @@ var Stagepass = (() => {
   }
 
   // src/client.ts
+  var BROWSERS = [
+    ["edge", /Edg\/(\d+)/],
+    ["opera", /OPR\/(\d+)/],
+    ["firefox", /Firefox\/(\d+)/],
+    ["chrome", /Chrome\/(\d+)/],
+    ["safari", /Version\/(\d+).+Safari\//]
+  ];
+  var OSES = [
+    ["android", /Android/i],
+    ["ios", /iPhone|iPad|iPod/i],
+    ["macos", /Mac OS X|Macintosh/i],
+    ["windows", /Windows NT/i],
+    ["linux", /Linux/i]
+  ];
   function getBrowserInfo(ua) {
-    let family = "unknown";
-    let major = null;
-    let m = null;
-    if (/Edg\/(\d+)/.test(ua)) {
-      family = "edge";
-      m = ua.match(/Edg\/(\d+)/);
-    } else if (/OPR\/(\d+)/.test(ua)) {
-      family = "opera";
-      m = ua.match(/OPR\/(\d+)/);
-    } else if (/Firefox\/(\d+)/.test(ua)) {
-      family = "firefox";
-      m = ua.match(/Firefox\/(\d+)/);
-    } else if (/Chrome\/(\d+)/.test(ua)) {
-      family = "chrome";
-      m = ua.match(/Chrome\/(\d+)/);
-    } else if (/Version\/(\d+).+Safari\//.test(ua)) {
-      family = "safari";
-      m = ua.match(/Version\/(\d+)/);
+    for (const [family, re] of BROWSERS) {
+      const m = ua.match(re);
+      if (m) return { family, major: Number(m[1]), userAgent: ua };
     }
-    if (m && m[1]) major = Number(m[1]);
-    return { family, major: Number.isFinite(major) ? major : null, userAgent: ua };
+    return { family: "unknown", major: null, userAgent: ua };
   }
   function getOsInfo(ua) {
-    if (/Android/i.test(ua)) return { family: "android" };
-    if (/iPhone|iPad|iPod/i.test(ua)) return { family: "ios" };
-    if (/Mac OS X|Macintosh/i.test(ua)) return { family: "macos" };
-    if (/Windows NT/i.test(ua)) return { family: "windows" };
-    if (/Linux/i.test(ua)) return { family: "linux" };
-    return { family: "unknown" };
+    const hit = OSES.find(([, re]) => re.test(ua));
+    return { family: hit ? hit[0] : "unknown" };
   }
   function getDeviceInfo(ua) {
     const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
@@ -178,21 +172,13 @@ var Stagepass = (() => {
     return { type, touch };
   }
   function getThemeInfo() {
-    let preferred = "no-preference";
-    let current = "unknown";
+    let v = null;
     try {
-      if (window.matchMedia) {
-        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          preferred = "dark";
-          current = "dark";
-        } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-          preferred = "light";
-          current = "light";
-        }
-      }
+      const mq = (scheme) => matchMedia(`(prefers-color-scheme: ${scheme})`).matches;
+      v = mq("dark") ? "dark" : mq("light") ? "light" : null;
     } catch (_) {
     }
-    return { preferred, current };
+    return { preferred: v || "no-preference", current: v || "unknown" };
   }
   function hasStorage(type) {
     try {
@@ -299,98 +285,84 @@ var Stagepass = (() => {
   (function() {
     const K = SESSION_KEY;
     const P = "stagepass";
-    const PKG_VERSION = true ? "2.2.0" : "0.0.0";
+    const W = window;
+    const d = document;
+    const loc = location;
+    const PKG_VERSION = true ? "2.3.0-beta.0" : "0.0.0";
+    const LOADER_RE = /loader(?:\.min)?\.js/i;
     function getLoaderScript() {
       try {
-        if (document.currentScript instanceof HTMLScriptElement) {
-          return document.currentScript;
-        }
+        if (d.currentScript instanceof HTMLScriptElement) return d.currentScript;
       } catch (_) {
       }
       try {
-        const scripts = document.querySelectorAll('script[src*="loader"]');
+        const scripts = d.querySelectorAll('script[src*="loader"]');
         for (let i = scripts.length - 1; i >= 0; i--) {
-          const s = scripts[i];
-          if (/loader(?:\.min)?\.js/i.test(s.src || "")) return s;
+          if (LOADER_RE.test(scripts[i].src || "")) return scripts[i];
         }
       } catch (_) {
       }
       return null;
     }
     const loaderScript = getLoaderScript();
-    const muteConsole = (loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-mute-console")) === "true";
-    const sessionHours = parseSessionHours(
-      loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-session-hours")
-    );
-    const loaderVersionAttr = loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-version");
-    const stagingHosts = parseStagingHosts(
-      loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-staging-hosts")
-    );
-    const aliasName = loaderScript == null ? void 0 : loaderScript.getAttribute("data-stagepass-alias");
-    const p = new URLSearchParams(window.location.search);
+    const attr = (name) => loaderScript ? loaderScript.getAttribute("data-stagepass-" + name) : null;
+    const muteConsole = attr("mute-console") === "true";
+    const sessionHours = parseSessionHours(attr("session-hours"));
+    const loaderVersionAttr = attr("version");
+    const stagingHosts = parseStagingHosts(attr("staging-hosts"));
+    const aliasName = attr("alias");
+    const p = new URLSearchParams(loc.search);
     function getCallerLocation() {
-      var _a;
       try {
-        const stack = (_a = new Error().stack) == null ? void 0 : _a.split("\n");
-        if (!stack) return "";
-        const loaderPattern = /loader(?:\.min)?\.js/i;
+        const stack = (new Error().stack || "").split("\n");
         for (let i = 3; i < stack.length; i++) {
-          const line = stack[i];
-          const match = line.match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
-          if (match) {
-            const file = match[1];
-            if (!loaderPattern.test(file)) return ` ${file}:${match[2]}`;
-          }
+          const m = stack[i].match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
+          if (m && !LOADER_RE.test(m[1])) return ` ${m[1]}:${m[2]}`;
         }
       } catch (_) {
       }
       return "";
     }
     let hasActiveSession = false;
+    const flagState = { n: [0, 0], tip: "" };
+    let renderFlag = null;
+    const bump = (i) => {
+      flagState.n[i]++;
+      if (renderFlag) renderFlag();
+    };
     function log(level, ...args) {
       if (!hasActiveSession) return;
+      if (level === "warn" || level === "error") bump(level === "warn" ? 0 : 1);
       try {
-        const t = (/* @__PURE__ */ new Date()).toTimeString().split(" ")[0];
-        const loc = getCallerLocation();
-        const pre = `[\u{1F3AB} ${t}${loc ? " |" + loc : ""}]`;
-        if (level === "error") {
-          console.log(`%c${pre}`, "color: red; font-weight: bold;", ...args);
-        } else if (console[level]) {
-          console[level](pre, ...args);
-        } else {
-          console.log(pre, level, ...args);
-        }
+        const where = getCallerLocation();
+        const pre = `[\u{1F3AB} ${(/* @__PURE__ */ new Date()).toTimeString().split(" ")[0]}${where ? " |" + where : ""}]`;
+        const c = console;
+        if (level === "error") c.log(`%c${pre}`, "color:red;font-weight:bold", ...args);
+        else if (c[level]) c[level](pre, ...args);
+        else c.log(pre, level, ...args);
       } catch (_) {
       }
     }
     function spLog(...args) {
-      let level = "log";
-      if (args.length > 0 && (args[0] === "warn" || args[0] === "error")) {
-        level = args[0];
-        args = args.slice(1);
-      }
+      const level = args[0] === "warn" || args[0] === "error" ? args.shift() : "log";
       log(level, ...args);
     }
     const spWarn = (...args) => log("warn", ...args);
     const spError = (...args) => log("error", ...args);
+    const logOnce = (level, msg) => {
+      const prev = hasActiveSession;
+      hasActiveSession = true;
+      log(level, msg);
+      hasActiveSession = prev;
+    };
     function readSessionDomain() {
       try {
         const raw = localStorage.getItem(K);
         const record = parseSession(raw);
-        if (!record) {
-          if (raw) localStorage.removeItem(K);
-          return null;
-        }
-        return record.domain;
+        if (!record && raw) localStorage.removeItem(K);
+        return record ? record.domain : null;
       } catch (_) {
         return null;
-      }
-    }
-    function writeSession(domain) {
-      try {
-        const record = createSession(domain, sessionHours);
-        localStorage.setItem(K, serializeSession(record));
-      } catch (_) {
       }
     }
     function clearSession() {
@@ -406,34 +378,28 @@ var Stagepass = (() => {
       if (v === "off" || v === "0" || v === "false") {
         clearSession();
         sv = null;
-        hasActiveSession = true;
-        log("log", "\u{1F50C} Stagepass disconnected.");
-        hasActiveSession = false;
+        logOnce("log", "\u{1F50C} Stagepass disconnected.");
       } else if (v) {
         const c = v === "debug" ? "debug" : cleanDomain(v);
         if (c && isValidDomain(c)) {
-          writeSession(c);
+          try {
+            localStorage.setItem(K, serializeSession(createSession(c, sessionHours)));
+          } catch (_) {
+          }
           sv = c;
-          hasActiveSession = true;
-          log(
+          paramProcessed = true;
+          logOnce(
             "log",
             c === "debug" ? "\u{1F50D} Stagepass debug mode enabled." : `\u{1F50C} Stagepass connected to: ${c}`
           );
-          paramProcessed = true;
         } else if (c) {
-          hasActiveSession = true;
-          spWarn(`Invalid domain: ${c}. Only .sp domains are allowed.`);
-          hasActiveSession = false;
+          logOnce("warn", `Invalid domain: ${c}. Only .sp domains are allowed.`);
         }
       }
       try {
         p.delete(P);
         const s = p.toString();
-        window.history.replaceState(
-          {},
-          "",
-          window.location.pathname + (s ? `?${s}` : "") + window.location.hash
-        );
+        history.replaceState({}, "", loc.pathname + (s ? `?${s}` : "") + loc.hash);
       } catch (_) {
       }
     }
@@ -441,17 +407,14 @@ var Stagepass = (() => {
       clearSession();
       sv = null;
     }
-    hasActiveSession = !!(sv && isValidDomain(sv));
-    if (sv && !paramProcessed && sv !== "debug" && hasActiveSession) {
-      log("log", `\u{1F50C} Stagepass connected to: ${sv}`);
-    }
+    const debug = sv === "debug";
+    hasActiveSession = !!sv;
+    if (sv && !paramProcessed && !debug) log("log", `\u{1F50C} Stagepass connected to: ${sv}`);
     const dev = !!sv;
-    const swap = !!sv && sv !== "debug";
+    const swap = dev && !debug;
     const dom = swap ? cleanDomain(sv) : null;
     const now = swap ? Date.now() : 0;
-    const cacheBust = now;
-    const sessionStartTime = now;
-    const hostname = window.location.hostname;
+    const hostname = loc.hostname;
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("localhost:") || hostname.startsWith("127.0.0.1:");
     const isLocal = swap || isLocalhost;
     const env = isLocal ? "local" : hostname.endsWith(".webflow.io") || stagingHosts.includes(hostname.toLowerCase()) ? "staging" : "production";
@@ -467,173 +430,147 @@ var Stagepass = (() => {
       theme: /* @__PURE__ */ new Set(),
       session: /* @__PURE__ */ new Set()
     };
-    function emit(event, payload) {
-      listeners[event].forEach((fn) => {
-        try {
-          fn(payload);
-        } catch (_) {
-        }
-      });
-    }
-    let clientInfo = getClientInfo();
-    function ensureClient() {
-      return clientInfo;
-    }
-    try {
-      if (window.matchMedia) {
-        const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
-        const lightMq = window.matchMedia("(prefers-color-scheme: light)");
-        const updateTheme = () => {
-          const c = clientInfo;
-          if (!(c == null ? void 0 : c.theme)) return;
-          if (darkMq.matches) {
-            c.theme.current = "dark";
-            c.theme.preferred = "dark";
-          } else if (lightMq.matches) {
-            c.theme.current = "light";
-            c.theme.preferred = "light";
-          } else {
-            c.theme.current = "unknown";
-            c.theme.preferred = "no-preference";
-          }
-          emit("theme", { ...c.theme });
-        };
-        if (typeof darkMq.addEventListener === "function") {
-          darkMq.addEventListener("change", updateTheme);
-          lightMq.addEventListener("change", updateTheme);
-        } else if (typeof darkMq.addListener === "function") {
-          darkMq.addListener(updateTheme);
-          lightMq.addListener(updateTheme);
-        }
+    const emit = (event, payload) => listeners[event].forEach((fn) => {
+      try {
+        fn(payload);
+      } catch (_) {
       }
+    });
+    const clientInfo = getClientInfo();
+    try {
+      const updateTheme = () => emit("theme", { ...Object.assign(clientInfo.theme, getThemeInfo()) });
+      ["dark", "light"].forEach((scheme) => {
+        const m = matchMedia(`(prefers-color-scheme: ${scheme})`);
+        if (m.addEventListener) m.addEventListener("change", updateTheme);
+        else if (m.addListener) m.addListener(updateTheme);
+      });
     } catch (_) {
     }
-    const updateViewport = () => {
-      const c = clientInfo;
-      if (!(c == null ? void 0 : c.viewport)) return;
-      c.viewport.width = window.innerWidth || 0;
-      c.viewport.height = window.innerHeight || 0;
-      c.viewport.dpr = window.devicePixelRatio || 1;
-    };
-    window.addEventListener("resize", updateViewport);
-    const stagepassObj = window.stagepass || {};
+    W.addEventListener("resize", () => {
+      const v = clientInfo.viewport;
+      v.width = W.innerWidth || 0;
+      v.height = W.innerHeight || 0;
+      v.dpr = W.devicePixelRatio || 1;
+    });
+    const stagepassObj = W.stagepass || {};
     const registry = createModuleRegistry(PKG_VERSION, spWarn);
     stagepassObj.vars = Object.freeze({
       isLocal,
       env,
       domain: dom || hostname,
-      timestamp: sessionStartTime,
+      timestamp: now,
       version: PKG_VERSION,
       client: clientInfo
     });
     stagepassObj.log = spLog;
     stagepassObj.warn = spWarn;
     stagepassObj.error = spError;
-    stagepassObj.resolveLocalUrl = (relativePath) => {
-      const v = stagepassObj.vars;
-      if (!swap || !dom || !relativePath) return "";
-      return buildLocalAssetUrl(dom, relativePath, v.timestamp || Date.now());
-    };
+    stagepassObj.resolveLocalUrl = (relativePath) => swap && dom && relativePath ? buildLocalAssetUrl(dom, relativePath, stagepassObj.vars.timestamp || Date.now()) : "";
     stagepassObj.env = () => detectRuntimeEnv(hostname, dom, stagingHosts);
     stagepassObj.is = (name) => stagepassObj.env() === name;
-    stagepassObj.can = (capability) => canCapability(ensureClient(), capability);
-    stagepassObj.client = (key) => {
-      const c = ensureClient();
-      if (key == null || key === "") return c;
-      return c[key];
-    };
+    stagepassObj.can = (capability) => canCapability(clientInfo, capability);
+    stagepassObj.client = (key) => key == null || key === "" ? clientInfo : clientInfo[key];
     stagepassObj.on = (event, fn) => {
-      if (event !== "theme" && event !== "session") {
-        return () => {
-        };
-      }
       const set = listeners[event];
+      if (!set || event !== "theme" && event !== "session") return () => {
+      };
       set.add(fn);
       return () => {
         set.delete(fn);
       };
     };
     stagepassObj.use = (name, version, factory) => registry.use(name, version, factory, stagepassObj);
-    window.stagepass = stagepassObj;
-    globalThis.stagepass = stagepassObj;
-    window.sp = stagepassObj;
-    globalThis.sp = stagepassObj;
+    W.stagepass = W.sp = stagepassObj;
+    globalThis.stagepass = globalThis.sp = stagepassObj;
     if (aliasName && isValidJsIdentifier(aliasName) && aliasName !== "sp" && aliasName !== "stagepass") {
-      if (isGlobalFree(window, aliasName)) {
-        window[aliasName] = stagepassObj;
-      }
-      if (isGlobalFree(globalThis, aliasName)) {
-        globalThis[aliasName] = stagepassObj;
+      [W, globalThis].forEach((g) => {
+        if (isGlobalFree(g, aliasName)) g[aliasName] = stagepassObj;
+      });
+    }
+    if (dev) {
+      try {
+        const FLAG = /* @__PURE__ */ Symbol.for("stagepass.flag");
+        Object.defineProperty(stagepassObj, FLAG, {
+          configurable: true,
+          value: (create) => {
+            delete stagepassObj[FLAG];
+            try {
+              renderFlag = create(debug ? "DEBUG" : "LOCAL", dom, flagState, () => {
+                clearSession();
+                hasActiveSession = true;
+                log("log", "\u{1F50C} Stagepass disconnected.");
+                emit("session", { active: false, domain: null, swap: false, debug: false });
+                loc.reload();
+              });
+            } catch (_) {
+            }
+          }
+        });
+        W.addEventListener("error", () => bump(1), true);
+        W.addEventListener("unhandledrejection", () => bump(1));
+        const src = loaderScript && loaderScript.src || "";
+        const s = d.createElement("script");
+        s.src = /\/loader(?:\.min)?\.js$/i.test(src.split(/[?#]/)[0]) ? new URL("flag.min.js", src).href : `https://cdn.jsdelivr.net/npm/@stagepass/loader@${PKG_VERSION}/dist/flag.min.js`;
+        s.async = true;
+        s.onerror = () => spWarn("Stagepass flag could not be loaded: " + s.src);
+        (d.head || d.documentElement).appendChild(s);
+      } catch (_) {
       }
     }
-    emit("session", {
-      active: hasActiveSession,
-      domain: sv,
-      swap,
-      debug: sv === "debug"
-    });
-    let lnaState = "unknown";
-    let lnaHint = null;
+    emit("session", { active: hasActiveSession, domain: sv, swap, debug });
     function resolveAssetUrl(el, productionSrc, localPath) {
-      if (swap && localPath && dom) {
-        return buildLocalAssetUrl(dom, localPath, cacheBust);
-      }
-      const perAssetVersion = el.getAttribute("data-stagepass-v");
-      const version = perAssetVersion || loaderVersionAttr;
-      if (version) {
-        return appendQueryParam(productionSrc, "v", version);
-      }
-      return productionSrc;
+      if (swap && localPath && dom) return buildLocalAssetUrl(dom, localPath, now);
+      const version = el.getAttribute("data-stagepass-v") || loaderVersionAttr;
+      return version ? appendQueryParam(productionSrc, "v", version) : productionSrc;
     }
     function extractLocalFilename(ps) {
       try {
-        const urlObj = new URL(ps);
-        const pathParts = urlObj.pathname.split("/");
-        return pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || null;
+        const parts = new URL(ps).pathname.split("/");
+        return parts[parts.length - 1] || parts[parts.length - 2] || null;
       } catch (e) {
-        const match = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
-        return match ? match[1] : null;
+        const m = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
+        return m ? m[1] : null;
       }
     }
-    function swapEl(sel, pathAttr, srcAttr, type, skipAttrs, seenLocalNames) {
-      document.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
+    const SKIP = [
+      "data-stagepass",
+      "data-stagepass-path",
+      "data-stagepass-cachebust",
+      "data-stagepass-v"
+    ];
+    function swapEl(sel, srcAttr, type, seen) {
+      d.querySelectorAll(`${sel}:not([data-stagepass-processed])`).forEach((el) => {
         try {
           el.setAttribute("data-stagepass-processed", "true");
-          let lp = el.getAttribute(pathAttr);
+          let lp = el.getAttribute("data-stagepass-path");
           const hadExplicitPath = !!lp;
           const ps = el.getAttribute(srcAttr);
           if (!ps) return;
-          if (!lp && ps && swap && dom) {
-            lp = extractLocalFilename(ps);
-          }
+          if (!lp && swap && dom) lp = extractLocalFilename(ps);
           if (swap && lp && !hadExplicitPath && hasActiveSession) {
-            const key = lp;
-            const count = (seenLocalNames.get(key) || 0) + 1;
-            seenLocalNames.set(key, count);
+            const count = (seen.get(lp) || 0) + 1;
+            seen.set(lp, count);
             if (count === 2) {
               spWarn(
-                `Multiple assets resolve to local file "${key}" without data-stagepass-path. Set unique paths to avoid collisions.`
+                `Multiple assets resolve to local file "${lp}" without data-stagepass-path. Set unique paths to avoid collisions.`
               );
             }
           }
           const url = resolveAssetUrl(el, ps, lp);
           if (!url) return;
-          const n = document.createElement(type);
-          if (type === "script") {
-            n.src = url;
-            Array.from(el.attributes).forEach((a) => {
-              const attr = a;
-              if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
-            });
-            applyScriptLoadOrder(n, el);
-          } else {
+          const n = d.createElement(type);
+          const isScript = type === "script";
+          if (isScript) n.src = url;
+          else {
             n.rel = "stylesheet";
             n.href = url;
-            Array.from(el.attributes).forEach((a) => {
-              const attr = a;
-              if (!skipAttrs.includes(attr.name)) n.setAttribute(attr.name, attr.value);
-            });
           }
+          for (const a of Array.from(el.attributes)) {
+            if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== "href")) {
+              n.setAttribute(a.name, a.value);
+            }
+          }
+          if (isScript) applyScriptLoadOrder(n, el);
           if (el.parentNode) {
             el.parentNode.insertBefore(n, el);
             el.remove();
@@ -646,99 +583,25 @@ var Stagepass = (() => {
     }
     const process = () => {
       try {
-        const seenLocalNames = /* @__PURE__ */ new Map();
-        swapEl(
-          "script[data-stagepass]",
-          "data-stagepass-path",
-          "data-src",
-          "script",
-          [
-            "data-src",
-            "data-stagepass",
-            "data-stagepass-path",
-            "data-stagepass-cachebust",
-            "data-stagepass-v"
-          ],
-          seenLocalNames
-        );
-        swapEl(
-          'link[rel="stylesheet"][data-stagepass]',
-          "data-stagepass-path",
-          "data-href",
-          "link",
-          [
-            "href",
-            "data-href",
-            "data-stagepass",
-            "data-stagepass-path",
-            "data-stagepass-cachebust",
-            "data-stagepass-v"
-          ],
-          seenLocalNames
-        );
+        const seen = /* @__PURE__ */ new Map();
+        swapEl("script[data-stagepass]", "data-src", "script", seen);
+        swapEl('link[rel="stylesheet"][data-stagepass]', "data-href", "link", seen);
       } catch (_) {
       }
     };
-    function updateFlagText(flag2) {
-      let text = sv === "debug" ? "STAGEPASS DEBUG" : "STAGEPASS ACTIVE";
-      if (lnaHint) {
-        text = sv === "debug" ? "STAGEPASS DEBUG \xB7 LNA" : "STAGEPASS \xB7 ALLOW LOCAL NETWORK";
+    let lnaCheck = null;
+    const checkLna = () => lnaCheck = lnaCheck || (swap ? queryLoopbackPermission().then((state) => {
+      const hint = lnaHintMessage(state);
+      if (hint) {
+        flagState.tip = hint;
+        spWarn(hint);
       }
-      flag2.textContent = text;
-      if (lnaHint) {
-        flag2.title = lnaHint;
-      }
-    }
-    function flag() {
-      if (!dev) return;
-      try {
-        const f = document.createElement("div");
-        f.id = "stagepass-flag";
-        updateFlagText(f);
-        f.style.cssText = 'font:12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-weight:bold;color:#fff;background:#D92662;padding:4px 6px;z-index:9999999999;position:fixed;top:0;right:0;cursor:pointer;border-radius:0 0 0 4px;user-select:none;';
-        f.addEventListener("click", () => {
-          clearSession();
-          hasActiveSession = true;
-          log("log", "\u{1F50C} Stagepass disconnected.");
-          emit("session", { active: false, domain: null, swap: false, debug: false });
-          window.location.reload();
-        });
-        const mount = () => {
-          if (document.body) document.body.appendChild(f);
-        };
-        if (document.body) mount();
-        else document.addEventListener("DOMContentLoaded", mount);
-        stagepassObj.__flagEl = f;
-      } catch (_) {
-      }
-    }
-    async function maybeCheckLnaAndProcess() {
-      if (swap) {
-        try {
-          lnaState = await queryLoopbackPermission();
-          lnaHint = lnaHintMessage(lnaState);
-          if (lnaHint) {
-            spWarn(lnaHint);
-            const flagEl = stagepassObj.__flagEl;
-            if (flagEl) updateFlagText(flagEl);
-          }
-        } catch (_) {
-          lnaState = "unknown";
-          lnaHint = null;
-        }
-      }
-      process();
-    }
-    void maybeCheckLnaAndProcess();
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => {
-        void maybeCheckLnaAndProcess();
-      });
-    }
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", flag);
-    } else {
-      flag();
-    }
+    }).catch(() => {
+    }) : Promise.resolve());
+    const run = () => {
+      void checkLna().then(process);
+    };
+    run();
+    if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", run);
   })();
 })();

@@ -89,7 +89,7 @@ try {
   };
   const loaderPack = packLocal(LOADER_DIR);
   const modulesPack = packLocal(MODULES_DIR);
-  for (const f of ['global.d.ts', 'dist/loader.min.js']) {
+  for (const f of ['global.d.ts', 'dist/loader.min.js', 'dist/flag.min.js']) {
     assert(loaderPack.files.has(f), `loader tarball has ${f}`);
   }
   for (const f of ['global.d.ts', 'inject.d.ts', 'cookies.d.ts', 'maintenance.d.ts', 'dist/all.min.js', 'dist/cookies.min.js']) {
@@ -222,8 +222,15 @@ try {
   // the real registry state, so this works before and after a release.
   const latestModules = run(npm, ['view', '@stagepass/modules', 'version'], { cwd: old, env }).trim();
   const latestLoader = run(npm, ['view', '@stagepass/loader', 'version'], { cwd: old, env }).trim();
-  const [maj, min] = latestModules.split('.').map(Number);
-  const perModule = maj > 2 || (maj === 2 && min >= 2);
+  // `^<latest>` installs the newest published stable of that major (also one
+  // only tagged `next`), so per-module types follow that version, as in the CLI.
+  const modulesVersions = JSON.parse(run(npm, ['view', '@stagepass/modules', 'versions', '--json'], { cwd: old, env }));
+  const [latestMaj] = latestModules.split('.').map(Number);
+  const perModule = [].concat(modulesVersions).some((v) => {
+    if (typeof v !== 'string' || v.includes('-')) return false;
+    const [maj, min] = v.split('.').map(Number);
+    return maj === latestMaj && (maj > 2 || min >= 2);
+  });
   const oldPkg = JSON.parse(readFileSync(join(old, 'package.json'), 'utf8'));
   assert(oldPkg.devDependencies['@stagepass/loader'] === `^${latestLoader}`, `upgrade writes published loader range ^${latestLoader}`);
   assert(oldPkg.devDependencies['@stagepass/modules'] === `^${latestModules}`, `upgrade writes published modules range ^${latestModules}`);
