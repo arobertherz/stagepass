@@ -25,6 +25,7 @@ Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay
 - `stagepass upgrade` only writes ranges that a published version satisfies. It reads `npm view <pkg> dist-tags versions` and writes `^<latest published 2.x>`; offline it writes `^2`. An explicit `--version` that is not published (for example a staged release awaiting approval) is refused before any file is written.
 - Types follow what is actually available: per-module entries (`@stagepass/modules/cookies`, …) are only written when a published or installed `@stagepass/modules` ships them (2.2.0 and later). Otherwise the umbrella `@stagepass/modules` is used, so `tsc` keeps passing on 2.0.0. After `npm install`, `new` reconciles the types with the installed package.
 - `stagepass upgrade` without a TTY maps the legacy `"modules": true` to `["all"]` instead of `[]`, so `sp.inject` / `sp.cookies` / `sp.maintenance` do not become type errors. A hint shows how to narrow the list (`--site-modules cookies`).
+- Generated JavaScript projects failed `tsc -p jsconfig.json` (`checkJs` + `strict`) on `window.Webflow` in `src/main.js`. The entry now uses a JSDoc cast; runtime code is unchanged.
 
 ### [2.2.0] - 2026-11-02
 

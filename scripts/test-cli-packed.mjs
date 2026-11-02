@@ -181,6 +181,14 @@ try {
       });
       rmSync(join(dir, 'src', 'sp-check.ts'));
       console.log(`✅ ${lang}/${modules}: tsc sees sp and only declared modules`);
+    } else {
+      // jsconfig has checkJs + strict: the generated JS must type check too.
+      run(npm, ['exec', '--yes', '--package', 'typescript@5', '--', 'tsc', '--noEmit', '-p', 'jsconfig.json'], {
+        cwd: dir,
+        env,
+        stdio: ['ignore', 'inherit', 'inherit'],
+      });
+      console.log(`✅ ${lang}/${modules}: tsc -p jsconfig.json passes (checkJs)`);
     }
 
     run(npm, ['run', 'build'], { cwd: dir, env, stdio: ['ignore', 'inherit', 'inherit'] });
