@@ -18,7 +18,7 @@
  * Needs network access to the npm registry (same as `npm ci`).
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -31,7 +31,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI_DIR = join(ROOT, 'packages', 'cli');
@@ -53,6 +53,308 @@ function assert(condition, message) {
   if (!condition) throw new Error(`Assertion failed: ${message}`);
 }
 
+/**
+ * Destroy child stdio so a surviving grandchild cannot keep the parent pipes open.
+ * @param {import('node:child_process').ChildProcess} child
+ */
+function destroyChildStdio(child) {
+  for (const stream of [child.stdin, child.stdout, child.stderr]) {
+    try {
+      stream?.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Signal a child; when `detached` was used, kill the whole process group (-pid).
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {NodeJS.Signals} signal
+ */
+function signalChild(child, signal) {
+  if (!child.pid) return;
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      process.kill(child.pid, signal);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Stop a child reliably: SIGTERM → await exit → SIGKILL fallback; always destroy stdio.
+ * @param {import('node:child_process').ChildProcess|null|undefined} child
+ * @param {{ timeoutMs?: number }} [opts]
+ * @returns {Promise<void>}
+ */
+async function stopChild(child, opts = {}) {
+  if (!child || !child.pid) return;
+  const timeoutMs = typeof opts.timeoutMs === 'number' ? opts.timeoutMs : 3000;
+  if (child.exitCode !== null || child.signalCode) {
+    destroyChildStdio(child);
+    return;
+  }
+  signalChild(child, 'SIGTERM');
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signalChild(child, 'SIGKILL');
+      setTimeout(resolve, 250);
+    }, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  destroyChildStdio(child);
+}
+
+/**
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {RegExp} re
+ * @param {number} [ms]
+ */
+function waitForChildOutput(child, re, ms = 20000) {
+  return new Promise((resolve, reject) => {
+    let buf = '';
+    const onData = (chunk) => {
+      buf += String(chunk);
+      if (re.test(buf)) {
+        cleanup();
+        resolve(buf);
+      }
+    };
+    const onExit = (code) => {
+      cleanup();
+      reject(new Error(`child exited (${code}): ${buf.slice(-500)}`));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`timeout waiting for ${re}: ${buf.slice(-500)}`));
+    }, ms);
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.stdout?.off('data', onData);
+      child.stderr?.off('data', onData);
+      child.off('exit', onExit);
+    };
+    child.stdout?.on('data', onData);
+    child.stderr?.on('data', onData);
+    child.on('exit', onExit);
+  });
+}
+
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {number} ms
+ */
+async function readSseEvents(reader, ms) {
+  /** @type {{ type: string, paths: string[] }[]} */
+  const events = [];
+  const dec = new TextDecoder();
+  let buf = '';
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  const pump = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() || '';
+      for (const part of parts) {
+        const line = part.split('\n').find((l) => l.startsWith('data: '));
+        if (line) events.push(JSON.parse(line.slice(6)));
+      }
+    }
+  })();
+  await timeout;
+  clearTimeout(timer);
+  await reader.cancel().catch(() => {});
+  await pump.catch(() => {});
+  return events;
+}
+
+const HOT_SWAP_HARD_TIMEOUT_MS = 90_000;
+
+/**
+ * CSS-only edit on a generated project must emit `{type:'css'}` (no reload);
+ * a JS edit must emit `{type:'reload'}`. Uses the packed CLI's createLiveServer
+ * over loopback HTTP (no Caddy).
+ *
+ * Spawns `node scripts/build.mjs --watch` directly (not via npm) so SIGTERM
+ * reaches the watch process; builds dispose esbuild on signal. Overall hard
+ * timeout kills children and fails clearly.
+ *
+ * @param {string} projectDir
+ * @param {string} npmPrefix
+ * @param {NodeJS.ProcessEnv} env
+ */
+async function assertCssHotSwap(projectDir, npmPrefix, env) {
+  const cliRoot = join(npmPrefix, 'lib', 'node_modules', '@stagepass', 'cli');
+  const liveServerPath = join(cliRoot, 'src', 'lib', 'live-server.js');
+  assert(existsSync(liveServerPath), `packed CLI live-server at ${liveServerPath}`);
+  const { createLiveServer, LIVE_PATH } = await import(pathToFileURL(liveServerPath).href);
+
+  /** @type {import('node:child_process').ChildProcess|null} */
+  let watchProc = null;
+  /** @type {{ close: () => Promise<void> }|null} */
+  let liveHandle = null;
+  let watchLog = '';
+  let hardTimedOut = false;
+
+  /**
+   * @param {RegExp} re
+   * @param {number} [ms]
+   * @param {number} [from]
+   */
+  function waitForWatchLog(re, ms = 20000, from = 0) {
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        const slice = watchLog.slice(from);
+        if (re.test(slice)) {
+          cleanup();
+          resolve(slice);
+        }
+      };
+      const onExit = (code, signal) => {
+        cleanup();
+        reject(
+          new Error(
+            `watch exited (${code}${signal ? `/${signal}` : ''}): ${watchLog.slice(-500)}`
+          )
+        );
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`timeout waiting for ${re}: ${watchLog.slice(-500)}`));
+      }, ms);
+      const onTick = () => check();
+      const cleanup = () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+        watchProc?.off('exit', onExit);
+      };
+      const interval = setInterval(onTick, 50);
+      watchProc?.on('exit', onExit);
+      check();
+    });
+  }
+
+  async function cleanupHotSwap() {
+    await stopChild(watchProc, { timeoutMs: 3000 });
+    watchProc = null;
+    if (liveHandle) {
+      await liveHandle.close().catch(() => {});
+      liveHandle = null;
+    }
+  }
+
+  const hardTimer = setTimeout(() => {
+    hardTimedOut = true;
+    void cleanupHotSwap();
+  }, HOT_SWAP_HARD_TIMEOUT_MS);
+
+  try {
+    // Direct node spawn (not `npm run watch`): npm exiting leaves the child
+    // `node scripts/build.mjs --watch` (+ esbuild service) alive and keeps
+    // piped stdio open forever. detached so we can kill the whole group.
+    watchProc = spawn(process.execPath, ['scripts/build.mjs', '--watch'], {
+      cwd: projectDir,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+    });
+    const append = (chunk) => {
+      watchLog += String(chunk);
+    };
+    watchProc.stdout?.on('data', append);
+    watchProc.stderr?.on('data', append);
+    await waitForWatchLog(/watching/);
+
+    const live = createLiveServer({
+      projectRoot: projectDir,
+      outDir: 'dist',
+      debounceMs: 50,
+    });
+    liveHandle = await live.listen(0);
+    const sseUrl = `http://127.0.0.1:${liveHandle.port}${LIVE_PATH}`;
+
+    const cssPath = existsSync(join(projectDir, 'src', 'styles.css'))
+      ? join(projectDir, 'src', 'styles.css')
+      : join(projectDir, 'src', 'styles.scss');
+    const jsPath = existsSync(join(projectDir, 'src', 'main.js'))
+      ? join(projectDir, 'src', 'main.js')
+      : join(projectDir, 'src', 'main.ts');
+
+    // --- CSS-only: expect exactly one css event, no reload ---
+    {
+      const res = await fetch(sseUrl);
+      assert(res.status === 200, 'SSE connect for css');
+      const reader = res.body.getReader();
+      await reader.read(); // : connected
+
+      const marker = watchLog.length;
+      const before = readFileSync(cssPath, 'utf8');
+      // Must change emitted CSS bytes (sass strips normal comments when compressed).
+      const token = String(Date.now());
+      writeFileSync(
+        cssPath,
+        `${before}\n.hotswap-css-probe { content: "${token}"; }\n`,
+        'utf8'
+      );
+      await waitForWatchLog(/rebuild css ok/, 20000, marker);
+      // Allow live-server debounce + content hash read
+      const events = await readSseEvents(reader, 800);
+      const dataEvents = events.filter((e) => e && (e.type === 'css' || e.type === 'reload'));
+      assert(
+        dataEvents.length === 1 && dataEvents[0].type === 'css',
+        `CSS-only edit => one css event, got ${JSON.stringify(dataEvents)}`
+      );
+      assert(
+        !dataEvents.some((e) => e.type === 'reload'),
+        'CSS-only edit must not emit reload'
+      );
+    }
+
+    // --- JS edit: expect reload ---
+    {
+      const res = await fetch(sseUrl);
+      assert(res.status === 200, 'SSE connect for js');
+      const reader = res.body.getReader();
+      await reader.read();
+
+      const marker = watchLog.length;
+      const before = readFileSync(jsPath, 'utf8');
+      writeFileSync(jsPath, `${before}\nconsole.log("hotswap-js ${Date.now()}");\n`, 'utf8');
+      await waitForWatchLog(/rebuild js ok/, 20000, marker);
+      const events = await readSseEvents(reader, 500);
+      const dataEvents = events.filter((e) => e && (e.type === 'css' || e.type === 'reload'));
+      assert(
+        dataEvents.some((e) => e.type === 'reload'),
+        `JS edit => reload, got ${JSON.stringify(dataEvents)}`
+      );
+    }
+
+    if (hardTimedOut) {
+      throw new Error(`CSS hot-swap check exceeded ${HOT_SWAP_HARD_TIMEOUT_MS}ms hard timeout`);
+    }
+    console.log('✅ js/all: CSS hot-swap SSE (css then reload) ok');
+  } finally {
+    clearTimeout(hardTimer);
+    await cleanupHotSwap();
+    if (hardTimedOut) {
+      throw new Error(`CSS hot-swap check exceeded ${HOT_SWAP_HARD_TIMEOUT_MS}ms hard timeout`);
+    }
+  }
+}
+
+async function main() {
 try {
   // Avoid inheriting a workspace-level npm prefix / config from the monorepo.
   const env = { ...process.env, npm_config_prefix: undefined };
@@ -200,6 +502,10 @@ try {
     run(npm, ['run', 'build'], { cwd: dir, env, stdio: ['ignore', 'inherit', 'inherit'] });
     assert(existsSync(join(dir, 'dist', 'manifest.json')), `${lang}: build wrote manifest`);
     console.log(`✅ ${lang}/${modules}: scaffold + install + build ok`);
+
+    if (lang === 'js' && modules === 'all') {
+      await assertCssHotSwap(dir, prefix, env);
+    }
   }
 
   // Old-style (2.0/2.1) project: no modules list, no managed block, no rule.
@@ -260,3 +566,6 @@ try {
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
+}
+
+await main();

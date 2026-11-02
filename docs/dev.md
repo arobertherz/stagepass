@@ -12,7 +12,7 @@ In a **linked** project directory:
 
 1. Starts a small event server on `127.0.0.1` (ephemeral port).
 2. Watches the project output directory (`dist` by default, or `outDir` in `stagepass.json`; always resolved inside the project root).
-3. Serves Server-Sent Events at `/__stagepass/live` with payloads `{"type":"css"|"reload","paths":[…]}` (project-relative URL paths). Heartbeat comment every 25s. Cap 32 connections. No other routes (404). Request data is never reflected into responses.
+3. Serves Server-Sent Events at `/__stagepass/live` with payloads `{"type":"css"|"reload","paths":[…]}` (project-relative URL paths). Heartbeat comment every 25s. Cap 32 connections. No other routes (404). Request data is never reflected into responses. Classification is **content-based**: each watched file under the output dir is fingerprinted (sha256); identical rewrites (same bytes) are ignored and produce no broadcast; `manifest.json`, dotfiles, `~` backups and `.map` files are ignored. A batch where only `.css` files really changed emits `{type:"css"}` (stylesheet cache-bust / swap); any other real change emits `{type:"reload"}`.
 4. Writes a validated `devPort` (integer 1024..65535) into `~/.stagepass/projects.json`, regenerates the site’s Caddy block with `handle /__stagepass/live` → `reverse_proxy 127.0.0.1:<port>` (`flush_interval -1`) **before** `file_server`, and reloads Caddy. CORS and Private Network Access preflight match the asset routes (same origin allowlist; no `*`).
 5. Spawns `npm run watch` without a shell, inherits stdio, forwards SIGINT/SIGTERM, exits with the child code.
 6. On exit (or when a stale `devPid` is dead on the next `start` / `link` / `dev`), clears `devPort` and reloads Caddy again.
@@ -37,6 +37,8 @@ EventSource('https://<domain.sp>/__stagepass/live')
 **Why always during a swap session (no `?stagepass=dev` flag):** the EventSource fails closed when `stagepass dev` is not running (close after the first error, no retry loop, one debug log line only in debug mode). That avoids a second URL parameter to teach, and keeps the core growth to a few lines that reuse the existing flag base URL. Visitors without a session never download the chunk and never hit `/__stagepass/live`.
 
 On `css` events, every `<link rel="stylesheet">` whose `href` starts with the local base is replaced with a clone that has `?t=<timestamp>` (integrity removed; insert before remove). On `reload`, `location.reload()`. Stream payloads are JSON-parsed in try/catch; unknown types are ignored. Nothing from the stream is evaluated.
+
+Scaffolded projects (`scripts/build.mjs --watch`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a `dist` file only when its bytes changed, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload.
 
 ## Security notes
 

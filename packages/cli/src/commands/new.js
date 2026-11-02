@@ -17,7 +17,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { LOADER_VERSION } from '../lib/versions.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
@@ -442,7 +442,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       install,
       dryRun: options.dryRun === true,
       loaderVersion:
-        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
+        deps.packagesVersion || deps.cliVersion || LOADER_VERSION,
     },
   };
 }

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { buildWebflowSnippets } from './snippets.js';
 import { CURSOR_RULE_PATH, buildCursorRule, buildManagedBlock } from './ai-guide.js';
 import { typesForModules } from './project-modules.js';
-import { STAGEPASS_PACKAGES_VERSION, packagesRange } from './versions.js';
+import { LOADER_VERSION, packagesRange } from './versions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,7 +94,7 @@ export function scaffoldPhpTemplateMap(options = {}) {
 export function buildPackageJson(options) {
   // Never derive the range from the CLI or target version: a release can be
   // staged but unpublished (ETARGET). The major range matches the @2 embeds.
-  const range = options.packagesRange || packagesRange(STAGEPASS_PACKAGES_VERSION);
+  const range = options.packagesRange || packagesRange(LOADER_VERSION);
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
 
@@ -170,7 +170,7 @@ export function buildStagepassExtraLines(options) {
  * @returns {Promise<{ relativePath: string, contents: string }[]>}
  */
 export async function planScaffoldFiles(options, deps = {}) {
-  const version = options.loaderVersion || STAGEPASS_PACKAGES_VERSION;
+  const version = options.loaderVersion || LOADER_VERSION;
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
   const entryJs = isTs ? 'src/main.ts' : 'src/main.js';

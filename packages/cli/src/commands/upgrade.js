@@ -9,7 +9,7 @@ import {
 
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { LOADER_VERSION } from '../lib/versions.js';
 import {
   PACKAGES_MAJOR_RANGE,
   fetchPublished,
@@ -333,7 +333,7 @@ export async function upgrade(options = {}, deps = {}) {
   }
 
   const snippets = buildWebflowSnippets({
-    version: targets['@stagepass/loader']?.resolved || STAGEPASS_PACKAGES_VERSION,
+    version: targets['@stagepass/loader']?.resolved || LOADER_VERSION,
     moduleList: resolved.modules,
   });
   printWebflowSnippets(snippets, log);
