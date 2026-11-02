@@ -37,7 +37,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
 - Dynamically created scripts use `async=false` unless the original had `async`; `defer` is added when neither async nor defer was set (keeps classic order).
-- Chrome Local Network Access: best-effort permission query; warning in the flag card and counter, and a console hint when state is `prompt` or `denied`.
+- Chrome Local Network Access: best-effort permission query; when a local file fails at the network level and the state is `prompt` or `denied`, the error in the flag card includes the hint.
 
 ## Loader tag attributes
 
@@ -82,14 +82,15 @@ Shown only while a session is active (including debug).
 | Hover / focus (first tap on touch) | expands to the left: `LOCAL` or `DEBUG`, warning and error counters (`99+` above 99) |
 | Click (second tap on touch) | session card |
 
-- Card: project, session domain, files swapped locally, the latest 50 warnings and errors (time, `file:line`, text only, long messages truncated). Click a message to copy it.
-- Card footer: Reload, Debug on/off (reloads with `?stagepass=debug` and back to the previous session), End session.
+- Card: project, session domain, a collapsed list of swapped files (live → local, `js`/`css`, `ok` / `404` / `failed`; only loaded files count as swapped) and the latest 50 message groups (text only, truncated, repeats as `×N` with the last time). Rows are one-liners; details show source (`local` / `live` / `external`), `file:line:col` and the stack. "Always expanded" is stored per origin. "Copy all" and per-message "Copy" write Markdown (page URL without query, project, loader version, messages; no cookies or storage).
+- Card footer: Reload, "Debug mode" / "Back to local" (reloads with `?stagepass=debug` and back to the previous session, also from a new tab), End session. Without a session to return to the button is disabled and the card explains why.
+- Locally swapped files get `crossorigin="anonymous"` (unless the tag already sets `crossorigin`) for full error details. Without a CORS header from the local server the file loads again without it and a warning says so. Production files and debug sessions are unchanged.
 - Only "End session" clears the session. Esc or a click outside closes the card.
-- Warnings: `sp.warn`, `sp.log('warn', …)`, loader warnings (for example the LNA hint).
-- Errors: `sp.error`, `sp.log('error', …)`, uncaught errors, failed resource loads, unhandled rejections. A local file that cannot be loaded shows "Local server not reachable … Run stagepass doctor".
+- Warnings: `sp.warn`, `sp.log('warn', …)`, `console.warn` (only during a session; the original console still runs), loader warnings.
+- Errors: `sp.error`, `sp.log('error', …)`, `console.error`, uncaught errors (with stack), failed resource loads, unhandled rejections (with stack). Local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor". Sanitized errors from other origins show as "Error in a cross-origin script (details only in DevTools console)".
 - Accessibility: the pill is a button with `aria-expanded`, the card a `role="dialog"`; focus moves into the card and back to the pill; reduced motion makes all changes instant.
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
-- The UI lives in `dist/flag.min.js` (about 2.6 KB gzip) and `dist/flag-card.min.js` (about 3.4 KB gzip, fetched on first expand). Both are fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
+- The UI lives in `dist/flag.min.js` (about 2.7 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, next to the loader URL (or from jsDelivr at the same version when the loader is served under another file name). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Runtime API
 

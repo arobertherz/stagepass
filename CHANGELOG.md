@@ -154,6 +154,28 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.0-beta.4] - 2026-11-02
+
+Prerelease of the loader only, on top of 2.3.0-beta.3. CLI and modules are unchanged. Visitors without a session see no change: no console wrapping, no `crossorigin`, no extra requests.
+
+#### Added
+
+- Inspector details: every message keeps its source (`local`, `live`, `external`), `file:line:col` and the stack. Rows are one-liners; a click shows the details. Repeats are grouped as `×N` with the last time.
+- Locally swapped files load with `crossorigin="anonymous"`, so their errors keep message, location and stack. If the local server sends no CORS header, the file loads again without it and a warning explains that details are limited.
+- `console.warn` and `console.error` on the page are captured during a session (the original still runs; arguments are serialized safely with depth and size limits). Unhandled rejections show the message and stack.
+- Failed local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor". The Local Network Access hint is added only to that network-level failure.
+- Collapsed list of swapped files (live → local, `js`/`css`, `ok` / `404` / `failed`, full URLs in the tooltip).
+- "Always expanded" toggle (stored per origin), "Copy all" and per-message "Copy" as Markdown (page URL without query, project, loader version, messages; no cookies or storage).
+
+#### Changed
+
+- "Script error." from another origin is shown as "Error in a cross-origin script (details only in DevTools console)" with source `external`.
+- The swapped-files count only includes files that actually loaded.
+- The Debug toggle is labelled by its action ("Debug mode" / "Back to local"). After the reload the pill expands briefly to show the new mode. The session to return to is stored in `localStorage`, so it also works from a new tab or a restored session. Without one the button is visibly disabled and the card says why.
+- Card layout: fixed header and footer with an inner scroll area that never leaves the viewport; `max-width: calc(100vw - 24px)` and 44px touch targets on mobile.
+- After a click outside the card, focus returns to the pill (unless the click focused something on the page).
+- Sizes: `loader.min.js` 13.1 KB minified / 5.9 KB gzip (beta.3: 11.0 KB / 5.0 KB), `flag.min.js` 2.7 KB gzip, `flag-card.min.js` 4.8 KB gzip. Size budgets raised accordingly.
+
 ### [2.3.0-beta.3] - 2026-11-02
 
 Prerelease of the loader only, on top of 2.3.0-beta.2. CLI and modules are unchanged. The public `sp` API, attributes, events and URL swapping behave as before.

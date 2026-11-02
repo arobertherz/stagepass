@@ -75,7 +75,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Auto Path Detection:** If `data-stagepass-path` is omitted, filename is automatically extracted from production URL.
 * **Debug Mode:** Enable logging without URL swapping for troubleshooting.
 * **Quiet Stagepass logs:** Stagepass' own `sp.log` / `sp.warn` / `sp.error` only print when a session is active (optional legacy global console mute via `data-stagepass-mute-console`).
-* **Modular Architecture:** Core loader (~11.3 KB minified, ~5.1 KB gzipped) with optional modules loaded as separate script tags.
+* **Modular Architecture:** Core loader (~13.1 KB minified, ~5.9 KB gzipped) with optional modules loaded as separate script tags.
 * **Programmatic API:** Access environment variables and inject assets programmatically via `sp` (preferred) or `stagepass` / `window.stagepass`.
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
@@ -177,7 +177,7 @@ stagepass link my-project --origin www.example.com --origin my-project.webflow.i
 * Default CORS allowlist is local only (`*.sp`, `localhost`, `127.0.0.1`). Live/Webflow hosts are **not** included until you pass `--origin` (repeatable). See [CLI Reference](#-cli-reference).
 
 ### 3. Integrate with Webflow
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~11.3 KB (~5.1 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). The minified loader is ~13.1 KB (~5.9 KB gzipped) and safe for production. Prefer the major pin `@2` (see [Version pinning](#-version-pinning)).
 
 **Option 1 - CDN (jsDelivr):**
 
@@ -290,10 +290,11 @@ The `?stagepass=` parameter is removed from the address bar via `history.replace
 | Click | session card |
 
 * On touch devices the first tap expands the pill and the second opens the card.
-* The card shows the project, the session domain, how many files are swapped locally and the latest 50 warnings and errors with time and `file:line`. Click a message to copy it. The footer has Reload, a Debug on/off toggle and End session.
+* The card shows the project, the session domain, a collapsed list of the swapped files (live → local, `js`/`css`, status `ok`, `404` or `failed`) and the latest 50 warnings and errors. Each message is a one-line row (repeats grouped as `×N` with the last time); click it for the details: source (`local`, `live` or `external`), `file:line:col` and the stack. **Always expanded** keeps all details open (remembered per site). **Copy all** and the per-message **Copy** button copy a Markdown report (page URL without query, project, loader version, messages). The footer has Reload, **Debug mode** / **Back to local** and End session. Without a local session to return to, the toggle is disabled and the card says why.
+* Locally swapped files load with `crossorigin="anonymous"`, so their errors keep message, location and stack (the `stagepass` dev server sends the CORS header). If a local server sends no CORS header, the file loads again without it and the card says so. Errors from other origins without CORS show as "Error in a cross-origin script (details only in DevTools console)".
 * Only **End session** clears the session (same as `?stagepass=off`). Esc or a click outside just closes the card.
-* Warnings count `sp.warn(...)` and `sp.log('warn', ...)`, including loader warnings such as the Chrome Local Network Access hint.
-* Errors count `sp.error(...)`, `sp.log('error', ...)`, uncaught errors, failed resource loads and unhandled promise rejections on the page. When the local dev server cannot be reached, the card says "Local server not reachable" and suggests `stagepass doctor`.
+* Warnings count `sp.warn(...)`, `sp.log('warn', ...)` and `console.warn(...)` on the page, plus loader warnings.
+* Errors count `sp.error(...)`, `sp.log('error', ...)`, `console.error(...)`, uncaught errors, failed resource loads and unhandled promise rejections on the page. A missing local file shows "Local file not found (404)". When the local dev server cannot be reached, the card says "Local server not reachable", suggests `stagepass doctor` and, if Chrome blocks local network access, adds that hint.
 * Messages are always shown as plain text. Counters above 99 show `99+`.
 * The flag renders in a Shadow DOM, so site CSS cannot restyle it and it cannot restyle the site. It is keyboard accessible, and with `prefers-reduced-motion` all changes are instant.
 * The flag UI ships as two separate files, `dist/flag.min.js` and `dist/flag-card.min.js` (the card loads on first expand), served from the same location as the loader (for example `…/@stagepass/loader@2/dist/flag.min.js`). With a strict Content Security Policy, `script-src` must allow that origin (for jsDelivr: `https://cdn.jsdelivr.net`). If it is blocked, swapping still works and the console shows a warning.

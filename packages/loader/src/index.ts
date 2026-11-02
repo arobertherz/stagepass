@@ -51,54 +51,97 @@ declare const __STAGEPASS_VERSION__: string;
 
   const p = new URLSearchParams(loc.search);
 
-  /** [file, line] of the first caller outside the loader */
-  function getCallerLocation(): string[] | null {
-    try {
-      const stack = (new Error().stack || '').split('\n');
-      for (let i = 3; i < stack.length; i++) {
-        const m = stack[i].match(/([^/]+\.(?:js|ts))(?:[?#][^:]*)?:(\d+)/);
-        if (m && !LOADER_RE.test(m[1])) return [m[1], m[2]];
-      }
-    } catch (_) {}
-    return null;
-  }
-
   let hasActiveSession = false;
   // Dev flag state (rendered by the lazy flag chunk once it has loaded).
-  // Messages are plain text, capped to the latest 50 and truncated; the flag never parses HTML.
-  const flagState = { n: [0, 0], m: [], swapped: 0 } as unknown as FlagState;
+  // Messages are plain text, grouped, capped to the latest 50 and truncated; the flag never parses HTML.
+  const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION } as unknown as FlagState;
   let renderFlag: (() => void) | null = null;
+  const draw = () => renderFlag && renderFlag();
   const time = () => new Date().toTimeString().slice(0, 8);
   const fileOf = (u: string) => (u || '').split(/[?#]/)[0].split('/').pop() || '';
-  const str = (a: unknown): string => {
-    if (typeof a === 'string') return a;
-    if (a instanceof Error) return a.message || a.name;
+  const cut = (t: string, n: number) => (t.length > n ? t.slice(0, n) + '…' : t);
+  /** Safe text for any console argument (depth and size limited, never throws). */
+  const str = (a: unknown, depth = 0): string => {
     try {
-      const j = JSON.stringify(a);
-      if (j !== undefined) return j;
-    } catch (_) {}
-    return String(a);
+      if (typeof a === 'string') return depth ? JSON.stringify(a) : a;
+      if (a instanceof Error) return a.name + ': ' + a.message;
+      if (!a || typeof a !== 'object') return String(a);
+      if (a instanceof Node) return '<' + a.nodeName.toLowerCase() + '>';
+      const arr = Array.isArray(a);
+      if (depth > 2) return arr ? '[…]' : '{…}';
+      const keys = Object.keys(a);
+      const out = keys.slice(0, 20).map((k) => (arr ? '' : k + ': ') + str((a as any)[k], depth + 1));
+      if (keys.length > 20) out.push('…');
+      return cut(arr ? '[' + out.join(', ') + ']' : '{' + out.join(', ') + '}', 1000);
+    } catch (_) {
+      return '[unserializable]';
+    }
   };
-  const note = (i: number, text: string, src = '', line: string | number = '') => {
+  // First stack frame outside the loader: [url, line, col]
+  const frame = (stack: string, skip = 0): string[] | null => {
+    const lines = (stack || '').split('\n');
+    for (let i = skip; i < lines.length; i++) {
+      const m = lines[i].match(/([a-z][\w+.-]*:\/\/[^\s()]+?):(\d+):(\d+)/i);
+      if (m && !LOADER_RE.test(fileOf(m[1]))) return [m[1], m[2], m[3]];
+    }
+    return null;
+  };
+  let dom: string | null = null;
+  // local = served from the .sp domain, live = any other readable script, external = sanitized
+  const srcOf = (u: string) => (!u ? 'external' : dom && !u.indexOf(`https://${dom}/`) ? 'local' : 'live');
+  const note = (i: number, text: string, url = '', line: unknown = '', col: unknown = '', stack = '', src?: string) => {
     flagState.n[i]++;
     const m = flagState.m;
-    m.push({ type: i ? 'error' : 'warn', time: time(), src, line, text: text.length > 500 ? text.slice(0, 500) + '…' : text });
+    const x = {
+      type: i ? 'error' : 'warn',
+      time: time(),
+      src: src || (url ? srcOf(url) : ''),
+      file: fileOf(url),
+      url: url.split(/[?#]/)[0],
+      line: line ? String(line) : '',
+      col: col ? String(col) : '',
+      text: cut(text, 500),
+      stack: cut(stack, 2000),
+      c: 1,
+    } as any;
+    const k = (y: any) => y.type + y.text + y.url + y.line + y.col;
+    for (let j = m.length - 1; j >= 0; j--)
+      if (k(m[j]) === k(x)) {
+        x.c = m[j].c + 1;
+        m.splice(j, 1);
+        break;
+      }
+    m.push(x);
     if (m.length > 50) m.shift();
-    if (renderFlag) renderFlag();
+    draw();
+  };
+  const noteErr = (i: number, prefix: string, args: unknown[], at: string[] | null) => {
+    const er = args.find((a) => a instanceof Error) as Error | undefined;
+    const st = (er && er.stack) || '';
+    const f = frame(st) || at;
+    note(i, prefix + args.map((a) => str(a)).join(' '), f ? f[0] : '', f ? f[1] : '', f ? f[2] : '', st);
+  };
+  let busy = false;
+  const print = (fn: () => void) => {
+    busy = true;
+    try {
+      fn();
+    } catch (_) {}
+    busy = false;
   };
 
   function log(level: string, ...args: unknown[]) {
     if (!hasActiveSession) return;
-    const where = getCallerLocation();
-    if (level === 'warn' || level === 'error')
-      note(level === 'warn' ? 0 : 1, args.map(str).join(' '), where ? where[0] : '', where ? where[1] : '');
-    try {
-      const pre = `[🎫 ${time()}${where ? ' | ' + where.join(':') : ''}]`;
+    // First caller outside the loader: Error, log, sp.* wrapper, caller
+    const at = frame(new Error().stack || '', 3);
+    if (level === 'warn' || level === 'error') noteErr(level === 'warn' ? 0 : 1, '', args, at);
+    print(() => {
+      const pre = `[🎫 ${time()}${at ? ' | ' + fileOf(at[0]) + ':' + at[1] : ''}]`;
       const c = console as any;
       if (level === 'error') c.log(`%c${pre}`, 'color:red;font-weight:bold', ...args);
       else if (c[level]) c[level](pre, ...args);
       else c.log(pre, level, ...args);
-    } catch (_) {}
+    });
   }
 
   function spLog(...args: unknown[]) {
@@ -175,7 +218,7 @@ declare const __STAGEPASS_VERSION__: string;
 
   const dev = !!sv;
   const swap = dev && !debug;
-  const dom = swap ? cleanDomain(sv as string) : null;
+  dom = swap ? cleanDomain(sv as string) : null;
   const now = swap ? Date.now() : 0;
 
   const hostname = loc.hostname;
@@ -317,25 +360,39 @@ declare const __STAGEPASS_VERSION__: string;
           } catch (_) {}
         },
       });
-      // Capture phase also sees failed <script>/<link>/<img> loads
+      // Capture phase also sees failed <script>/<link>/<img> loads (swapped files report themselves)
       W.addEventListener(
         'error',
         (e: any) => {
           const t = e.target;
           const u = t && t !== W && (t.src || t.href);
-          if (typeof u === 'string')
-            note(
-              1,
-              dom && !u.indexOf(`https://${dom}/`)
-                ? `Local server not reachable: ${fileOf(u)}. Run stagepass doctor`
-                : 'Failed to load ' + u,
-              fileOf(u)
-            );
-          else note(1, e.message || 'Script error', fileOf(e.filename), e.lineno || '');
+          if (typeof u === 'string') {
+            if (!mine.has(t)) note(1, 'Failed to load ' + u.split(/[?#]/)[0], u);
+          } else if (/^Script error\.?$/.test(e.message || '') && !e.filename)
+            // Sanitized by the browser: the script came from another origin without CORS
+            note(1, 'Error in a cross-origin script (details only in DevTools console)', '', '', '', '', 'external');
+          else
+            note(1, e.message || 'Script error', e.filename || '', e.lineno, e.colno, (e.error && e.error.stack) || '');
         },
         true
       );
-      W.addEventListener('unhandledrejection', (e: any) => note(1, 'Unhandled rejection: ' + str(e.reason)));
+      W.addEventListener('unhandledrejection', (e: any) => noteErr(1, 'Unhandled rejection: ', [e.reason], null));
+      // console.warn/error from page code (the original always runs, our own output is skipped)
+      const c = console as any;
+      ['warn', 'error'].forEach((k, i) => {
+        const o = c[k];
+        if (typeof o !== 'function') return;
+        c[k] = function (this: unknown, ...args: unknown[]) {
+          if (!busy) {
+            busy = true;
+            try {
+              noteErr(i, '', args, frame(new Error().stack || '', 2));
+            } catch (_) {}
+            busy = false;
+          }
+          return o.apply(this, args);
+        };
+      });
       const s = d.createElement('script');
       s.src = base + 'flag.min.js';
       s.async = true;
@@ -362,6 +419,45 @@ declare const __STAGEPASS_VERSION__: string;
       const m = ps.match(/\/([^\/\?#]+)(?:\?|#|$)/);
       return m ? m[1] : null;
     }
+  }
+
+  // Swapped files: status per file; "swapped" counts only files that loaded
+  const mine = new WeakSet<Element>();
+  let lnaState = '';
+  function track(n: any, live: string, local: string, isScript: boolean, retry: ((cors: boolean) => any) | null) {
+    const f = { live, local, type: isScript ? 'js' : 'css', st: '' };
+    const name = fileOf(local);
+    mine.add(n);
+    flagState.f.push(f as any);
+    n.addEventListener('load', () => {
+      f.st = 'ok';
+      flagState.swapped++;
+      draw();
+    });
+    n.addEventListener('error', () => {
+      const fail = (st: string, i: number, text: string) => {
+        f.st = st;
+        note(i, text, local);
+      };
+      const F = W.fetch;
+      if (typeof F !== 'function') return fail('failed', 1, `Failed to load ${name}`);
+      // CORS HEAD probe (the local server sends Access-Control-Allow-Origin, also on 404)
+      F(local, { method: 'HEAD', cache: 'no-store' }).then(
+        (r: any) => fail(r.ok ? 'failed' : String(r.status), 1, r.ok ? `Failed to load ${name}` : `Local file not found (${r.status}): ${name}`),
+        () =>
+          F(local, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' }).then(
+            () => {
+              // Reachable but without CORS headers: load again without crossorigin
+              if (!retry) return fail('failed', 1, `Failed to load ${name}`);
+              flagState.f.splice(flagState.f.indexOf(f as any), 1);
+              n.replaceWith(retry(false));
+              note(0, `Local server sends no CORS header for ${name}. Loaded without crossorigin, error details are limited`, local);
+            },
+            () =>
+              fail('failed', 1, `Local server not reachable: ${name}. Run stagepass doctor` + (lnaHintMessage(lnaState as any) ? '. ' + lnaHintMessage(lnaState as any) : ''))
+          )
+      );
+    });
   }
 
   const SKIP = [
@@ -392,20 +488,27 @@ declare const __STAGEPASS_VERSION__: string;
         }
         const url = resolveAssetUrl(el, ps, lp);
         if (!url) return;
-        if (swap && lp && dom) flagState.swapped++;
-        const n: any = d.createElement(type);
+        const local = swap && lp && dom;
         const isScript = type === 'script';
-        if (isScript) n.src = url;
-        else {
-          n.rel = 'stylesheet';
-          n.href = url;
-        }
-        for (const a of Array.from(el.attributes as NamedNodeMap)) {
-          if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== 'href')) {
-            n.setAttribute(a.name, a.value);
+        const make = (cors: boolean) => {
+          const n: any = d.createElement(type);
+          // CORS mode: errors in local files keep message, location and stack
+          if (cors) n.crossOrigin = 'anonymous';
+          if (isScript) n.src = url;
+          else {
+            n.rel = 'stylesheet';
+            n.href = url;
           }
-        }
-        if (isScript) applyScriptLoadOrder(n, el);
+          for (const a of Array.from(el.attributes as NamedNodeMap)) {
+            if (a.name !== srcAttr && !SKIP.includes(a.name) && (isScript || a.name !== 'href')) {
+              n.setAttribute(a.name, a.value);
+            }
+          }
+          if (isScript) applyScriptLoadOrder(n, el);
+          if (local) track(n, ps, url, isScript, cors ? make : null);
+          return n;
+        };
+        const n = make(!!local && !el.hasAttribute('crossorigin'));
         if (el.parentNode) {
           el.parentNode.insertBefore(n, el);
           el.remove();
@@ -433,8 +536,7 @@ declare const __STAGEPASS_VERSION__: string;
     (lnaCheck = lnaCheck || (swap
       ? queryLoopbackPermission()
           .then((state) => {
-            const hint = lnaHintMessage(state);
-            if (hint) spWarn(hint);
+            lnaState = state;
           })
           .catch(() => {})
       : Promise.resolve()));
