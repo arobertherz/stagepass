@@ -286,7 +286,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.3.1" : "0.0.0";
+    const PKG_VERSION = true ? "2.3.2" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function flagBase(v, file) {
       if (typeof v !== "string" || !(v = v.trim())) return null;
