@@ -238,6 +238,10 @@ export async function detectSite(siteInput, deps = {}) {
         if (next.username || next.password) {
           return { ok: false, url: current, error: 'Redirect URL contains credentials.' };
         }
+        // INV-2: no port at all, :443 included (URL drops it, so check the raw Location).
+        if (next.port || hasExplicitPort(location)) {
+          return { ok: false, url: current, error: 'Redirect URL contains a port and was not followed.' };
+        }
         current = next.toString();
         continue;
       }
