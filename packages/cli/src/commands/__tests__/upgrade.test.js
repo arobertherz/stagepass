@@ -415,6 +415,14 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
     expect(snippetVersions(out)).toEqual(['2.2.0']);
   });
 
+  it('[AC-7] --version pin wins when package.json lists only @stagepass/modules', async () => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies', version: '2.1.0' }, published('2.3.4', ['2.1.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.1.0']);
+    expect(out).toContain('(e.g. @2.1.0)');
+  });
+
   it('[INV-4][AC-7] --version with build metadata does not reach the snippet', async () => {
     await writePkg({ '@stagepass/loader': '^2.0.0' });
     const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');

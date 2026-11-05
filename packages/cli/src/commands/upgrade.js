@@ -324,22 +324,30 @@ export async function upgrade(options = {}, deps = {}) {
     if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
-  // Snippet version: --version pin of loader on 2.x wins; else published/installed/bundled.
-  const loaderTarget = targets['@stagepass/loader'];
-  let snippetVersion =
-    options.version != null &&
-    loaderTarget?.resolved &&
-    satisfiesSimple(loaderTarget.resolved, PACKAGES_MAJOR_RANGE)
-      ? loaderTarget.resolved
-      : null;
+  // Snippet: --version pin of loader on 2.x wins even without loader in package.json.
+  let loaderPub = '@stagepass/loader' in published ? published['@stagepass/loader'] : undefined;
+  const getLoaderPub = async () => {
+    if (loaderPub !== undefined) return loaderPub;
+    const lookup = deps.fetchPublished || ((name) => fetchPublished(name, { exec: deps.exec || defaultExec }));
+    loaderPub = await lookup('@stagepass/loader');
+    return loaderPub;
+  };
+  let snippetVersion = null;
+  if (options.version != null) {
+    let t = targets['@stagepass/loader'];
+    if (!t) {
+      try {
+        t = resolvePackageTarget('@stagepass/loader', options.version, await getLoaderPub());
+      } catch (e) {
+        log(chalk.red(e instanceof Error ? e.message : String(e)));
+        return 1;
+      }
+    }
+    if (t.resolved && satisfiesSimple(t.resolved, PACKAGES_MAJOR_RANGE)) snippetVersion = t.resolved;
+  }
   if (!snippetVersion) {
-    const loaderPublished =
-      '@stagepass/loader' in published
-        ? published['@stagepass/loader']
-        : await (deps.fetchPublished ||
-            ((name) => fetchPublished(name, { exec: deps.exec || defaultExec })))('@stagepass/loader');
     snippetVersion = await resolveSnippetLoaderVersion({
-      published: loaderPublished,
+      published: await getLoaderPub(),
       cwd,
       bundled: STAGEPASS_PACKAGES_VERSION,
       fse,
