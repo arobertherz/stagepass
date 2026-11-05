@@ -102,6 +102,80 @@ describe('resolveProjectOrigin', () => {
     });
     expect(await resolveProjectOrigin('/other', {}, { loadProjects, realpath: async (x) => x })).toBeNull();
   });
+
+  it('[F-6] warns once for stagepass.json origin with a port without echoing it', async () => {
+    const logs = [];
+    const result = await resolveProjectOrigin(
+      '/p',
+      { origin: 'my-site.webflow.io:443' },
+      { log: (m) => logs.push(String(m)), loadProjects: async () => ({ projects: {} }) }
+    );
+    expect(result).toBeNull();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/stagepass\.json origin/i);
+    expect(logs[0]).toMatch(/port/i);
+    expect(logs[0]).not.toContain('my-site.webflow.io:443');
+  });
+
+  it('[F-6] warns once for a linked origin with a port without echoing it', async () => {
+    const logs = [];
+    const loadProjects = async () => ({
+      projects: { p: { root: '/p', origins: ['my-site.webflow.io:443'] } },
+    });
+    const result = await resolveProjectOrigin('/p', {}, {
+      log: (m) => logs.push(String(m)),
+      loadProjects,
+      realpath: async (x) => x,
+    });
+    expect(result).toBeNull();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/linked origin from stagepass link/i);
+    expect(logs[0]).toMatch(/port/i);
+    expect(logs[0]).not.toContain('my-site.webflow.io:443');
+  });
+
+  it.each([
+    ['evil\u001b[31m.example:443', '\u001b'],
+    ['evil\n.example:443', '\n'],
+  ])('[F-6] warning for control-character origin %j does not echo raw value', async (origin, forbidden) => {
+    const logs = [];
+    const result = await resolveProjectOrigin(
+      '/p',
+      { origin },
+      { log: (m) => logs.push(String(m)), loadProjects: async () => ({ projects: {} }) }
+    );
+    expect(result).toBeNull();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).not.toContain(forbidden);
+    expect(logs[0]).not.toContain(origin);
+    expect(logs[0]).toMatch(/port/i);
+  });
+
+  it('[F-6] valid origin produces no warning and same resolution as before', async () => {
+    const logs = [];
+    const result = await resolveProjectOrigin(
+      '/p',
+      { origin: 'a.webflow.io' },
+      { log: (m) => logs.push(String(m)) }
+    );
+    expect(result).toEqual({ origin: 'a.webflow.io', source: 'stagepass.json' });
+    expect(logs).toEqual([]);
+  });
+
+  it('[F-6] skipped stagepass.json origin falls through to a valid linked origin', async () => {
+    const logs = [];
+    const loadProjects = async () => ({
+      projects: { p: { root: '/p', origins: ['ok.webflow.io'] } },
+    });
+    const result = await resolveProjectOrigin(
+      '/p',
+      { origin: 'my-site.webflow.io:443' },
+      { log: (m) => logs.push(String(m)), loadProjects, realpath: async (x) => x }
+    );
+    expect(result).toEqual({ origin: 'ok.webflow.io', source: 'stagepass link' });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatch(/stagepass\.json origin/i);
+  });
 });
 
 describe('resolveUpgradeModules precedence', () => {

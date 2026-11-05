@@ -59,19 +59,30 @@ export function declaredModules(data) {
   return result.ok ? result.modules : null;
 }
 
+/** Warn when a stored origin is skipped; never echoes the raw value (F-6). */
+function warnSkippedOrigin(log, source, error) {
+  if (!log) return;
+  log(
+    /port/i.test(error)
+      ? `Warning: ${source} was skipped: it contains a port, which is not allowed; use the host only, e.g. my-site.webflow.io.`
+      : `Warning: ${source} was skipped: it is not a usable site host.`
+  );
+}
+
 /**
  * Live origin for a project: stagepass.json `origin`, else the first concrete
  * (non-wildcard) origin stored by `stagepass link` for this project folder.
  *
  * @param {string} cwd
  * @param {Record<string, unknown> | null} data
- * @param {{ loadProjects?: typeof loadProjects, realpath?: (p: string) => Promise<string> }} [deps]
+ * @param {{ loadProjects?: typeof loadProjects, realpath?: (p: string) => Promise<string>, log?: (msg: string) => void }} [deps]
  * @returns {Promise<{ origin: string, source: 'stagepass.json' | 'stagepass link' } | null>}
  */
 export async function resolveProjectOrigin(cwd, data, deps = {}) {
   if (data && typeof data.origin === 'string' && data.origin.trim() !== '') {
     const check = normalizeSiteUrl(data.origin);
     if (check.ok) return { origin: check.host, source: 'stagepass.json' };
+    warnSkippedOrigin(deps.log, 'stagepass.json origin', check.error);
   }
   const load = deps.loadProjects || loadProjects;
   const realpath = deps.realpath || ((p) => fs.realpath(p));
@@ -99,6 +110,7 @@ export async function resolveProjectOrigin(cwd, data, deps = {}) {
     for (const origin of Array.isArray(entry.origins) ? entry.origins : []) {
       const check = normalizeSiteUrl(String(origin));
       if (check.ok) return { origin: check.host, source: 'stagepass link' };
+      warnSkippedOrigin(deps.log, 'linked origin from stagepass link', check.error);
     }
   }
   return null;
@@ -147,7 +159,7 @@ export async function resolveUpgradeModules(input, deps) {
     if (!check.ok) return { ok: false, error: check.error };
     origin = check.host;
   } else {
-    const found = await resolveProjectOrigin(cwd, data, { loadProjects: deps.loadProjects });
+    const found = await resolveProjectOrigin(cwd, data, { loadProjects: deps.loadProjects, log });
     origin = found ? found.origin : null;
   }
 
