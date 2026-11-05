@@ -175,3 +175,69 @@ describe('detectSite', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('detectSite: redirect targets (INV-2)', () => {
+  /** Fake fetch: the first answer is `first`, every later request would get a loader page. */
+  const fakeFetch = (first) => {
+    let calls = 0;
+    return vi.fn(async () => (calls++ === 0 ? first : htmlResponse(fixture('single.html'))));
+  };
+  const requested = (fetch) => fetch.mock.calls.map(([url]) => String(url));
+
+  const statuses = [301, 302, 307, 308];
+  const targets = [
+    ['https with a non-default port', 'https://app.com:8443/'],
+    ['https with an explicit :443', 'https://app.com:443/'],
+    ['protocol-relative with a port', '//app.com:8443/de/'],
+    ['http', 'http://app.com/'],
+    ['https with credentials', 'https://user:pw@app.com/'],
+  ];
+
+  describe.each(statuses)('HTTP %i', (status) => {
+    it.each(targets)('does not follow a redirect to %s', async (_label, location) => {
+      const fetch = fakeFetch(redirect(location, status));
+      const r = await detectSite('app.com', { fetch });
+      expect(r.ok).toBe(false);
+      expect(r.error).toEqual(expect.any(String));
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(requested(fetch)).toEqual(['https://app.com/']);
+    });
+  });
+
+  it('stops a redirect chain at the first hop with a port', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirect('https://www.app.com/'))
+      .mockResolvedValueOnce(redirect('/de/', 302))
+      .mockResolvedValueOnce(redirect('https://www.app.com:8443/de/home', 307))
+      .mockResolvedValue(htmlResponse(fixture('single.html')));
+    const r = await detectSite('app.com', { fetch });
+    expect(r.ok).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(requested(fetch)).toEqual(['https://app.com/', 'https://www.app.com/', 'https://www.app.com/de/']);
+    expect(requested(fetch).some((url) => url.includes(':8443'))).toBe(false);
+  });
+
+  it('stops a redirect chain at an explicit :443 hop', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirect('https://www.app.com/', 308))
+      .mockResolvedValueOnce(redirect('https://www.app.com:443/de/', 301))
+      .mockResolvedValue(htmlResponse(fixture('single.html')));
+    const r = await detectSite('app.com', { fetch });
+    expect(r.ok).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(requested(fetch)).toEqual(['https://app.com/', 'https://www.app.com/']);
+  });
+
+  it('stops a redirect chain at an http hop', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirect('https://www.app.com/'))
+      .mockResolvedValueOnce(redirect('http://www.app.com/de/', 302))
+      .mockResolvedValue(htmlResponse(fixture('single.html')));
+    const r = await detectSite('app.com', { fetch });
+    expect(r.ok).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
