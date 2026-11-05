@@ -340,11 +340,29 @@ describe('dev flag inspector', () => {
     const { card, q } = await openCard();
     const items = Array.from(card!.querySelectorAll('.it'));
     expect(items.length).toBe(2);
-    expect(items[1].querySelector('.mt')?.textContent).toMatch(/^×3\d\d:\d\d:\d\d$/);
+    // F-5: ×N and the time must be separated by a space for screen readers and tests.
+    expect(items[1].querySelector('.mt')?.textContent).toMatch(/^×3 \d\d:\d\d:\d\d$/);
     expect(q('.lh .ct')?.textContent).toBe('3 errors · 1 warning');
     boom();
     expect(card!.querySelector('.it .tx')?.textContent).toBe('Error: boom');
     expect(card!.querySelector('.it .mt b')?.textContent).toBe('×4');
+    expect(card!.querySelector('.it .mt')?.textContent).toMatch(/^×4 \d\d:\d\d:\d\d$/);
+  });
+
+  it('message meta keeps a space between ×N and the time (F-5, AC-7)', async () => {
+    startSession('my-project.sp');
+    await boot();
+    const boom = () =>
+      window.dispatchEvent(
+        new ErrorEvent('error', { message: 'space', filename: 'https://x.test/a.js', lineno: 1, colno: 1 })
+      );
+    boom();
+    boom();
+    const { card } = await openCard();
+    const mt = card!.querySelector('.it .mt')!;
+    expect(mt.querySelector('b')?.textContent).toBe('×2');
+    expect(mt.textContent).toMatch(/^×2 \d\d:\d\d:\d\d$/);
+    expect(mt.textContent).not.toMatch(/×\d\d:/); // no digit of the count glued to HH
   });
 
   it('captures console.warn/error (original still runs), errors with stack, no recursion', async () => {
