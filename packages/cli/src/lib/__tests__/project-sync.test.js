@@ -112,9 +112,11 @@ describe('resolveProjectOrigin', () => {
     );
     expect(result).toBeNull();
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatch(/stagepass\.json origin/i);
-    expect(logs[0]).toMatch(/port/i);
+    expect(logs[0]).toBe(
+      'Skipped stagepass.json origin: it contains a port. Use the host only, e.g. my-site.webflow.io.'
+    );
     expect(logs[0]).not.toContain('my-site.webflow.io:443');
+    expect(/[\u0000-\u001f]/.test(logs[0])).toBe(false);
   });
 
   it('[F-6] warns once for a linked origin with a port without echoing it', async () => {
@@ -129,9 +131,11 @@ describe('resolveProjectOrigin', () => {
     });
     expect(result).toBeNull();
     expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatch(/linked origin from stagepass link/i);
-    expect(logs[0]).toMatch(/port/i);
+    expect(logs[0]).toBe(
+      'Skipped linked origin from stagepass link: it contains a port. Use the host only, e.g. my-site.webflow.io.'
+    );
     expect(logs[0]).not.toContain('my-site.webflow.io:443');
+    expect(/[\u0000-\u001f]/.test(logs[0])).toBe(false);
   });
 
   it.each([
@@ -148,7 +152,33 @@ describe('resolveProjectOrigin', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]).not.toContain(forbidden);
     expect(logs[0]).not.toContain(origin);
-    expect(logs[0]).toMatch(/port/i);
+    expect(logs[0]).toMatch(/^Skipped stagepass\.json origin: it contains a port\./);
+    expect(/[\u0000-\u001f]/.test(logs[0])).toBe(false);
+  });
+
+  it('[F-6] wildcard linked origin produces no warning', async () => {
+    const logs = [];
+    const loadProjects = async () => ({
+      projects: { p: { root: '/p', origins: ['*.webflow.io'] } },
+    });
+    const result = await resolveProjectOrigin('/p', {}, {
+      log: (m) => logs.push(String(m)),
+      loadProjects,
+      realpath: async (x) => x,
+    });
+    expect(result).toBeNull();
+    expect(logs).toEqual([]);
+  });
+
+  it('[F-6] non-port invalid origin produces no warning', async () => {
+    const logs = [];
+    const result = await resolveProjectOrigin(
+      '/p',
+      { origin: 'not a usable host!!!' },
+      { log: (m) => logs.push(String(m)), loadProjects: async () => ({ projects: {} }) }
+    );
+    expect(result).toBeNull();
+    expect(logs).toEqual([]);
   });
 
   it('[F-6] valid origin produces no warning and same resolution as before', async () => {

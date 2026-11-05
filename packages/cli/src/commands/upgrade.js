@@ -203,10 +203,10 @@ export async function upgrade(options = {}, deps = {}) {
     return 1;
   }
 
-  if (options.site != null && String(options.site).trim() !== '') {
-    const siteCheck = normalizeSiteUrl(String(options.site));
-    if (!siteCheck.ok) {
-      log(chalk.red(siteCheck.error));
+  if (options.site) {
+    const c = normalizeSiteUrl(options.site);
+    if (!c.ok) {
+      log(chalk.red(c.error));
       return 1;
     }
   }
