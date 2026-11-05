@@ -599,3 +599,89 @@ describe('new: declared modules', () => {
     expect(r.config.siteModules).toEqual(['cookies']);
   });
 });
+
+describe('new: snippet version is the resolved loader version (AC-14)', () => {
+  /** @type {string} */
+  let tmp;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-snip-'));
+  });
+  afterEach(async () => {
+    await fs.remove(tmp);
+  });
+
+  const run = (name, opts, extra = {}) => {
+    const logs = [];
+    return createNew(
+      name,
+      { yes: true, dir: path.join(tmp, name), git: false, author: 'T', ...opts },
+      {
+        isTTY: false,
+        argv: ['--yes', '--no-git'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: tmp,
+        log: (m) => logs.push(String(m ?? '')),
+        error: (m) => logs.push(String(m ?? '')),
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+        spawn: vi.fn(),
+        ...extra,
+      }
+    ).then((code) => ({ code, out: logs.join('\n'), dir: path.join(tmp, name) }));
+  };
+  const published = (latest, versions) => vi.fn(async () => ({ distTags: { latest }, versions }));
+  const snippetVersions = (text) => [...text.matchAll(/data-stagepass-version="([^"]*)"/g)].map((m) => m[1]);
+  const expectSnippetVersion = async ({ out, dir }, version) => {
+    const readme = await fs.readFile(path.join(dir, 'README.md'), 'utf8');
+    expect(snippetVersions(out).length).toBeGreaterThan(0);
+    expect(new Set(snippetVersions(out))).toEqual(new Set([version]));
+    expect(new Set(snippetVersions(readme))).toEqual(new Set([version]));
+  };
+
+  it.each([
+    ['cookies'],
+    ['inject,maintenance'],
+    ['none'],
+    ['all'],
+  ])('uses the latest published loader, never the CLI or bundled version (--site-modules %s)', async (mods) => {
+    const r = await run(`snip-${mods.replace(/\W/g, '-')}`, { siteModules: mods }, {
+      fetchPublished: published('2.3.4', ['2.0.0', '2.2.0', '2.3.4']),
+      cliVersion: '2.2.1',
+      packagesVersion: '2.2.0',
+    });
+    expect(r.code).toBe(0);
+    await expectSnippetVersion(r, '2.3.4');
+  });
+
+  it('stays on the 2.x line when latest moved to a new major', async () => {
+    const r = await run('snip-major', { siteModules: 'cookies' }, {
+      fetchPublished: published('3.0.0', ['2.0.0', '2.3.4', '3.0.0']),
+      cliVersion: '2.2.1',
+    });
+    expect(r.code).toBe(0);
+    await expectSnippetVersion(r, '2.3.4');
+  });
+
+  it('offline uses the bundled loader version, never the CLI version', async () => {
+    const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+    const r = await run('snip-offline', { siteModules: 'cookies' }, {
+      fetchPublished: async () => null,
+      cliVersion: '9.8.7',
+    });
+    expect(r.code).toBe(0);
+    await expectSnippetVersion(r, STAGEPASS_PACKAGES_VERSION);
+    expect(r.out).not.toContain('9.8.7');
+  });
+
+  it('adds module tags only for declared modules', async () => {
+    const fetchPublished = published('2.3.4', ['2.3.4']);
+    const a = await run('snip-tags', { siteModules: 'cookies,maintenance' }, { fetchPublished });
+    expect(a.code).toBe(0);
+    expect(a.out).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(a.out).toContain('@stagepass/modules@2/dist/maintenance.min.js');
+    expect(a.out).not.toContain('/dist/inject.min.js');
+    expect(a.out).not.toContain('/dist/all.min.js');
+    const b = await run('snip-none', { siteModules: 'none' }, { fetchPublished });
+    expect(b.code).toBe(0);
+    expect(b.out).not.toMatch(/<script src="[^"]*@stagepass\/modules/);
+  });
+});
