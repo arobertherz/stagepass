@@ -15,6 +15,16 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.2] - 2026-11-05
+
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+
+#### Fixed
+
+- Live site detection no longer follows a redirect to a URL with an explicit port. `:443`, `:0443` and an empty port are rejected too; the check reads the raw `Location` value, because URL parsing drops the default port.
+- `--site` for `stagepass new` and `stagepass upgrade` (and a stored `origin`) rejects every explicit port, including `:443` and `:0443`, before any network access or file write. The error no longer echoes the input.
+- Webflow snippets printed by `stagepass new` and `stagepass upgrade` set `data-stagepass-version` to the newest published 2.x `@stagepass/loader`. Offline they use the installed stable 2.x loader, otherwise the bundled loader version (2.2.0), never the CLI version. An explicit `upgrade --version` pin on 2.x is used as is.
+
 ### [2.2.1] - 2026-11-02
 
 Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
