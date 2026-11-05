@@ -20,6 +20,35 @@ const STAGEPASS_SRC_RE =
   /^(?:https?:)?\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?\/dist\/([a-z]+)(?:\.min)?\.js(?:[?#].*)?$/i;
 
 /**
+ * Whether a raw URL or URL reference names a port explicitly, `:443` and
+ * `:0443` included. `new URL` drops the default port, so the authority is
+ * read from the raw string, split the way the WHATWG parser splits an
+ * https URL: C0 controls and spaces trimmed, tab and newlines removed, `\`
+ * read as `/`, any run of slashes after `https:` or at the start of a
+ * protocol-relative reference, userinfo up to the last `@`.
+ *
+ * @param {string} input absolute URL, protocol-relative or relative reference
+ * @returns {boolean}
+ */
+function hasExplicitPort(input) {
+  const s = String(input == null ? '' : input)
+    .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '')
+    .replace(/[\t\n\r]/g, '')
+    .replace(/\\/g, '/');
+  const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(s);
+  const rest = scheme ? s.slice(scheme[0].length) : s;
+  // Without `//` there is no authority (path or query reference).
+  if (!rest.startsWith('//')) return false;
+  const authority = rest.replace(/^\/+/, '').split(/[/?#]/, 1)[0];
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
+  if (hostPort.startsWith('[')) {
+    const end = hostPort.indexOf(']');
+    return end === -1 || hostPort.slice(end + 1).includes(':');
+  }
+  return hostPort.includes(':');
+}
+
+/**
  * Normalize a live site input (host or https URL) to an https URL.
  * Rejects http, wildcards, credentials, and invalid hosts.
  *
@@ -199,6 +228,10 @@ export async function detectSite(siteInput, deps = {}) {
         }
         if (next.username || next.password) {
           return { ok: false, url: current, error: 'Redirect URL contains credentials.' };
+        }
+        // INV-2: no port at all, :443 included (URL drops it, so check the raw Location).
+        if (next.port || hasExplicitPort(location)) {
+          return { ok: false, url: current, error: 'Redirect URL contains a port and was not followed.' };
         }
         current = next.toString();
         continue;

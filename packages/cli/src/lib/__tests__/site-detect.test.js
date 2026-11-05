@@ -242,3 +242,58 @@ describe('detectSite: redirect targets (INV-2)', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('detectSite: port spellings in the raw Location (INV-2)', () => {
+  /** Raw Location header as sent, without Headers normalization. */
+  const rawRedirect = (location, status = 302) => ({
+    status,
+    ok: false,
+    headers: { get: (name) => (String(name).toLowerCase() === 'location' ? location : null) },
+  });
+  const run = async (location) => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(rawRedirect(location))
+      .mockResolvedValue(htmlResponse(fixture('single.html')));
+    const r = await detectSite('app.com', { fetch });
+    return { r, urls: fetch.mock.calls.map(([url]) => String(url)) };
+  };
+
+  it.each([
+    ['//app.com:443/'],
+    ['https://app.com:0443/'],
+    ['HTTPS://APP.COM:443/'],
+    ['https://app.com:/'],
+    ['https://app.com:443?x=1'],
+    ['https://app.com:443#top'],
+    ['https:////app.com:443/'],
+    ['/\\app.com:443/'],
+    ['\\\\app.com:443/de/'],
+    ['https:\\\\app.com:443/'],
+    [' https://app.com:443/ '],
+    ['https://app.com\t:443/'],
+    ['https://app.com\n:443/'],
+    ['https://[::1]:443/'],
+    ['//[2001:db8::1]:8443/x'],
+  ])('rejects %j without a second request', async (location) => {
+    const { r, urls } = await run(location);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port/);
+    expect(urls).toEqual(['https://app.com/']);
+  });
+
+  it.each([
+    ['/de/a:b', 'https://app.com/de/a:b'],
+    ['?q=a:b', 'https://app.com/?q=a:b'],
+    ['/de/#x:1', 'https://app.com/de/'],
+    ['https:/de/x:1', 'https://app.com/de/x:1'],
+    ['//www.app.com/de/', 'https://www.app.com/de/'],
+    ['https://www.app.com/a:b?c=d:e#f:g', 'https://www.app.com/a:b?c=d:e'],
+    ['https://[2001:db8::1]/', 'https://[2001:db8::1]/'],
+  ])('follows %j (colons outside the authority are not a port)', async (location, expected) => {
+    const { r, urls } = await run(location);
+    expect(r.ok).toBe(true);
+    expect(urls).toHaveLength(2);
+    expect(urls[1].split('#')[0]).toBe(expected);
+  });
+});
