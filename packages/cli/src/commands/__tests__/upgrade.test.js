@@ -394,10 +394,10 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
 
   it('offline uses the installed loader version', async () => {
     await writePkg({ '@stagepass/loader': '^2.0.0' });
-    await fsx.outputJson(path.join(dir, 'node_modules/@stagepass/loader/package.json'), { name: '@stagepass/loader', version: '2.3.1' });
+    await fsx.outputJson(path.join(dir, 'node_modules/@stagepass/loader/package.json'), { name: '@stagepass/loader', version: '2.3.9' });
     const { code, out } = await run({ siteModules: 'cookies' }, async () => null);
     expect(code).toBe(0);
-    expect(snippetVersions(out)).toEqual(['2.3.1']);
+    expect(snippetVersions(out)).toEqual(['2.3.9']);
   });
 
   it('offline without an installed loader uses the bundled loader version', async () => {
