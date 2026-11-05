@@ -2,8 +2,8 @@ name: Tests
 
 on:
   push:
-    # release/** and fix/2.3.1-* run on push only, deliberately not on pull_request.
-    branches: [master, main, 'release/**', 'fix/2.3.1-*']
+    # release/** and fix/2.3.2-* run on push only, deliberately not on pull_request.
+    branches: [master, main, 'release/**', 'fix/2.3.2-*']
   pull_request:
     branches: [master, main]
 
