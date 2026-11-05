@@ -191,6 +191,7 @@ describe('detectSite: redirect targets (INV-2)', () => {
     ['protocol-relative with a port', '//app.com:8443/de/'],
     ['http', 'http://app.com/'],
     ['https with credentials', 'https://user:pw@app.com/'],
+    ['https with a password only', 'https://:pw@app.com/'],
   ];
 
   describe.each(statuses)('HTTP %i', (status) => {
