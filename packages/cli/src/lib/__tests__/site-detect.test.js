@@ -202,4 +202,24 @@ describe('normalizeSiteUrl: any explicit port is rejected (AC-22)', () => {
     expect(r.ok).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    'example.com:',
+    'https://example.com:/',
+    'HTTPS://EXAMPLE.COM:443/',
+    ' example.com:443 ',
+    'https://user@example.com:443/',
+    'https:\\\\example.com:443/',
+  ])('rejects %s and names the port as the reason', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port/);
+  });
+
+  it.each(['example.com', 'https://example.com', 'https://example.com/'])(
+    'still accepts %s',
+    (input) => {
+      expect(normalizeSiteUrl(input)).toMatchObject({ ok: true });
+    },
+  );
 });
