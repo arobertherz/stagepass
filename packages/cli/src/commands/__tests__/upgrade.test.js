@@ -408,6 +408,28 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
     expect(snippetVersions(out)).toEqual([STAGEPASS_PACKAGES_VERSION]);
   });
 
+  it('an explicit --version pin of the loader wins on the 2.x line', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies', version: '2.2.0' }, published('2.3.4', ['2.2.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.2.0']);
+  });
+
+  it('a --version dist-tag on another major does not leave the 2.x line', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.3.4', next: '3.0.0' }, versions: ['2.3.4', '3.0.0'] }));
+    const { code, out } = await run({ siteModules: 'cookies', version: 'next' }, fetchPublished);
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+
+  it('prints the resolved version as exact pin example', async () => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('2.3.4', ['2.3.4']));
+    expect(code).toBe(0);
+    expect(out).toContain('(e.g. @2.3.4)');
+  });
+
   it('adds module tags only for declared modules', async () => {
     await writePkg({ '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' });
     const { code, out } = await run({ siteModules: 'inject' }, published('2.3.4', ['2.3.4']));

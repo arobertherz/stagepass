@@ -25,6 +25,7 @@ import {
   fetchPublished,
   installedHasPerModuleTypes,
   rangeHasPerModuleTypes,
+  resolveSnippetLoaderVersion,
 } from '../lib/registry.js';
 import { updateConfigTypes } from '../lib/project-sync.js';
 
@@ -289,8 +290,8 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       remote: remoteCheck.remote,
       install,
       dryRun: options.dryRun === true,
-      loaderVersion:
-        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
+      // Bundled loader version until createNew resolves the published one (AC-14).
+      loaderVersion: deps.packagesVersion || STAGEPASS_PACKAGES_VERSION,
     },
   };
 }
@@ -387,6 +388,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     config.perModuleTypes =
       rangeHasPerModuleTypes(published ? published.versions : null, PACKAGES_MAJOR_RANGE) === true;
     if (!config.perModuleTypes) log(chalk.yellow(PER_MODULE_TYPES_HINT));
+  }
+
+  // Snippets (README and console) pin the resolved loader, never the CLI version (AC-14).
+  if (!config.dryRun) {
+    const loader = await (deps.fetchPublished || fetchPublished)('@stagepass/loader', { exec });
+    config.loaderVersion = await resolveSnippetLoaderVersion({
+      published: loader,
+      cwd: targetDir,
+      bundled: config.loaderVersion,
+      fse,
+    });
   }
 
   let files;

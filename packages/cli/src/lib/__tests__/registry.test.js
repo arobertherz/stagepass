@@ -7,10 +7,13 @@ import {
   compareSemver,
   fetchPublished,
   installedHasPerModuleTypes,
+  installedLoaderVersion,
   maxSatisfying,
   rangeHasPerModuleTypes,
+  resolveSnippetLoaderVersion,
   satisfiesSimple,
 } from '../registry.js';
+import { STAGEPASS_PACKAGES_VERSION } from '../versions.js';
 
 describe('registry helpers', () => {
   it('major range matches the @2 embed policy', () => {
@@ -70,5 +73,57 @@ describe('registry helpers', () => {
     } finally {
       await fsx.remove(dir);
     }
+  });
+});
+
+describe('resolveSnippetLoaderVersion (AC-14)', () => {
+  const pub = (latest, versions) => ({ distTags: { latest }, versions });
+  const withInstalled = async (version, fn) => {
+    const dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-loader-ver-'));
+    try {
+      if (version !== undefined) {
+        await fsx.outputJson(path.join(dir, 'node_modules/@stagepass/loader/package.json'), { name: '@stagepass/loader', version });
+      }
+      return await fn(dir);
+    } finally {
+      await fsx.remove(dir);
+    }
+  };
+
+  it('uses the newest published 2.x loader, even over an installed one', async () => {
+    await withInstalled('2.1.0', async (cwd) => {
+      expect(await resolveSnippetLoaderVersion({ published: pub('2.3.4', ['2.0.0', '2.3.4', '2.2.0']), cwd })).toBe('2.3.4');
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['2.3.4', '3.0.0', '3.1.0']), cwd })).toBe('2.3.4');
+      expect(await resolveSnippetLoaderVersion({ published: pub('2.4.0-beta.1', ['2.3.4', '2.4.0-beta.1']), cwd })).toBe('2.3.4');
+    });
+  });
+
+  it('offline (or no 2.x published) uses the installed loader, then the bundled one', async () => {
+    await withInstalled('2.3.9', async (cwd) => {
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.3.9');
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['3.0.0']), cwd, bundled: '2.2.0' })).toBe('2.3.9');
+    });
+    await withInstalled(undefined, async (cwd) => {
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.7' })).toBe('2.2.7');
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(STAGEPASS_PACKAGES_VERSION);
+    });
+  });
+
+  it.each([['3.0.0'], ['1.9.0'], ['2.4.0-rc.1'], ['2.3.4"><script>'], [42], ['']])(
+    'ignores an installed loader with version %s',
+    async (version) => {
+      await withInstalled(version, async (cwd) => {
+        expect(await installedLoaderVersion(cwd)).toBeNull();
+        expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.2.0');
+      });
+    }
+  );
+
+  it('ignores an unreadable installed package.json', async () => {
+    await withInstalled(undefined, async (cwd) => {
+      await fsx.outputFile(path.join(cwd, 'node_modules/@stagepass/loader/package.json'), '{ not json');
+      expect(await installedLoaderVersion(cwd)).toBeNull();
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.2.0');
+    });
   });
 });

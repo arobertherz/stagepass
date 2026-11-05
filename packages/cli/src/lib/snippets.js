@@ -80,7 +80,7 @@ export function buildWebflowSnippets(options) {
 
 /**
  * Print head/footer snippets with section labels.
- * @param {{ head: string, footer: string }} snippets
+ * @param {{ head: string, footer: string, exactPin?: string }} snippets
  * @param {(msg: string) => void} [log]
  */
 export function printWebflowSnippets(snippets, log = console.log) {
@@ -89,6 +89,6 @@ export function printWebflowSnippets(snippets, log = console.log) {
   log('\nWebflow Custom Code (Footer):');
   log(snippets.footer);
   log(
-    `\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. @${STAGEPASS_PACKAGES_VERSION}).`
+    `\nOptional exact pin example (instead of @2): replace @2 with the exact version (e.g. ${snippets.exactPin || `@${STAGEPASS_PACKAGES_VERSION}`}).`
   );
 }

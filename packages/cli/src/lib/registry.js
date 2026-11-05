@@ -11,6 +11,7 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import { defaultExec } from './exec.js';
 import { MODULE_IDS } from './project-modules.js';
+import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
 
 /** Major range used for new projects (matches the `@2` CDN embed policy). */
 export const PACKAGES_MAJOR_RANGE = '^2';
@@ -166,4 +167,44 @@ export async function installedHasPerModuleTypes(cwd, fse = fs) {
     if (!(await fse.pathExists(path.join(dir, `${id}.d.ts`)))) return false;
   }
   return true;
+}
+
+/**
+ * Version of the @stagepass/loader installed in a project, or null when it is
+ * missing or not a stable 2.x release.
+ * @param {string} cwd project directory
+ * @param {typeof fs} [fse]
+ * @returns {Promise<string | null>}
+ */
+export async function installedLoaderVersion(cwd, fse = fs) {
+  const file = path.join(cwd, 'node_modules', '@stagepass', 'loader', 'package.json');
+  try {
+    if (!(await fse.pathExists(file))) return null;
+    const pkg = await fse.readJson(file);
+    const version = typeof pkg?.version === 'string' ? pkg.version.trim() : '';
+    return satisfiesSimple(version, PACKAGES_MAJOR_RANGE) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loader version for the generated Webflow snippets (AC-14), never the CLI version.
+ *
+ * - registry reachable: newest published @stagepass/loader on the 2.x line
+ * - offline: the @stagepass/loader installed in the project (what really runs)
+ * - otherwise: the bundled, tested loader version
+ *
+ * @param {object} options
+ * @param {{ distTags: Record<string, string>, versions: string[] } | null} options.published
+ *   `fetchPublished('@stagepass/loader')` result (same timeout and limits as all registry reads)
+ * @param {string} options.cwd project directory
+ * @param {string} [options.bundled]
+ * @param {typeof fs} [options.fse]
+ * @returns {Promise<string>}
+ */
+export async function resolveSnippetLoaderVersion({ published, cwd, bundled, fse = fs }) {
+  const best = published ? maxSatisfying(published.versions, PACKAGES_MAJOR_RANGE) : null;
+  if (best) return best;
+  return (await installedLoaderVersion(cwd, fse)) || bundled || STAGEPASS_PACKAGES_VERSION;
 }
