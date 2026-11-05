@@ -154,6 +154,20 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.3.3] - 2026-11-05
+
+Patch release of the loader only. CLI and modules are unchanged. 2.3.2 was not published; its changes ship in 2.3.3.
+
+#### Fixed
+
+- "Back to local" in the session card also returns to a previous session on `localhost` or `localhost:<port>`, not only `*.sp`.
+- Valid ports for `localhost:<port>` (session domain, URL mode and return target) are exactly 1 to 65535 without leading zeros; `localhost:0`, `localhost:080`, an empty port and 65536+ are rejected and keep the button disabled.
+- The message meta shows a real space between `×N` and the time (text, not only CSS).
+
+#### Changed
+
+- Size: `SFMono-Regular` was removed from the card's monospace font stack on purpose to save bytes (the stack falls back to the next monospace fonts); no shipped file is larger than in 2.3.1. `loader.min.js`: 13768 B / 6254 B gzip / 5575 B brotli; `flag-card.min.js`: 11852 B (2.3.1: 13798 / 6257 / 5588 and 11894).
+
 ### [2.3.1] - 2026-11-02
 
 Patch release of the loader only. CLI and modules are unchanged. Visitors without a session see no change: same single request, no flag code runs, no extra listeners, storage or DOM.
