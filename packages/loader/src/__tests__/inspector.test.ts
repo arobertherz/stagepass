@@ -220,6 +220,63 @@ describe('dev flag inspector', () => {
     expect(c.querySelector('.hn')?.textContent).toMatch(/No local session to return to: open the page with \?stagepass=<project>\.sp/);
   });
 
+  it('Back to local returns to localhost and localhost:port (F-1, AC-15)', async () => {
+    for (const domain of ['localhost', 'localhost:3000', 'My-Project.SP']) {
+      localStorage.clear();
+      sessionStorage.clear();
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession(domain === 'My-Project.SP' ? 'my-project.sp' : domain);
+      document.body.innerHTML = '';
+      await boot();
+      let db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.textContent).toBe('Debug mode');
+      db.click();
+      expect(localStorage.getItem('stagepass:prev')).toBe(domain === 'My-Project.SP' ? 'my-project.sp' : domain);
+
+      // Simulate a stored prev that isValidDomain accepts but the old .sp-only regex rejected.
+      if (domain === 'My-Project.SP') localStorage.setItem('stagepass:prev', 'My-Project.SP');
+      sessionStorage.clear();
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      document.body.innerHTML = '';
+      await boot();
+      const c = (await openCard()).card!;
+      db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled).toBe(false);
+      expect(db.textContent).toBe('Back to local');
+      const expectPrev = domain === 'My-Project.SP' ? 'My-Project.SP' : domain;
+      expect(c.querySelector('.hn')?.textContent).toContain(expectPrev);
+      db.click();
+      // searchParams encodes ':' in localhost:port as %3A; decode for the assertion.
+      expect(decodeURIComponent(String(loc.href))).toBe(
+        'https://wlncw02.webflow.io/?stagepass=' + expectPrev
+      );
+    }
+  });
+
+  it('Back to local rejects unsafe or non-local prev values (F-1)', async () => {
+    for (const bad of [
+      'evil.com',
+      'javascript:alert(1)',
+      'localhost:99999',
+      'user:pass@host',
+      'https://localhost',
+      'debug',
+      '"><img>.sp',
+    ]) {
+      localStorage.clear();
+      sessionStorage.clear();
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      localStorage.setItem('stagepass:prev', bad);
+      document.body.innerHTML = '';
+      await boot();
+      const db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled, bad).toBe(true);
+      expect(db.title).toBe('No local session to return to');
+    }
+  });
+
   it('Debug toggle keeps its nodes across renders', async () => {
     startSession('my-project.sp');
     await boot();
