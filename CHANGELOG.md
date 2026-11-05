@@ -15,6 +15,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.4] - 2026-11-05
+
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+
+#### Fixed
+
+- `stagepass upgrade --version <v>` now pins the Webflow snippet (`data-stagepass-version` and the exact-pin hint) to that loader version even when `package.json` lists only `@stagepass/modules`.
+
 ### [2.2.3] - 2026-11-05
 
 Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0. 2.2.2 was not published; its changes ship in 2.2.3.
