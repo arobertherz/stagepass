@@ -15,15 +15,22 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.2.2] - 2026-11-05
+### [2.2.3] - 2026-11-05
 
-Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0. 2.2.2 was not published; its changes ship in 2.2.3.
 
 #### Fixed
 
 - Live site detection no longer follows a redirect to a URL with an explicit port. `:443`, `:0443` and an empty port are rejected too; the check reads the raw `Location` value, because URL parsing drops the default port.
 - `--site` for `stagepass new` and `stagepass upgrade` (and a stored `origin`) rejects every explicit port, including `:443` and `:0443`, before any network access or file write. The error no longer echoes the input.
 - Webflow snippets printed by `stagepass new` and `stagepass upgrade` set `data-stagepass-version` to the newest published 2.x `@stagepass/loader`. Offline they use the installed stable 2.x loader, otherwise the bundled loader version (2.2.0), never the CLI version. An explicit `upgrade --version` pin on 2.x is used as is.
+- `stagepass upgrade --site <x>` validates the site before any registry query, exec or file write; an invalid value (for example with a port) ends without network access.
+- Loader versions from the registry or `node_modules` are accepted for snippets only as strict stable `X.Y.Z`: build metadata (`+…`), prereleases and leading zeros are ignored, so values like `2.9.0+meta` never reach `data-stagepass-version`, the README or the pin hint.
+- A stored `origin` in `stagepass.json` or a linked origin that contains a port is still skipped, but now with a warning that names the source; the stored value is not echoed.
+
+#### Changed
+
+- Shorter source comments keep the shipped CLI code no larger than 2.2.1.
 
 ### [2.2.1] - 2026-11-02
 
