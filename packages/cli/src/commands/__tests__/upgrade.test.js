@@ -341,6 +341,105 @@ describe('upgrade: published versions only', () => {
   });
 });
 
+describe('upgrade: snippet version is the resolved loader version (AC-14)', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-snip-'));
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: ['cookies'], version: 1 }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'tsconfig.json'), {
+      compilerOptions: { strict: true, types: ['@stagepass/loader', '@stagepass/modules'] },
+    }, { spaces: 2 });
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  const writePkg = (devDependencies) => fsx.writeJson(path.join(dir, 'package.json'), { name: 'app', devDependencies }, { spaces: 2 });
+  const published = (latest, versions) => vi.fn(async () => ({ distTags: { latest }, versions }));
+  const run = async (options, fetchPublished) => {
+    const logs = [];
+    const code = await upgrade(options, {
+      cwd: dir,
+      fetchPublished,
+      log: (m) => logs.push(String(m ?? '')),
+      isTTY: false,
+      loadProjects: async () => ({ projects: {} }),
+      detectSite: vi.fn(async () => ({ ok: false, error: 'detectSite must not be called' })),
+    });
+    return { code, out: logs.join('\n') };
+  };
+  const snippetVersions = (text) => [...text.matchAll(/data-stagepass-version="([^"]*)"/g)].map((m) => m[1]);
+
+  it('uses the latest published loader when package.json lists only @stagepass/modules', async () => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('2.3.4', ['2.0.0', '2.2.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+
+  it('uses the latest published loader when package.json lists the loader', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('2.3.4', ['2.0.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+
+  it('stays on the 2.x line when latest moved to a new major', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('3.0.0', ['2.0.0', '2.3.4', '3.0.0']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+
+  it('offline uses the installed loader version', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    await fsx.outputJson(path.join(dir, 'node_modules/@stagepass/loader/package.json'), { name: '@stagepass/loader', version: '2.3.9' });
+    const { code, out } = await run({ siteModules: 'cookies' }, async () => null);
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.9']);
+  });
+
+  it('offline without an installed loader uses the bundled loader version', async () => {
+    const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, async () => null);
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual([STAGEPASS_PACKAGES_VERSION]);
+  });
+
+  it('an explicit --version pin of the loader wins on the 2.x line', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies', version: '2.2.0' }, published('2.3.4', ['2.2.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.2.0']);
+  });
+
+  it('a --version dist-tag on another major does not leave the 2.x line', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.3.4', next: '3.0.0' }, versions: ['2.3.4', '3.0.0'] }));
+    const { code, out } = await run({ siteModules: 'cookies', version: 'next' }, fetchPublished);
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+
+  it('prints the resolved version as exact pin example', async () => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('2.3.4', ['2.3.4']));
+    expect(code).toBe(0);
+    expect(out).toContain('(e.g. @2.3.4)');
+  });
+
+  it('adds module tags only for declared modules', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'inject' }, published('2.3.4', ['2.3.4']));
+    expect(code).toBe(0);
+    expect(out).toContain('@stagepass/modules@2/dist/inject.min.js');
+    expect(out).not.toContain('/dist/cookies.min.js');
+    expect(out).not.toContain('/dist/all.min.js');
+  });
+});
+
 describe('upgrade: --site with an explicit port (AC-22)', () => {
   /** @type {string} */
   let dir;

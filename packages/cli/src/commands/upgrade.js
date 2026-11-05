@@ -13,6 +13,7 @@ import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 import {
   PACKAGES_MAJOR_RANGE,
   fetchPublished,
+  resolveSnippetLoaderVersion,
   installedHasPerModuleTypes,
   maxSatisfying,
   rangeHasPerModuleTypes,
@@ -332,8 +333,30 @@ export async function upgrade(options = {}, deps = {}) {
     if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
+  // Snippet version (AC-14): an explicit --version pin of the loader on 2.x wins;
+  // otherwise the newest published 2.x loader, offline the installed one, then the bundled one.
+  const loaderTarget = targets['@stagepass/loader'];
+  let snippetVersion =
+    options.version != null &&
+    loaderTarget?.resolved &&
+    satisfiesSimple(loaderTarget.resolved, PACKAGES_MAJOR_RANGE)
+      ? loaderTarget.resolved
+      : null;
+  if (!snippetVersion) {
+    const loaderPublished =
+      '@stagepass/loader' in published
+        ? published['@stagepass/loader']
+        : await (deps.fetchPublished ||
+            ((name) => fetchPublished(name, { exec: deps.exec || defaultExec })))('@stagepass/loader');
+    snippetVersion = await resolveSnippetLoaderVersion({
+      published: loaderPublished,
+      cwd,
+      bundled: STAGEPASS_PACKAGES_VERSION,
+      fse,
+    });
+  }
   const snippets = buildWebflowSnippets({
-    version: targets['@stagepass/loader']?.resolved || STAGEPASS_PACKAGES_VERSION,
+    version: snippetVersion,
     moduleList: resolved.modules,
   });
   printWebflowSnippets(snippets, log);
