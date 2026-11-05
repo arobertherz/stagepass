@@ -1,9 +1,6 @@
 /**
- * Detect which Stagepass scripts a live Webflow site loads.
- *
- * Public GET only: https, no cookies or auth headers, max 3 redirects,
- * ~5 s timeout, size cap. The fetched HTML is parsed with regexes for
- * <script src> values and is never executed.
+ * Detect Stagepass scripts on a live Webflow site.
+ * Public GET only: https, no cookies/credentials; HTML scanned, never executed.
  */
 
 import { validateOriginEntry } from './origins.js';
@@ -15,21 +12,16 @@ export const DETECT_MAX_REDIRECTS = 3;
 export const SITE_PORT_ERROR =
   'Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.';
 
-// Bounded attribute run keeps the scan linear on hostile input.
+// Bound attribute length so the scan stays linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
 const SRC_ATTR_RE = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
 const STAGEPASS_SRC_RE =
   /^(?:https?:)?\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?\/dist\/([a-z]+)(?:\.min)?\.js(?:[?#].*)?$/i;
 
 /**
- * Whether a raw URL or URL reference names a port explicitly, `:443` and
- * `:0443` included. `new URL` drops the default port, so the authority is
- * read from the raw string, split the way the WHATWG parser splits an
- * https URL: C0 controls and spaces trimmed, tab and newlines removed, `\`
- * read as `/`, any run of slashes after `https:` or at the start of a
- * protocol-relative reference, userinfo up to the last `@`.
- *
- * @param {string} input absolute URL, protocol-relative or relative reference
+ * True when the raw URL names a port (`:443`/`:0443` included).
+ * new URL drops default ports; read authority from the raw string before new URL.
+ * @param {string} input
  * @returns {boolean}
  */
 function hasExplicitPort(input) {
@@ -39,7 +31,7 @@ function hasExplicitPort(input) {
     .replace(/\\/g, '/');
   const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(s);
   const rest = scheme ? s.slice(scheme[0].length) : s;
-  // Without `//` there is no authority (path or query reference).
+  // No authority without `//`.
   if (!rest.startsWith('//')) return false;
   const authority = rest.replace(/^\/+/, '').split(/[/?#]/, 1)[0];
   const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
@@ -51,9 +43,7 @@ function hasExplicitPort(input) {
 }
 
 /**
- * Normalize a live site input (host or https URL) to an https URL.
- * Rejects http, wildcards, credentials, and invalid hosts.
- *
+ * Normalize host/https URL; rejects http, wildcards, credentials, invalid hosts.
  * @param {string} input
  * @returns {{ ok: true, url: string, host: string } | { ok: false, error: string }}
  */
@@ -61,8 +51,7 @@ export function normalizeSiteUrl(input) {
   const raw = String(input == null ? '' : input).trim();
   if (!raw) return { ok: false, error: 'No live site given.' };
   const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-  // AC-22: any explicit port is rejected, :443 and :0443 included. URL drops
-  // the default port, so this runs on the raw string before new URL.
+  // Port check on raw string before new URL (default ports would be dropped).
   if (hasExplicitPort(candidate)) {
     return { ok: false, error: SITE_PORT_ERROR };
   }
@@ -91,9 +80,7 @@ export function normalizeSiteUrl(input) {
 }
 
 /**
- * Remove `<!-- … -->` comments in linear time (a lazy regex is quadratic on
- * many unterminated `<!--`). An unterminated comment drops the rest.
- *
+ * Strip HTML comments in linear time (lazy regex is quadratic on unterminated `<!--`).
  * @param {string} html
  * @returns {string}
  */
@@ -115,8 +102,6 @@ function stripHtmlComments(html) {
 }
 
 /**
- * Parse Stagepass loader / module script tags from HTML (no execution).
- *
  * @param {string} html
  * @returns {{ loader: { version: string, cdn: string } | null, modules: { id: string, version: string, cdn: string }[] }}
  */
@@ -125,7 +110,6 @@ export function parseStagepassScripts(html) {
   let loader = null;
   /** @type {Map<string, { id: string, version: string, cdn: string }>} */
   const modules = new Map();
-  // Ignore commented-out tags; the HTML is only scanned, never executed.
   const source = stripHtmlComments(String(html || ''));
 
   for (const match of source.matchAll(SCRIPT_TAG_RE)) {
@@ -152,7 +136,6 @@ export function parseStagepassScripts(html) {
 }
 
 /**
- * Declared-list form of detected modules (`all` wins).
  * @param {{ modules: { id: string }[] }} detection
  * @returns {string[]}
  */
@@ -162,7 +145,6 @@ export function detectedModulesList(detection) {
 }
 
 /**
- * Read a response body up to `maxBytes` (truncates; never throws on size).
  * @param {Response} res
  * @param {number} maxBytes
  */
@@ -190,9 +172,7 @@ async function readCapped(res, maxBytes) {
 }
 
 /**
- * Fetch a live page and detect Stagepass scripts.
- *
- * @param {string} siteInput host or https URL
+ * @param {string} siteInput
  * @param {object} [deps]
  * @param {typeof fetch} [deps.fetch]
  * @param {number} [deps.timeoutMs]
@@ -237,7 +217,7 @@ export async function detectSite(siteInput, deps = {}) {
         if (next.username || next.password) {
           return { ok: false, url: current, error: 'Redirect URL contains credentials.' };
         }
-        // INV-2: no port at all, :443 included (URL drops it, so check the raw Location).
+        // Port check on raw Location before following (URL drops default ports).
         if (next.port || hasExplicitPort(location)) {
           return { ok: false, url: current, error: 'Redirect URL contains a port and was not followed.' };
         }
@@ -267,7 +247,6 @@ export async function detectSite(siteInput, deps = {}) {
 }
 
 /**
- * One-line summary of a detection result.
  * @param {Awaited<ReturnType<typeof detectSite>>} det
  */
 export function describeDetection(det) {

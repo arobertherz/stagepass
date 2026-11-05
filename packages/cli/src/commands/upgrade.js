@@ -32,7 +32,6 @@ const STAGEPASS_SCOPE = '@stagepass/';
 const SAFE_SPEC_RE = /^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/;
 
 /**
- * True when the version looks like an npm dist-tag (bare word, e.g. latest).
  * @param {string} version
  */
 function isDistTag(version) {
@@ -44,15 +43,7 @@ function isDistTag(version) {
 }
 
 /**
- * Resolve the range to write for one @stagepass/* package.
- *
- * Never writes a version or range that no published release satisfies
- * (releases can be staged but not yet approved, which gives ETARGET):
- * - default: `^<latest>` when latest is in the current major, else
- *   `^<highest published 2.x>`; `^2` when npm is unreachable
- * - `--version <semver|range>`: must match a published version
- * - `--version <dist-tag>`: the published version behind that tag
- *
+ * Never writes a version/range no published release satisfies (avoids ETARGET on staged releases).
  * @param {string} name
  * @param {string|undefined} requested
  * @param {{ distTags: Record<string, string>, versions: string[] } | null} published
@@ -97,8 +88,6 @@ export function resolvePackageTarget(name, requested, published) {
 }
 
 /**
- * Resolve target ranges for every @stagepass/* dependency in package.json.
- *
  * @param {string|undefined} requested `--version`
  * @param {string[]} names package names
  * @param {object} [deps]
@@ -121,7 +110,6 @@ export async function resolveUpgradeTargets(requested, names, deps = {}) {
 }
 
 /**
- * Collect @stagepass/* entries from dependencies and devDependencies.
  * @param {object} pkg
  * @returns {{ section: 'dependencies'|'devDependencies', name: string, from: string }[]}
  */
@@ -141,7 +129,6 @@ export function findStagepassDeps(pkg) {
 }
 
 /**
- * Rewrite @stagepass/* versions in a package.json object (mutates a copy).
  * @param {object} pkg
  * @param {string | Record<string, string>} target one spec for all, or per package name
  * @returns {{ next: object, changes: { name: string, from: string, to: string, section: string }[] }}
@@ -164,10 +151,6 @@ export function applyStagepassVersions(pkg, target) {
 }
 
 /**
- * Upgrade @stagepass/* deps in the current project's package.json and sync
- * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
- * tsconfig/jsconfig types.
- *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
  * @param {string} [options.version]
@@ -341,8 +324,7 @@ export async function upgrade(options = {}, deps = {}) {
     if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
-  // Snippet version (AC-14): an explicit --version pin of the loader on 2.x wins;
-  // otherwise the newest published 2.x loader, offline the installed one, then the bundled one.
+  // Snippet version: --version pin of loader on 2.x wins; else published/installed/bundled.
   const loaderTarget = targets['@stagepass/loader'];
   let snippetVersion =
     options.version != null &&

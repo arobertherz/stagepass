@@ -8,7 +8,7 @@ import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
  */
 export function sanitizeSnippetVersion(version) {
   const value = String(version == null ? '' : version).trim();
-  // Exact stable X.Y.Z only (no prerelease, no build metadata, no ranges).
+  // Exact stable X.Y.Z only (no prerelease, build metadata, or ranges).
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
     throw new Error(
       'Invalid version for Webflow snippets (use a stable X.Y.Z semver).'
@@ -18,12 +18,10 @@ export function sanitizeSnippetVersion(version) {
 }
 
 /**
- * Build recommended Webflow Custom Code snippets (jsDelivr major pin @2).
- *
  * @param {object} options
- * @param {string} options.version Exact package version for data-stagepass-version / docs
- * @param {boolean} [options.modules] Legacy: true = inject + cookies tags
- * @param {string[]} [options.moduleList] Declared modules (wins over `modules`)
+ * @param {string} options.version
+ * @param {boolean} [options.modules]
+ * @param {string[]} [options.moduleList]
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string }}
  */
 export function buildWebflowSnippets(options) {
@@ -79,7 +77,6 @@ export function buildWebflowSnippets(options) {
 }
 
 /**
- * Print head/footer snippets with section labels.
  * @param {{ head: string, footer: string, exactPin?: string }} snippets
  * @param {(msg: string) => void} [log]
  */

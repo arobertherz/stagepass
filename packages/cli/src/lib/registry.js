@@ -1,11 +1,4 @@
-/**
- * Read-only npm registry lookups for @stagepass/* packages.
- *
- * Versions of @stagepass/cli, loader and modules are decoupled, and a release
- * can be staged on npm long before it is published. Generated projects and
- * `stagepass upgrade` therefore never derive a dependency range from the CLI's
- * own version: they only write ranges that a published version satisfies.
- */
+/** Read-only npm registry lookups for @stagepass/* packages. */
 
 import fs from 'fs-extra';
 import path from 'node:path';
@@ -13,17 +6,16 @@ import { defaultExec } from './exec.js';
 import { MODULE_IDS } from './project-modules.js';
 import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
 
-/** Major range used for new projects (matches the `@2` CDN embed policy). */
+/** Major range for new projects (matches `@2` CDN embed policy).  */
 export const PACKAGES_MAJOR_RANGE = '^2';
 
-/** First @stagepass/modules release with per-module type entry points. */
+/** First @stagepass/modules release with per-module type entry points.  */
 export const PER_MODULE_TYPES_SINCE = '2.2.0';
 
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const PKG_NAME_RE = /^@stagepass\/[a-z0-9][a-z0-9._-]*$/;
 
 /**
- * Parse a semver string (prerelease kept as a flag).
  * @param {string} version
  * @returns {{ major: number, minor: number, patch: number, pre: boolean } | null}
  */
@@ -34,7 +26,6 @@ export function parseSemver(version) {
 }
 
 /**
- * Compare two semver strings (prerelease suffix ignored for ordering).
  * @param {string} a
  * @param {string} b
  * @returns {number}
@@ -47,8 +38,6 @@ export function compareSemver(a, b) {
 }
 
 /**
- * Whether a stable version satisfies a simple range: exact `1.2.3`,
- * caret `^2`, `^2.2`, `^2.2.0`, or tilde `~2.2.0`. Prereleases never match.
  * @param {string} version
  * @param {string} range
  * @returns {boolean}
@@ -81,7 +70,6 @@ export function satisfiesSimple(version, range) {
 }
 
 /**
- * Highest published stable version satisfying a range.
  * @param {string[]} versions
  * @param {string} range
  * @returns {string | null}
@@ -95,9 +83,6 @@ export function maxSatisfying(versions, range) {
 }
 
 /**
- * Published dist-tags and versions of a package, or null when npm or the
- * network is unavailable (callers fall back to the major range).
- *
  * @param {string} name
  * @param {{ exec?: import('./exec.js').ExecFn, timeoutMs?: number }} [deps]
  * @returns {Promise<{ distTags: Record<string, string>, versions: string[] } | null>}
@@ -141,9 +126,7 @@ export async function fetchPublished(name, deps = {}) {
 }
 
 /**
- * Whether the @stagepass/modules version a range resolves to ships
- * per-module types (`@stagepass/modules/<id>`).
- * @param {string[] | null | undefined} versions published versions
+ * @param {string[] | null | undefined} versions
  * @param {string} range
  * @returns {boolean | null} null when unknown (no registry data)
  */
@@ -155,8 +138,7 @@ export function rangeHasPerModuleTypes(versions, range) {
 }
 
 /**
- * Whether the installed @stagepass/modules ships per-module types.
- * @param {string} cwd project directory
+ * @param {string} cwd
  * @param {typeof fs} [fse]
  * @returns {Promise<boolean | null>} null when not installed
  */
@@ -170,9 +152,7 @@ export async function installedHasPerModuleTypes(cwd, fse = fs) {
 }
 
 /**
- * Version of the @stagepass/loader installed in a project, or null when it is
- * missing or not a stable 2.x release.
- * @param {string} cwd project directory
+ * @param {string} cwd
  * @param {typeof fs} [fse]
  * @returns {Promise<string | null>}
  */
@@ -189,16 +169,10 @@ export async function installedLoaderVersion(cwd, fse = fs) {
 }
 
 /**
- * Loader version for the generated Webflow snippets (AC-14), never the CLI version.
- *
- * - registry reachable: newest published @stagepass/loader on the 2.x line
- * - offline: the @stagepass/loader installed in the project (what really runs)
- * - otherwise: the bundled, tested loader version
- *
+ * Loader version for Webflow snippets (AC-14); never the CLI version.
  * @param {object} options
  * @param {{ distTags: Record<string, string>, versions: string[] } | null} options.published
- *   `fetchPublished('@stagepass/loader')` result (same timeout and limits as all registry reads)
- * @param {string} options.cwd project directory
+ * @param {string} options.cwd
  * @param {string} [options.bundled]
  * @param {typeof fs} [options.fse]
  * @returns {Promise<string>}
