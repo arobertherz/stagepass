@@ -27,6 +27,8 @@ describe('isValidDomain', () => {
     expect(isValidDomain('localhost:65535')).toBe(true);
   });
 
+  // AC-2: no source-text assertion on \d{0,4} — mutant \d{0,5} is behaviourally
+  // equivalent because +d < 65536 already rejects 6+ digit values.
   it('rejects localhost port 0, out of range, leading zeros and non-decimal (AC-2)', () => {
     expect(isValidDomain('localhost:0')).toBe(false);
     expect(isValidDomain('localhost:65536')).toBe(false);
@@ -38,17 +40,6 @@ describe('isValidDomain', () => {
     expect(isValidDomain('localhost:8a')).toBe(false);
     expect(isValidDomain('localhost:+80')).toBe(false);
     expect(isValidDomain('localhost:-1')).toBe(false);
-  });
-
-  it('port regex is capped at five digits via \\d{0,4} (AC-2)', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
-    const { fileURLToPath } = await import('url');
-    const src = fs.readFileSync(
-      path.join(path.dirname(fileURLToPath(import.meta.url)), '../domain.ts'),
-      'utf-8'
-    );
-    expect(src).toMatch(/\[1-9\]\\d\{0,4\}/);
   });
 });
 
