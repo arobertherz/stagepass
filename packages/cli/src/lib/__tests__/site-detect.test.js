@@ -175,3 +175,31 @@ describe('detectSite', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('normalizeSiteUrl: any explicit port is rejected (AC-22)', () => {
+  const withPort = [
+    'example.com:443',
+    'https://example.com:443',
+    'https://example.com:443/pfad',
+    'EXAMPLE.com:443',
+    'example.com:0443',
+    'example.com:8443',
+    'https://example.com:8443/pfad',
+    '[::1]:443',
+    'https://[::1]:443/',
+    'https://[2001:db8::1]:8443/',
+  ];
+
+  it.each(withPort)('rejects %s', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toEqual(expect.any(String));
+  });
+
+  it.each(withPort)('detectSite(%s) never fetches', async (input) => {
+    const fetch = vi.fn(async () => htmlResponse(fixture('single.html')));
+    const r = await detectSite(input, { fetch });
+    expect(r.ok).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
