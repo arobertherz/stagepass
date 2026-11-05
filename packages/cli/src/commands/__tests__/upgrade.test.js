@@ -423,6 +423,22 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
     expect(out).toContain('(e.g. @2.1.0)');
   });
 
+  it.each([
+    ['unpublished loader version', async (n) => ({ distTags: { latest: '2.3.4' }, versions: n === '@stagepass/loader' ? ['2.3.4'] : ['2.1.0', '2.3.4'] })],
+    ['loader registry offline', async (n) => (n === '@stagepass/loader' ? null : { distTags: { latest: '2.3.4' }, versions: ['2.1.0', '2.3.4'] })],
+  ])('[INV-1][AC-7] modules-only --version with %s exits 1 and writes nothing', async (_l, fetch) => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const files = ['package.json', 'tsconfig.json', 'stagepass.json'];
+    const read = () => Promise.all(files.map((f) => fsx.readFile(path.join(dir, f), 'utf8')));
+    const before = await read();
+    const names = await fsx.readdir(dir);
+    const { code, out } = await run({ siteModules: 'cookies', version: '2.1.0' }, vi.fn(fetch));
+    expect(code).toBe(1);
+    expect(snippetVersions(out)).toEqual([]);
+    expect(await read()).toEqual(before);
+    expect(await fsx.readdir(dir)).toEqual(names);
+  });
+
   it('[INV-4][AC-7] --version with build metadata does not reach the snippet', async () => {
     await writePkg({ '@stagepass/loader': '^2.0.0' });
     const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');

@@ -15,6 +15,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.5] - 2026-11-05
+
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+
+#### Fixed
+
+- `stagepass upgrade --version`: the loader pin is resolved before any file is written. If it cannot be resolved (version not published for the loader, registry offline), the command exits 1 and leaves `package.json` and project files unchanged.
+
 ### [2.2.4] - 2026-11-05
 
 Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.

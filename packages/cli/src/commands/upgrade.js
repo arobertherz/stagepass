@@ -311,20 +311,7 @@ export async function upgrade(options = {}, deps = {}) {
     );
   }
 
-  if (options.dryRun) {
-    log(chalk.dim('\nDry run: no files were modified.'));
-  } else {
-    if (changes.length > 0) {
-      const trailingNewline = raw.endsWith('\n');
-      const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
-      await fse.writeFile(pkgPath, pkgBody, 'utf8');
-      log(chalk.green('\nUpdated package.json.'));
-    }
-    await applyProjectSync(cwd, plan.writes, fse);
-    if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
-  }
-
-  // Snippet: --version pin of loader on 2.x wins even without loader in package.json.
+  // Snippet: --version pin of loader on 2.x wins; resolve before writing so a failure changes nothing.
   let loaderPub = '@stagepass/loader' in published ? published['@stagepass/loader'] : undefined;
   const getLoaderPub = async () => {
     if (loaderPub !== undefined) return loaderPub;
@@ -345,6 +332,19 @@ export async function upgrade(options = {}, deps = {}) {
     }
     if (t.resolved && satisfiesSimple(t.resolved, PACKAGES_MAJOR_RANGE)) snippetVersion = t.resolved;
   }
+  if (options.dryRun) {
+    log(chalk.dim('\nDry run: no files were modified.'));
+  } else {
+    if (changes.length > 0) {
+      const trailingNewline = raw.endsWith('\n');
+      const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
+      await fse.writeFile(pkgPath, pkgBody, 'utf8');
+      log(chalk.green('\nUpdated package.json.'));
+    }
+    await applyProjectSync(cwd, plan.writes, fse);
+    if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
+  }
+
   if (!snippetVersion) {
     snippetVersion = await resolveSnippetLoaderVersion({
       published: await getLoaderPub(),
