@@ -5,7 +5,7 @@ var Stagepass = (() => {
     if (d === "debug" || d === "localhost") return true;
     if (d.startsWith("localhost:")) {
       d = d.slice(10);
-      return /^\d{1,5}$/.test(d) && +d < 65536;
+      return /^[1-9]\d{0,4}$/.test(d) && +d < 65536;
     }
     return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(d);
   }

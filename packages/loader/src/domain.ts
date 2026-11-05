@@ -10,7 +10,7 @@ export function isValidDomain(d: string): boolean {
   if (d === 'debug' || d === 'localhost') return true;
   if (d.startsWith('localhost:')) {
     d = d.slice(10);
-    return /^\d{1,5}$/.test(d) && +d < 65536;
+    return /^[1-9]\d{0,4}$/.test(d) && +d < 65536;
   }
   // DNS-safe labels ending in .sp only (no spaces, quotes, schemes, paths)
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(d);
