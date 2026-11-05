@@ -4,12 +4,10 @@ var Stagepass = (() => {
     if (typeof d !== "string" || !d) return false;
     if (d === "debug" || d === "localhost") return true;
     if (d.startsWith("localhost:")) {
-      const port = d.slice("localhost:".length);
-      return /^[0-9]{1,5}$/.test(port) && Number(port) <= 65535;
+      d = d.slice(10);
+      return /^\d{1,5}$/.test(d) && +d < 65536;
     }
-    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(
-      d
-    );
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(d);
   }
   function cleanDomain(d) {
     if (!d) return null;
@@ -324,7 +322,7 @@ var Stagepass = (() => {
     const aliasName = attr("alias");
     const p = new URLSearchParams(loc.search);
     let hasActiveSession = false;
-    const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION };
+    const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION, vd: isValidDomain };
     let renderFlag = null;
     const draw = () => renderFlag && renderFlag();
     const time = () => (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);
