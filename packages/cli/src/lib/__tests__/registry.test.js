@@ -33,9 +33,30 @@ describe('registry helpers', () => {
     expect(compareSemver('2.10.0', '2.9.9')).toBeGreaterThan(0);
   });
 
+  it('[INV-4] rejects build metadata, leading zeros, and dash-in-build as stable', () => {
+    expect(satisfiesSimple('2.9.0+EVILMARK5', '^2')).toBe(false);
+    expect(satisfiesSimple('2.3.4+build.1', '^2')).toBe(false);
+    expect(satisfiesSimple('2.9.0+a-b', '^2')).toBe(false);
+    expect(satisfiesSimple('2.4.0-rc.1', '^2')).toBe(false);
+    expect(satisfiesSimple('02.1.0', '^2')).toBe(false);
+    expect(satisfiesSimple('2.3.4', '^2')).toBe(true);
+    expect(satisfiesSimple('2.10.0', '^2')).toBe(true);
+    expect(compareSemver('2.10.0', '2.3.4')).toBeGreaterThan(0);
+  });
+
   it('maxSatisfying picks the highest published match', () => {
     expect(maxSatisfying(['1.2.0', '2.0.0', '2.1.3', '3.0.0'], '^2')).toBe('2.1.3');
     expect(maxSatisfying(['2.0.0'], '^2.2.0')).toBeNull();
+  });
+
+  it('[INV-4] maxSatisfying ignores build metadata and prereleases in the list', () => {
+    expect(
+      maxSatisfying(
+        ['2.9.0+EVILMARK5', '2.3.4+build.1', '2.4.0-rc.1', '2.3.4', '2.10.0', '02.1.0'],
+        '^2'
+      )
+    ).toBe('2.10.0');
+    expect(maxSatisfying(['2.9.0+EVILMARK5', '2.4.0-rc.1'], '^2')).toBeNull();
   });
 
   it('rangeHasPerModuleTypes needs a published modules >= 2.2.0 in range', () => {
@@ -98,6 +119,21 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
   });
 
+  it('[INV-4] ignores registry build metadata and picks the newest stable 2.x', async () => {
+    await withInstalled('2.1.0', async (cwd) => {
+      const versions = [
+        '2.9.0+EVILMARK5',
+        '2.3.4+build.1',
+        '2.4.0-rc.1',
+        '2.9.0+a-b',
+        '02.1.0',
+        '2.3.4',
+        '2.10.0',
+      ];
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', versions), cwd })).toBe('2.10.0');
+    });
+  });
+
   it('offline (or no 2.x published) uses the installed loader, then the bundled one', async () => {
     await withInstalled('2.3.9', async (cwd) => {
       expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.3.9');
@@ -109,8 +145,19 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
   });
 
-  it.each([['3.0.0'], ['1.9.0'], ['2.4.0-rc.1'], ['2.3.4"><script>'], [42], ['']])(
-    'ignores an installed loader with version %s',
+  it.each([
+    ['3.0.0'],
+    ['1.9.0'],
+    ['2.4.0-rc.1'],
+    ['2.9.0+EVILMARK5'],
+    ['2.3.4+build.1'],
+    ['2.9.0+a-b'],
+    ['02.1.0'],
+    ['2.3.4"><script>'],
+    [42],
+    [''],
+  ])(
+    '[INV-4][AC-6] ignores an installed loader with version %s',
     async (version) => {
       await withInstalled(version, async (cwd) => {
         expect(await installedLoaderVersion(cwd)).toBeNull();

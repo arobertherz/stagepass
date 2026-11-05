@@ -8,10 +8,10 @@ import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
  */
 export function sanitizeSnippetVersion(version) {
   const value = String(version == null ? '' : version).trim();
-  // Allow optional ^/~ range prefixes used in package.json; reject quotes and HTML.
-  if (!/^[~^]?[0-9A-Za-z][0-9A-Za-z._+-]*$/.test(value)) {
+  // Exact stable X.Y.Z only (no prerelease, no build metadata, no ranges).
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
     throw new Error(
-      'Invalid version for Webflow snippets (use a semver or npm dist-tag).'
+      'Invalid version for Webflow snippets (use a stable X.Y.Z semver).'
     );
   }
   return value;
