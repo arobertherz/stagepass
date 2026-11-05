@@ -305,7 +305,8 @@ export function createCard(a: FlagApi): FlagCard {
       tx.appendChild(d.createTextNode(x.text));
       const mt = el('span', b, 'mt mo');
       if (x.c > 1) el('b', mt, '', '×' + x.c);
-      mt.appendChild(d.createTextNode(x.time));
+      // Space so textContent is '×N HH:MM:SS' (F-5); CSS margin alone is visual-only.
+      mt.appendChild(d.createTextNode((x.c > 1 ? ' ' : '') + x.time));
       const dt = el('div', li, 'dt');
       el('div', dt, 'ms', x.text);
       if (x.src || x.line) {
