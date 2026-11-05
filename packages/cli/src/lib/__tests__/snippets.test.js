@@ -5,17 +5,23 @@ import {
 } from '../snippets.js';
 
 describe('sanitizeSnippetVersion', () => {
-  it('accepts semver and optional range prefixes', () => {
+  it('accepts strict stable X.Y.Z', () => {
     expect(sanitizeSnippetVersion('2.0.0')).toBe('2.0.0');
-    expect(sanitizeSnippetVersion('^2.1.0')).toBe('^2.1.0');
-    expect(sanitizeSnippetVersion('~2.0.0')).toBe('~2.0.0');
+    expect(sanitizeSnippetVersion('2.10.0')).toBe('2.10.0');
   });
 
-  it('rejects HTML / quote injection', () => {
+  it('[INV-4] rejects +, prerelease, quotes, ranges and HTML', () => {
+    expect(() => sanitizeSnippetVersion('2.9.0+EVILMARK5')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('2.3.4+build.1')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('2.4.0-rc.1')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('^2.1.0')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('~2.0.0')).toThrow(/Invalid version/);
     expect(() => sanitizeSnippetVersion('2"><img src=x onerror=alert(1)>')).toThrow(
       /Invalid version/
     );
     expect(() => sanitizeSnippetVersion('2.0.0</script>')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('2.0.0"')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('<2.0.0')).toThrow(/Invalid version/);
   });
 });
 
@@ -36,5 +42,9 @@ describe('buildWebflowSnippets', () => {
 
     const without = buildWebflowSnippets({ version: '2.0.0', modules: false });
     expect(without.head).not.toContain('@stagepass/modules');
+  });
+
+  it('[INV-4] refuses build-metadata versions for snippets', () => {
+    expect(() => buildWebflowSnippets({ version: '2.9.0+EVILMARK5' })).toThrow(/Invalid version/);
   });
 });

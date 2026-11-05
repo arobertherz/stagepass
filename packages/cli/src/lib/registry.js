@@ -19,7 +19,7 @@ export const PACKAGES_MAJOR_RANGE = '^2';
 /** First @stagepass/modules release with per-module type entry points. */
 export const PER_MODULE_TYPES_SINCE = '2.2.0';
 
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const PKG_NAME_RE = /^@stagepass\/[a-z0-9][a-z0-9._-]*$/;
 
 /**
@@ -30,7 +30,7 @@ const PKG_NAME_RE = /^@stagepass\/[a-z0-9][a-z0-9._-]*$/;
 export function parseSemver(version) {
   const m = SEMVER_RE.exec(String(version).trim());
   if (!m) return null;
-  return { major: +m[1], minor: +m[2], patch: +m[3], pre: String(version).includes('-') };
+  return { major: +m[1], minor: +m[2], patch: +m[3], pre: Boolean(m[4]) };
 }
 
 /**

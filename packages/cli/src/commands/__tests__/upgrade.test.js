@@ -415,6 +415,49 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
     expect(snippetVersions(out)).toEqual(['2.2.0']);
   });
 
+  it('[INV-4][AC-7] --version with build metadata does not reach the snippet', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const { code, out } = await run(
+      { siteModules: 'cookies', version: '2.9.0+x' },
+      published('2.3.4', ['2.3.4', '2.9.0+EVILMARK5', '2.9.0'])
+    );
+    expect(code).toBe(1);
+    expect(out).not.toMatch(/EVILMARK/);
+    expect(snippetVersions(out)).toEqual([]);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+
+  it('[INV-4] registry build-metadata versions never appear in snippet output', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const versions = [
+      '2.9.0+EVILMARK5',
+      '2.3.4+build.1',
+      '2.4.0-rc.1',
+      '2.9.0+a-b',
+      '2.3.4',
+      '2.10.0',
+    ];
+    const { code, out } = await run({ siteModules: 'cookies' }, published('3.0.0', versions));
+    expect(code).toBe(0);
+    expect(out).not.toMatch(/EVILMARK/);
+    expect(snippetVersions(out)).toEqual(['2.10.0']);
+    expect(out).toContain('(e.g. @2.10.0)');
+  });
+
+  it('[INV-4][AC-6] offline ignores installed build-metadata / prerelease loader', async () => {
+    const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    await fsx.outputJson(path.join(dir, 'node_modules/@stagepass/loader/package.json'), {
+      name: '@stagepass/loader',
+      version: '2.9.0+EVILMARK5',
+    });
+    const { code, out } = await run({ siteModules: 'cookies' }, async () => null);
+    expect(code).toBe(0);
+    expect(out).not.toMatch(/EVILMARK/);
+    expect(snippetVersions(out)).toEqual([STAGEPASS_PACKAGES_VERSION]);
+  });
+
   it('a --version dist-tag on another major does not leave the 2.x line', async () => {
     await writePkg({ '@stagepass/loader': '^2.0.0' });
     const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.3.4', next: '3.0.0' }, versions: ['2.3.4', '3.0.0'] }));

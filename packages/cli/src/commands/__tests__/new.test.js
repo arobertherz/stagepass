@@ -677,6 +677,43 @@ describe('new: snippet version is the resolved loader version (AC-14)', () => {
     expect(r.out).not.toContain('9.8.7');
   });
 
+  it('[INV-4] registry build-metadata / prerelease never reach README or output', async () => {
+    const versions = [
+      '2.9.0+EVILMARK5',
+      '2.3.4+build.1',
+      '2.4.0-rc.1',
+      '2.9.0+a-b',
+      '02.1.0',
+      '2.3.4',
+      '2.10.0',
+    ];
+    const r = await run('snip-evil', { siteModules: 'cookies' }, {
+      fetchPublished: published('3.0.0', versions),
+      cliVersion: '2.2.2',
+      packagesVersion: '2.2.0',
+    });
+    expect(r.code).toBe(0);
+    const readme = await fs.readFile(path.join(r.dir, 'README.md'), 'utf8');
+    expect(r.out + readme).not.toMatch(/EVILMARK/);
+    await expectSnippetVersion(r, '2.10.0');
+  });
+
+  it('[INV-4][AC-6] offline ignores installed build-metadata loader in target dir', async () => {
+    const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+    const target = path.join(tmp, 'snip-evil-installed');
+    await fs.outputJson(path.join(target, 'node_modules/@stagepass/loader/package.json'), {
+      name: '@stagepass/loader',
+      version: '2.9.0+EVILMARK5',
+    });
+    const r = await run('snip-evil-installed', { siteModules: 'none' }, {
+      fetchPublished: async () => null,
+    });
+    expect(r.code).toBe(0);
+    const readme = await fs.readFile(path.join(r.dir, 'README.md'), 'utf8');
+    expect(r.out + readme).not.toMatch(/EVILMARK/);
+    await expectSnippetVersion(r, STAGEPASS_PACKAGES_VERSION);
+  });
+
   it('adds module tags only for declared modules', async () => {
     const fetchPublished = published('2.3.4', ['2.3.4']);
     const a = await run('snip-tags', { siteModules: 'cookies,maintenance' }, { fetchPublished });
