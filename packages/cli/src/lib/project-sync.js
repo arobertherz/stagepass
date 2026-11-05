@@ -1,12 +1,5 @@
 /**
- * Sync generated project files with the declared Stagepass modules
- * (used by `stagepass upgrade` and `stagepass doctor`).
- *
- * Writes only:
- * - stagepass.json `modules` (and `origin` when passed via --site)
- * - AGENTS.md managed block (created when missing)
- * - .cursor/rules/stagepass.mdc (created when missing, managed block refreshed)
- * - tsconfig.json / jsconfig.json `compilerOptions.types` (plain JSON only)
+ * Sync generated project files with declared Stagepass modules
  */
 
 import path from 'node:path';
@@ -28,7 +21,6 @@ import { loadProjects } from './projects.js';
 import { describeDetection, normalizeSiteUrl, SITE_PORT_ERROR } from './site-detect.js';
 
 /**
- * Read and parse stagepass.json (null when missing or invalid).
  * @param {string} cwd
  * @param {typeof fs} [fse]
  * @returns {Promise<{ exists: boolean, data: Record<string, unknown> | null, raw: string, error?: string }>}
@@ -49,7 +41,6 @@ export async function readStagepassJson(cwd, fse = fs) {
 }
 
 /**
- * Declared modules from stagepass.json (`null` when missing or legacy boolean).
  * @param {Record<string, unknown> | null} data
  * @returns {string[] | null}
  */
@@ -64,9 +55,6 @@ function warnPortSkip(log, source) {
 }
 
 /**
- * Live origin for a project: stagepass.json `origin`, else the first concrete
- * (non-wildcard) origin stored by `stagepass link` for this project folder.
- *
  * @param {string} cwd
  * @param {Record<string, unknown> | null} data
  * @param {{ loadProjects?: typeof loadProjects, realpath?: (p: string) => Promise<string> }} [deps]
@@ -111,15 +99,11 @@ export async function resolveProjectOrigin(cwd, data, deps = {}) {
 }
 
 /**
- * Decide the declared modules list for `upgrade`.
- * Order: --site-modules flag, live site detection, existing stagepass.json,
- * interactive prompt. The npm dependency is only mentioned as a hint.
- *
  * @param {object} input
  * @param {string} input.cwd
- * @param {Record<string, unknown> | null} input.data stagepass.json
- * @param {object} input.pkg package.json
- * @param {object} input.options { siteModules?, site?, skipSite?, yes? }
+ * @param {Record<string, unknown> | null} input.data
+ * @param {object} input.pkg
+ * @param {object} input.options
  * @param {object} deps
  * @param {(site: string) => Promise<any>} deps.detectSite
  * @param {(question: string, def: string) => Promise<string>} [deps.ask]
@@ -185,9 +169,7 @@ export async function resolveUpgradeModules(input, deps) {
     source = 'stagepass.json';
   }
 
-  // Legacy `"modules": true` (CLI 2.0/2.1) meant "modules included", typed via
-  // `@stagepass/modules` (all modules). Keep that as `["all"]` so an upgrade
-  // without a live site result never removes types the project relied on.
+  // Legacy `"modules": true` meant all modules typed; keep as `["all"]` without a live site.
   if (!candidate && data?.modules === true) {
     candidate = ['all'];
     source = 'legacy "modules": true in stagepass.json';
@@ -234,9 +216,7 @@ export async function resolveUpgradeModules(input, deps) {
 }
 
 /**
- * Update `compilerOptions.types` in a tsconfig/jsconfig source.
- *
- * @param {string} raw file contents
+ * @param {string} raw
  * @param {string[]} modules
  * @param {{ modulesDependency: boolean, perModuleTypes?: boolean }} opts
  * @returns {{ status: 'updated' | 'unchanged' | 'skipped', content?: string, reason?: string, types?: string[] }}
@@ -279,14 +259,12 @@ export function updateConfigTypes(raw, modules, opts) {
 }
 
 /**
- * Plan file changes for the declared modules (pure, no writes).
- *
  * @param {object} input
  * @param {string} input.cwd
  * @param {string[]} input.modules
- * @param {string | null} [input.origin] stored in stagepass.json when set
- * @param {object} input.pkg package.json
- * @param {boolean} [input.perModuleTypes] false when @stagepass/modules has no per-module types (umbrella entry)
+ * @param {string | null} [input.origin]
+ * @param {object} input.pkg
+ * @param {boolean} [input.perModuleTypes]
  * @param {typeof fs} [fse]
  * @returns {Promise<{ writes: { file: string, content: string, action: string }[], notes: string[] }>}
  */
@@ -394,7 +372,6 @@ export async function planProjectSync(input, fse = fs) {
 }
 
 /**
- * Write planned changes (skips when dryRun).
  * @param {string} cwd
  * @param {{ file: string, content: string }[]} writes
  * @param {typeof fs} [fse]

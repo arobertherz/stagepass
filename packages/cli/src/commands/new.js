@@ -34,14 +34,10 @@ const PER_MODULE_TYPES_HINT =
   'types use "@stagepass/modules" for now. Run `stagepass upgrade` once it is published to narrow them.';
 
 /**
- * Resolve a boolean flag that may appear as --foo / --no-foo.
- * Only argv is trusted: Commander defaults negated pairs to true, which would
- * break defaults like --install (off unless passed).
- *
  * @param {object} _options
  * @param {string} key
  * @param {string[]} argv
- * @param {boolean|undefined} defaultValue undefined = still unset
+ * @param {boolean|undefined} defaultValue
  */
 export function resolveBoolFlag(_options, key, argv, defaultValue) {
   const pos = `--${key}`;
@@ -52,7 +48,7 @@ export function resolveBoolFlag(_options, key, argv, defaultValue) {
 }
 
 /**
- * @param {object} options Commander options
+ * @param {object} options
  * @param {object} [deps]
  */
 async function resolveAuthor(options, deps) {
@@ -96,7 +92,6 @@ async function askYesNo(rl, question, defaultYes) {
 }
 
 /**
- * Merge flags + optional interactive prompts into a resolved config.
  * @param {string|undefined} nameArg
  * @param {object} options
  * @param {object} deps
@@ -116,7 +111,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   let styles =
     options.styles === 'css' || options.styles === 'scss' ? options.styles : '';
 
-  // Prefer argv for --foo / --no-foo so Commander default quirks do not flip defaults.
+  // Prefer argv for --foo / --no-foo so Commander defaults do not flip.
   let modules = resolveBoolFlag(options, 'modules', argv, undefined);
   let git = resolveBoolFlag(options, 'git', argv, undefined);
   let install = resolveBoolFlag(options, 'install', argv, undefined);
@@ -140,9 +135,9 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   }
 
   /**
-   * Detect modules on the live site (public GET, never executed).
-   * @returns {Promise<string[] | null>} detected list, or null when unknown
-   */
+ * Detect modules on the live site (public GET, never executed).
+ * @returns {Promise<string[] | null>} detected list, or null when unknown
+ */
   const detectFromSite = async () => {
     if (!origin) return null;
     log(`Checking live site https://${origin}/ for Stagepass script tags...`);
@@ -232,7 +227,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       error: '--no-modules conflicts with declared site modules. Drop --no-modules or pass --site-modules none.',
     };
   }
-  // The npm package (types) follows the declared list; keep the legacy default (included).
+  // npm package (types) follows the declared list; legacy default is included.
   if (siteModules.length > 0) modules = true;
 
   // Non-interactive / --yes defaults
@@ -290,16 +285,13 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       remote: remoteCheck.remote,
       install,
       dryRun: options.dryRun === true,
-      // Bundled loader version until createNew resolves the published one (AC-14).
+      // Bundled loader until createNew resolves the published one (AC-14).
       loaderVersion: deps.packagesVersion || STAGEPASS_PACKAGES_VERSION,
     },
   };
 }
 
 /**
- * After `npm install`, align tsconfig/jsconfig types with the installed
- * @stagepass/modules (per-module entries only when it ships them).
- *
  * @param {string} targetDir
  * @param {{ siteModules: string[], perModuleTypes?: boolean }} config
  * @param {typeof fs} fse
@@ -325,8 +317,6 @@ async function reconcileInstalledTypes(targetDir, config, fse, log) {
 }
 
 /**
- * Scaffold a new Stagepass project.
- *
  * @param {string|undefined} nameArg
  * @param {object} [options]
  * @param {object} [deps]
@@ -376,9 +366,7 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     }
   };
 
-  // Single-module types (`@stagepass/modules/cookies`) exist since modules
-  // 2.2.0. Only use them when a published release in range ships them;
-  // otherwise (or offline) fall back to the umbrella types so tsc passes.
+  // Per-module types since modules 2.2.0; else umbrella types so tsc passes.
   const singleModuleTypes =
     config.modules === true &&
     config.siteModules.length > 0 &&
@@ -390,7 +378,7 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     if (!config.perModuleTypes) log(chalk.yellow(PER_MODULE_TYPES_HINT));
   }
 
-  // Snippets (README and console) pin the resolved loader, never the CLI version (AC-14).
+  // Snippets pin the resolved loader, never the CLI version (AC-14).
   if (!config.dryRun) {
     const loader = await (deps.fetchPublished || fetchPublished)('@stagepass/loader', { exec });
     config.loaderVersion = await resolveSnippetLoaderVersion({
@@ -519,5 +507,5 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   return 0;
 }
 
-/** Commander-facing alias */
+/** Commander-facing alias  */
 export const newProject = createNew;

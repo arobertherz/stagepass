@@ -1,7 +1,6 @@
 /**
- * Doctor checks for the current project folder: declared modules in
- * stagepass.json vs. the Stagepass scripts the live Webflow site loads.
- * Read-only: one public GET of the live page, parsed and never executed.
+ * Doctor checks: declared modules vs Stagepass scripts on the live site.
+ * Read-only public GET; HTML parsed, never executed.
  */
 
 import path from 'node:path';
