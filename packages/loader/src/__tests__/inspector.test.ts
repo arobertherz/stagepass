@@ -220,8 +220,8 @@ describe('dev flag inspector', () => {
     expect(c.querySelector('.hn')?.textContent).toMatch(/No local session to return to: open the page with \?stagepass=<project>\.sp/);
   });
 
-  it('Back to local returns to localhost and localhost:port (F-1, AC-15)', async () => {
-    for (const domain of ['localhost', 'localhost:3000', 'My-Project.SP']) {
+  it('Back to local returns to localhost and localhost:port (AC-1)', async () => {
+    for (const domain of ['localhost', 'localhost:3000', 'localhost:65535', 'My-Project.SP']) {
       localStorage.clear();
       sessionStorage.clear();
       loc.href = 'https://wlncw02.webflow.io/';
@@ -275,6 +275,32 @@ describe('dev flag inspector', () => {
       expect(db.disabled, bad).toBe(true);
       expect(db.title).toBe('No local session to return to');
     }
+  });
+
+  it('Back to local stays disabled for localhost:0 and localhost:080 with hint (AC-2)', async () => {
+    for (const bad of ['localhost:0', 'localhost:080']) {
+      localStorage.clear();
+      sessionStorage.clear();
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      localStorage.setItem('stagepass:prev', bad);
+      document.body.innerHTML = '';
+      await boot();
+      const c = (await openCard()).card!;
+      const db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled, bad).toBe(true);
+      expect(db.title).toBe('No local session to return to');
+      expect(c.querySelector('.hn')?.textContent).toMatch(/No local session to return to/);
+    }
+  });
+
+  it('URL mode ?stagepass=localhost:0 does not start a session (AC-2)', async () => {
+    loc.search = '?stagepass=localhost:0';
+    loc.href = 'https://wlncw02.webflow.io/?stagepass=localhost:0';
+    await boot();
+    expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(document.getElementById('stagepass-flag')).toBeNull();
+    expect((window as any).sp.vars.isLocal).toBe(false);
   });
 
   it('Debug toggle keeps its nodes across renders', async () => {
@@ -349,7 +375,7 @@ describe('dev flag inspector', () => {
     expect(card!.querySelector('.it .mt')?.textContent).toMatch(/^×4 \d\d:\d\d:\d\d$/);
   });
 
-  it('message meta keeps a space between ×N and the time (F-5, AC-7)', async () => {
+  it('message meta keeps a space between ×N and the time (AC-4)', async () => {
     startSession('my-project.sp');
     await boot();
     const boom = () =>

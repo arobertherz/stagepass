@@ -20,6 +20,36 @@ describe('isValidDomain', () => {
     expect(isValidDomain('https://test.sp')).toBe(false);
     expect(isValidDomain('localhost:99999')).toBe(false);
   });
+
+  it('accepts localhost ports 1–65535 without leading zeros (AC-2)', () => {
+    expect(isValidDomain('localhost')).toBe(true);
+    expect(isValidDomain('localhost:1')).toBe(true);
+    expect(isValidDomain('localhost:65535')).toBe(true);
+  });
+
+  it('rejects localhost port 0, out of range, leading zeros and non-decimal (AC-2)', () => {
+    expect(isValidDomain('localhost:0')).toBe(false);
+    expect(isValidDomain('localhost:65536')).toBe(false);
+    expect(isValidDomain('localhost:99999')).toBe(false);
+    expect(isValidDomain('localhost:080')).toBe(false);
+    expect(isValidDomain('localhost:00080')).toBe(false);
+    expect(isValidDomain('localhost:00000')).toBe(false);
+    expect(isValidDomain('localhost:')).toBe(false);
+    expect(isValidDomain('localhost:8a')).toBe(false);
+    expect(isValidDomain('localhost:+80')).toBe(false);
+    expect(isValidDomain('localhost:-1')).toBe(false);
+  });
+
+  it('port regex is capped at five digits via \\d{0,4} (AC-2)', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { fileURLToPath } = await import('url');
+    const src = fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../domain.ts'),
+      'utf-8'
+    );
+    expect(src).toMatch(/\[1-9\]\\d\{0,4\}/);
+  });
 });
 
 describe('cleanDomain', () => {
