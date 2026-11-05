@@ -4,6 +4,7 @@
  * are never parsed as HTML. Opaque surface, 1px border, no shadow, no blur, no filter.
  * Shows little by default: one-line messages and a collapsed file list, details on demand.
  */
+import { isValidDomain } from './domain.js';
 import { FLASH } from './flag.js';
 import type { FlagApi, FlagCard, FlagFile, FlagMsg } from './flag.js';
 
@@ -96,7 +97,6 @@ function mq(q: string): boolean {
 
 const PREV = 'stagepass:prev';
 const OPEN = 'stagepass:expand';
-const SP = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.sp$/;
 const ls = (k: string, v?: string | null): string | null => {
   try {
     if (v === undefined) return localStorage.getItem(k);
@@ -224,7 +224,8 @@ export function createCard(a: FlagApi): FlagCard {
   try {
     prev = prev || sessionStorage.getItem(PREV);
   } catch (_) {}
-  if (prev && !SP.test(prev)) prev = null;
+  // Same rules as session/domain: .sp, localhost, localhost:port. Never debug.
+  if (prev && (prev === 'debug' || !isValidDomain(prev))) prev = null;
   const dbg = s.debug ? prev : 'debug';
 
   const render = () => {
