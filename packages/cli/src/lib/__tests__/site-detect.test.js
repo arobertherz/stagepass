@@ -290,6 +290,8 @@ describe('detectSite: port spellings in the raw Location (INV-2)', () => {
     ['//www.app.com/de/', 'https://www.app.com/de/'],
     ['https://www.app.com/a:b?c=d:e#f:g', 'https://www.app.com/a:b?c=d:e'],
     ['https://[2001:db8::1]/', 'https://[2001:db8::1]/'],
+    ['//www.app.com?x=a:b', 'https://www.app.com/?x=a:b'],
+    ['https://www.app.com#a:b', 'https://www.app.com/'],
   ])('follows %j (colons outside the authority are not a port)', async (location, expected) => {
     const { r, urls } = await run(location);
     expect(r.ok).toBe(true);
