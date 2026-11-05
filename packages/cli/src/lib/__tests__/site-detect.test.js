@@ -299,3 +299,51 @@ describe('detectSite: port spellings in the raw Location (INV-2)', () => {
     expect(urls[1].split('#')[0]).toBe(expected);
   });
 });
+
+describe('normalizeSiteUrl: any explicit port is rejected (AC-22)', () => {
+  const withPort = [
+    'example.com:443',
+    'https://example.com:443',
+    'https://example.com:443/pfad',
+    'EXAMPLE.com:443',
+    'example.com:0443',
+    'example.com:8443',
+    'https://example.com:8443/pfad',
+    '[::1]:443',
+    'https://[::1]:443/',
+    'https://[2001:db8::1]:8443/',
+  ];
+
+  it.each(withPort)('rejects %s', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toEqual(expect.any(String));
+  });
+
+  it.each(withPort)('detectSite(%s) never fetches', async (input) => {
+    const fetch = vi.fn(async () => htmlResponse(fixture('single.html')));
+    const r = await detectSite(input, { fetch });
+    expect(r.ok).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'example.com:',
+    'https://example.com:/',
+    'HTTPS://EXAMPLE.COM:443/',
+    ' example.com:443 ',
+    'https://user@example.com:443/',
+    'https:\\\\example.com:443/',
+  ])('rejects %s and names the port as the reason', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port/);
+  });
+
+  it.each(['example.com', 'https://example.com', 'https://example.com/'])(
+    'still accepts %s',
+    (input) => {
+      expect(normalizeSiteUrl(input)).toMatchObject({ ok: true });
+    },
+  );
+});

@@ -599,3 +599,77 @@ describe('new: declared modules', () => {
     expect(r.config.siteModules).toEqual(['cookies']);
   });
 });
+
+describe('new: --site with an explicit port (AC-22)', () => {
+  /** @type {string} */
+  let tmp;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-port-'));
+  });
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await fs.remove(tmp);
+  });
+
+  const sites = [
+    'shop.webflow.io:443',
+    'https://shop.webflow.io:443',
+    'https://shop.webflow.io:443/pfad',
+    '[::1]:443',
+    'https://[2001:db8::1]:8443/',
+    'shop.webflow.io:8443',
+  ];
+
+  const run = async (site, extraOpts = {}) => {
+    const fetch = vi.fn(async () => {
+      throw new Error('no network in this test');
+    });
+    vi.stubGlobal('fetch', fetch);
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'detectSite must not be called' }));
+    const fetchPublished = vi.fn(async () => null);
+    const target = path.join(tmp, 'app');
+    const code = await createNew(
+      'port-app',
+      { yes: true, dir: target, git: false, author: 'T', site, ...extraOpts },
+      {
+        isTTY: false,
+        argv: ['--yes', '--no-git'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: tmp,
+        log: () => {},
+        error: () => {},
+        exec: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+        spawn: vi.fn(),
+        detectSite,
+        fetchPublished,
+      }
+    );
+    return { code, fetch, detectSite, target };
+  };
+
+  it.each(sites)('rejects --site %s without network access and writes nothing', async (site) => {
+    const { code, fetch, detectSite, target } = await run(site);
+    expect(code).not.toBe(0);
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await fs.pathExists(target)).toBe(false);
+  });
+
+  it.each(sites)('rejects --site %s even with --site-modules', async (site) => {
+    const { code, detectSite, target } = await run(site, { siteModules: 'cookies' });
+    expect(code).not.toBe(0);
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(await fs.pathExists(target)).toBe(false);
+  });
+
+  it('resolveNewOptions refuses host:443 before detection', async () => {
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'detectSite must not be called' }));
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'shop.webflow.io:443' },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), detectSite, log: () => {} }
+    );
+    expect(r.ok).toBe(false);
+    expect(detectSite).not.toHaveBeenCalled();
+  });
+});

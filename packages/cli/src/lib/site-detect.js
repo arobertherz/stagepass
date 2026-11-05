@@ -58,9 +58,18 @@ function hasExplicitPort(input) {
 export function normalizeSiteUrl(input) {
   const raw = String(input == null ? '' : input).trim();
   if (!raw) return { ok: false, error: 'No live site given.' };
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  // AC-22: any explicit port is rejected, :443 and :0443 included. URL drops
+  // the default port, so this runs on the raw string before new URL.
+  if (hasExplicitPort(candidate)) {
+    return {
+      ok: false,
+      error: "Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.",
+    };
+  }
   let url;
   try {
-    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    url = new URL(candidate);
   } catch {
     return { ok: false, error: `Invalid site URL: ${raw}` };
   }

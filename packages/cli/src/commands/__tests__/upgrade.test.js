@@ -340,3 +340,66 @@ describe('upgrade: published versions only', () => {
     expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
   });
 });
+
+describe('upgrade: --site with an explicit port (AC-22)', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-port-'));
+    await fsx.writeJson(path.join(dir, 'package.json'), {
+      name: 'app',
+      devDependencies: { '@stagepass/loader': '^2.0.0' },
+    }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'tsconfig.json'), {
+      compilerOptions: { strict: true, types: ['@stagepass/loader'] },
+    }, { spaces: 2 });
+  });
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await fsx.remove(dir);
+  });
+
+  const sites = [
+    'app.webflow.io:443',
+    'https://app.webflow.io:443',
+    'https://app.webflow.io:443/pfad',
+    '[::1]:443',
+    'https://[2001:db8::1]:8443/',
+    'app.webflow.io:8443',
+  ];
+
+  const run = async (options) => {
+    const fetch = vi.fn(async () => {
+      throw new Error('no network in this test');
+    });
+    vi.stubGlobal('fetch', fetch);
+    const detectSite = vi.fn(async () => ({ ok: false, error: 'detectSite must not be called' }));
+    const code = await upgrade(options, {
+      cwd: dir,
+      fetchPublished: async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.0.0', '2.2.0'] }),
+      log: () => {},
+      isTTY: false,
+      loadProjects: async () => ({ projects: {} }),
+      detectSite,
+    });
+    return { code, fetch, detectSite };
+  };
+
+  it.each(sites)('rejects --site %s without network access and writes nothing', async (site) => {
+    const before = await snapshot(dir);
+    const { code, fetch, detectSite } = await run({ site });
+    expect(code).not.toBe(0);
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await snapshot(dir)).toEqual(before);
+  });
+
+  it.each(sites)('rejects --site %s even with --site-modules', async (site) => {
+    const before = await snapshot(dir);
+    const { code, detectSite } = await run({ site, siteModules: 'cookies' });
+    expect(code).not.toBe(0);
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(await snapshot(dir)).toEqual(before);
+  });
+});
