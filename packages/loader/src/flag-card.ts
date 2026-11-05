@@ -4,7 +4,6 @@
  * are never parsed as HTML. Opaque surface, 1px border, no shadow, no blur, no filter.
  * Shows little by default: one-line messages and a collapsed file list, details on demand.
  */
-import { isValidDomain } from './domain.js';
 import { FLASH } from './flag.js';
 import type { FlagApi, FlagCard, FlagFile, FlagMsg } from './flag.js';
 
@@ -14,7 +13,7 @@ const CSS =
   '.cd.dk{--bg:#18181C;--ink:#F4F2F0;--mu:#A19C9E;--ln:#66666F;--sep:#2C2C32;--hv:#222227;--cp:#2A2A30;--live:#FF6A5E;--err:#FF6B93;--wa:#F2B53A;--on:#F4F2F0;--onf:#17171B}' +
   '.cd.on{opacity:1;transform:none}.cd[hidden],[hidden]{display:none!important}.hd,.ft{flex:none}' +
   '.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}' +
-  '.mo{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}' +
+  '.mo{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}' +
   '.hd{padding:14px 16px 10px;display:grid;gap:4px;border-bottom:1px solid var(--sep)}' +
   '.r1{display:flex;align-items:center;gap:8px;min-width:0}' +
   '.r1 strong{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}' +
@@ -224,8 +223,8 @@ export function createCard(a: FlagApi): FlagCard {
   try {
     prev = prev || sessionStorage.getItem(PREV);
   } catch (_) {}
-  // Same rules as session/domain: .sp, localhost, localhost:port. Never debug.
-  if (prev && (prev === 'debug' || !isValidDomain(prev))) prev = null;
+  // Same rules as session/domain via loader vd. Never debug.
+  if (prev && (prev === 'debug' || !s.vd(prev))) prev = null;
   const dbg = s.debug ? prev : 'debug';
 
   const render = () => {

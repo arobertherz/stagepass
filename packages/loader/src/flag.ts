@@ -80,6 +80,8 @@ export type FlagState = {
   domain: string | null;
   /** URL of flag-card.min.js (same pinned path as the loader) */
   card: string;
+  /** Shared domain guard (from loader) — card must not re-bundle isValidDomain */
+  vd: (d: string) => boolean;
   /** End session: the only action that disconnects */
   end: () => void;
 };
