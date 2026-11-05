@@ -19,7 +19,7 @@ import {
   rangeHasPerModuleTypes,
   satisfiesSimple,
 } from '../lib/registry.js';
-import { detectSite } from '../lib/site-detect.js';
+import { detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
   applyProjectSync,
   planProjectSync,
@@ -201,6 +201,14 @@ export async function upgrade(options = {}, deps = {}) {
   } catch {
     log(chalk.red('package.json is not valid JSON.'));
     return 1;
+  }
+
+  if (options.site) {
+    const c = normalizeSiteUrl(options.site);
+    if (!c.ok) {
+      log(chalk.red(c.error));
+      return 1;
+    }
   }
 
   const names = findStagepassDeps(pkg).map((d) => d.name);

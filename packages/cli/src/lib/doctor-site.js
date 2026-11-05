@@ -41,7 +41,7 @@ export async function runProjectSiteChecks(opts = {}) {
   }
 
   if (opts.skipSite) return checks;
-  const found = await resolveProjectOrigin(cwd, sp.data, { loadProjects: opts.loadProjects });
+  const found = await resolveProjectOrigin(cwd, sp.data, { loadProjects: opts.loadProjects, log: opts.log });
   if (!found) {
     checks.push({
       id: 'project.site',

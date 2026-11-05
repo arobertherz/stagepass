@@ -25,7 +25,7 @@ import {
   typesForModules,
 } from './project-modules.js';
 import { loadProjects } from './projects.js';
-import { describeDetection, normalizeSiteUrl } from './site-detect.js';
+import { describeDetection, normalizeSiteUrl, SITE_PORT_ERROR } from './site-detect.js';
 
 /**
  * Read and parse stagepass.json (null when missing or invalid).
@@ -59,6 +59,10 @@ export function declaredModules(data) {
   return result.ok ? result.modules : null;
 }
 
+function warnPortSkip(log, source) {
+  if (log) log(`Skipped ${source}: it contains a port. Use the host only, e.g. my-site.webflow.io.`);
+}
+
 /**
  * Live origin for a project: stagepass.json `origin`, else the first concrete
  * (non-wildcard) origin stored by `stagepass link` for this project folder.
@@ -72,6 +76,7 @@ export async function resolveProjectOrigin(cwd, data, deps = {}) {
   if (data && typeof data.origin === 'string' && data.origin.trim() !== '') {
     const check = normalizeSiteUrl(data.origin);
     if (check.ok) return { origin: check.host, source: 'stagepass.json' };
+    if (check.error === SITE_PORT_ERROR) warnPortSkip(deps.log, 'stagepass.json origin');
   }
   const load = deps.loadProjects || loadProjects;
   const realpath = deps.realpath || ((p) => fs.realpath(p));
@@ -99,6 +104,7 @@ export async function resolveProjectOrigin(cwd, data, deps = {}) {
     for (const origin of Array.isArray(entry.origins) ? entry.origins : []) {
       const check = normalizeSiteUrl(String(origin));
       if (check.ok) return { origin: check.host, source: 'stagepass link' };
+      if (check.error === SITE_PORT_ERROR) warnPortSkip(deps.log, 'linked origin from stagepass link');
     }
   }
   return null;
@@ -147,7 +153,7 @@ export async function resolveUpgradeModules(input, deps) {
     if (!check.ok) return { ok: false, error: check.error };
     origin = check.host;
   } else {
-    const found = await resolveProjectOrigin(cwd, data, { loadProjects: deps.loadProjects });
+    const found = await resolveProjectOrigin(cwd, data, { loadProjects: deps.loadProjects, log });
     origin = found ? found.origin : null;
   }
 

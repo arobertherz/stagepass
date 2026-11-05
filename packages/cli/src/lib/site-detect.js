@@ -12,6 +12,8 @@ import { MODULE_CHOICES, normalizeModulesList } from './project-modules.js';
 export const DETECT_TIMEOUT_MS = 5000;
 export const DETECT_MAX_BYTES = 2 * 1024 * 1024;
 export const DETECT_MAX_REDIRECTS = 3;
+export const SITE_PORT_ERROR =
+  'Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.';
 
 // Bounded attribute run keeps the scan linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
@@ -62,10 +64,7 @@ export function normalizeSiteUrl(input) {
   // AC-22: any explicit port is rejected, :443 and :0443 included. URL drops
   // the default port, so this runs on the raw string before new URL.
   if (hasExplicitPort(candidate)) {
-    return {
-      ok: false,
-      error: "Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.",
-    };
+    return { ok: false, error: SITE_PORT_ERROR };
   }
   let url;
   try {
@@ -80,7 +79,7 @@ export function normalizeSiteUrl(input) {
     return { ok: false, error: 'Site URL must not contain credentials.' };
   }
   if (url.port) {
-    return { ok: false, error: 'Site URL must not contain a port.' };
+    return { ok: false, error: SITE_PORT_ERROR };
   }
   const host = url.hostname.toLowerCase();
   const check = validateOriginEntry(host);

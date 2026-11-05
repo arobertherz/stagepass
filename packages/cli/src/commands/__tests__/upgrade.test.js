@@ -545,3 +545,68 @@ describe('upgrade: --site with an explicit port (AC-22)', () => {
     expect(await snapshot(dir)).toEqual(before);
   });
 });
+
+describe('upgrade: INV-3 validate --site before registry query', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-inv3-'));
+    await fsx.writeJson(path.join(dir, 'package.json'), {
+      name: 'app',
+      devDependencies: { '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' },
+    }, { spaces: 2 });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 }, { spaces: 2 });
+    await fsx.writeFile(path.join(dir, 'README.md'), '# app\n');
+  });
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await fsx.remove(dir);
+  });
+
+  const invalidSites = [
+    'my-site.webflow.io:443',
+    'https://my-site.webflow.io:443',
+    'https://my-site.webflow.io:443/',
+    'my-site.webflow.io:0443',
+    'my-site.webflow.io:',
+    'HTTPS://MY-SITE.WEBFLOW.IO:443/',
+    '  my-site.webflow.io:443  ',
+    'user:pw@my-site.webflow.io:443',
+    '[::1]:443',
+    'my-site.webflow.io:8443',
+  ];
+
+  it.each(invalidSites)(
+    '[INV-3] rejects --site %j with no registry/exec/detectSite/fetch and unchanged files',
+    async (site) => {
+      const before = await snapshot(dir);
+      const calls = { fetchPublished: 0, exec: 0, detectSite: 0, fetch: 0 };
+      const boom = (name) => () => {
+        calls[name] += 1;
+        throw new Error(`${name} must not be called`);
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => {
+          calls.fetch += 1;
+          throw new Error('fetch must not be called');
+        })
+      );
+      const code = await upgrade(
+        { site },
+        {
+          cwd: dir,
+          fetchPublished: boom('fetchPublished'),
+          exec: boom('exec'),
+          detectSite: boom('detectSite'),
+          log: () => {},
+          isTTY: false,
+          loadProjects: async () => ({ projects: {} }),
+        }
+      );
+      expect(code).not.toBe(0);
+      expect(calls).toEqual({ fetchPublished: 0, exec: 0, detectSite: 0, fetch: 0 });
+      expect(await snapshot(dir)).toEqual(before);
+    }
+  );
+});
