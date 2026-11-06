@@ -6,7 +6,7 @@
  * `stagepass upgrade` only writes ranges a published version satisfies.
  * A monorepo test keeps this in sync with packages/loader and packages/modules.
  */
-export const STAGEPASS_PACKAGES_VERSION = '2.2.0';
+export const STAGEPASS_PACKAGES_VERSION = '2.2.2';
 
 /**
  * Major caret range for a version (e.g. 2.2.0 → ^2), matching the `@2` CDN

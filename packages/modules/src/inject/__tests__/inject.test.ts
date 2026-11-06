@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('Injector Module', () => {
   beforeEach(() => {
@@ -18,47 +18,6 @@ describe('Injector Module', () => {
     };
     (window as any).stagepass = stagepassObj;
     (globalThis as any).stagepass = stagepassObj;
-  });
-
-  describe('Source resolution', () => {
-    it('INV-6 / F-2: empty resolveLocalUrl keeps production src (no invented localhost ?_cb=)', () => {
-      const src = 'https://cdn.example.com/lib.js';
-      const stagepass = true;
-      const vars = (window as any).stagepass.vars;
-      vars.isLocal = true;
-      vars.domain = 'localhost';
-      const resolveLocalUrl = () => '';
-      let resolved = src;
-      if (stagepass !== false && vars.isLocal) {
-        const localUrl = resolveLocalUrl();
-        if (localUrl) resolved = localUrl;
-      }
-      expect(resolved).toBe(src);
-      expect(resolved.includes('_cb=')).toBe(false);
-      expect(resolved.includes('localhost')).toBe(false);
-    });
-
-    it('should use production URL when stagepass is false', () => {
-      const src = 'https://cdn.example.com/lib.js';
-      const stagepass = false;
-      const vars = (window as any).stagepass.vars;
-      
-      if (stagepass !== false && vars.isLocal) {
-        // This branch shouldn't execute
-        expect(false).toBe(true);
-      } else {
-        expect(src).toBe('https://cdn.example.com/lib.js');
-      }
-    });
-
-    it('should extract filename from URL when localPath is missing', () => {
-      const src = 'https://cdn.example.com/path/to/file.js';
-      const urlObj = new URL(src);
-      const pathParts = urlObj.pathname.split('/');
-      const filename = pathParts[pathParts.length - 1];
-      
-      expect(filename).toBe('file.js');
-    });
   });
 
   describe('Type detection', () => {
@@ -214,5 +173,160 @@ describe('Injector Module', () => {
         }
       }).toThrow('Stagepass core loader must be loaded before modules');
     });
+  });
+});
+
+describe('Inject INV-6 / F-3 source resolution via inject API', () => {
+  const prodSrc = 'https://cdn.example.com/lib.js';
+
+  beforeEach(() => {
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  });
+
+  it('INV-6 / F-3: empty resolveLocalUrl keeps production src (no invented localhost ?_cb=)', async () => {
+    vi.resetModules();
+    const stagepassObj: any = {
+      vars: {
+        isLocal: true,
+        env: 'local',
+        domain: 'localhost',
+        timestamp: 999001,
+        version: '2.2.2',
+      },
+      warn: vi.fn(),
+      resolveLocalUrl: () => '',
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+    void stagepassObj.inject({ src: prodSrc, position: 'head' });
+    const el = document.querySelector(`script[src="${prodSrc}"]`) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector('script[src*="_cb="]')).toBeNull();
+    expect(document.querySelector('script[src*="localhost"]')).toBeNull();
+  });
+
+  it('INV-6 / F-3: non-empty resolveLocalUrl uses that local URL', async () => {
+    vi.resetModules();
+    const localUrl = 'https://app.sp/lib.js?_cb=1';
+    const stagepassObj: any = {
+      vars: {
+        isLocal: true,
+        env: 'local',
+        domain: 'app.sp',
+        timestamp: 999002,
+        version: '2.2.2',
+      },
+      warn: vi.fn(),
+      resolveLocalUrl: () => localUrl,
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+    void stagepassObj.inject({ src: prodSrc, position: 'head' });
+    const el = document.querySelector(`script[src="${localUrl}"]`) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector(`script[src="${prodSrc}"]`)).toBeNull();
+  });
+
+  it('INV-6 / F-3: missing resolveLocalUrl keeps production src', async () => {
+    vi.resetModules();
+    const stagepassObj: any = {
+      vars: {
+        isLocal: true,
+        env: 'local',
+        domain: 'localhost',
+        timestamp: 999003,
+        version: '2.2.2',
+      },
+      warn: vi.fn(),
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+    void stagepassObj.inject({ src: prodSrc, position: 'head' });
+    const el = document.querySelector(`script[src="${prodSrc}"]`) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector('script[src*="_cb="]')).toBeNull();
+  });
+
+  it('INV-6 / F-3: stagepass false keeps production src when isLocal', async () => {
+    vi.resetModules();
+    const stagepassObj: any = {
+      vars: {
+        isLocal: true,
+        env: 'local',
+        domain: 'app.sp',
+        timestamp: 999004,
+        version: '2.2.2',
+      },
+      warn: vi.fn(),
+      resolveLocalUrl: () => 'https://app.sp/lib.js',
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+    void stagepassObj.inject({ src: prodSrc, stagepass: false, position: 'head' });
+    const el = document.querySelector(`script[src="${prodSrc}"]`) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector('script[src="https://app.sp/lib.js"]')).toBeNull();
+  });
+});
+
+describe('Inject INV-8 / F-4 body-start position via inject API', () => {
+  it("INV-8 / F-4: position 'body-start' with existing body child is firstElementChild", async () => {
+    vi.resetModules();
+    const stagepassObj: any = {
+      vars: {
+        isLocal: false,
+        env: 'production',
+        domain: 'example.com',
+        timestamp: 0,
+        version: '2.2.2',
+      },
+      warn: vi.fn(),
+      resolveLocalUrl: () => '',
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    const existing = document.createElement('div');
+    existing.id = 'anchor';
+    document.body.appendChild(existing);
+
+    void stagepassObj.inject({
+      src: 'https://cdn.example.com/bs.js',
+      position: 'body-start',
+    });
+    const injected = document.querySelector(
+      'script[src="https://cdn.example.com/bs.js"]'
+    ) as HTMLScriptElement;
+    expect(injected).toBeTruthy();
+    expect(document.body.firstElementChild).toBe(injected);
+    expect(injected.nextElementSibling).toBe(existing);
   });
 });

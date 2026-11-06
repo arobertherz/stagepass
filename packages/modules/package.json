@@ -1,6 +1,6 @@
 {
   "name": "@stagepass/modules",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Modular feature extensions for Stagepass",
   "type": "module",
   "main": "dist/all.min.js",

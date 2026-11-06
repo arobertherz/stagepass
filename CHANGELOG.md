@@ -17,7 +17,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### [2.2.6] - 2026-11-06
 
-Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+Patch release of the CLI only. At publish time `@stagepass/loader` and `@stagepass/modules` were 2.2.0; `STAGEPASS_PACKAGES_VERSION` later tracks 2.2.2 without a CLI version bump.
 
 #### Fixed
 
@@ -192,6 +192,10 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
+### [2.2.2] - 2026-11-06
+
+Version alignment only (no runtime change). Package version bumped to 2.2.2 for monorepo lockstep with `@stagepass/modules`; `dist/` unchanged.
+
 ### [2.2.0] - 2026-11-02
 
 Non-breaking minor release. No runtime behaviour change (only the embedded version string).
@@ -299,6 +303,15 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/modules`
+
+### [2.2.2] - 2026-11-06
+
+Patch release of modules. `@stagepass/cli` stays at 2.2.6; `@stagepass/loader` package version aligns to 2.2.2 (no loader runtime change). Runtime `dist/` for inject differs from 2.2.1.
+
+#### Fixed
+
+- `position: 'body-start'` inserts as the first child of `document.body` (was inserting after the first child).
+- README `stagepass` option docs match INV-6: no invented page-host `?_cb=` fallback; empty/missing `resolveLocalUrl` keeps production `src`.
 
 ### [2.2.1] - 2026-11-06
 

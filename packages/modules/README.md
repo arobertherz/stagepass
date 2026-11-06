@@ -75,7 +75,7 @@ await sp.inject({
 | :--- | :--- |
 | `src` | Required production URL. |
 | `type` | `'script'` \| `'style'` (default: `.css` → style, else script). |
-| `stagepass` | When not `false` and `sp.vars.isLocal`, resolve a local URL via `sp.resolveLocalUrl` (fallback `https://<domain>/<path>?_cb=<timestamp>`). |
+| `stagepass` | When not `false` and `sp.vars.isLocal`, use `sp.resolveLocalUrl` only if it returns a non-empty URL; otherwise keep the production `src` (plus optional `version` / `?v=`). |
 | `localPath` / `path` | Local path under the linked root (default: filename from `src`). |
 | `id` | Element id; skips inject if already present. |
 | `async` | If `true`, set `script.async = true`; otherwise `async = false` and keep order. |

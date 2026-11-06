@@ -215,10 +215,6 @@
       switch (position) {
         case 'head':
           return document.head;
-        case 'body-start':
-          return document.body?.firstChild || document.body;
-        case 'body-end':
-          return document.body;
         default:
           return document.body;
       }
@@ -369,7 +365,8 @@
       }
 
       if (insertionPoint === document.head || insertionPoint === document.body) {
-        insertionPoint.appendChild(element);
+        if (options.position === 'body-start') insertionPoint.prepend(element);
+        else insertionPoint.appendChild(element);
       } else {
         const parent = insertionPoint.parentNode;
         if (parent) {
