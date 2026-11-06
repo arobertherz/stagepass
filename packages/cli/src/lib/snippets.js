@@ -7,7 +7,7 @@ import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
  * @returns {string}
  */
 export function sanitizeSnippetVersion(version) {
-  const value = String(version == null ? '' : version).trim();
+  const value = String(version == null ? '' : version);
   // Exact stable X.Y.Z only (no prerelease, build metadata, or ranges).
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
     throw new Error(

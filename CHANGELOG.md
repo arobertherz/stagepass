@@ -15,6 +15,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.6] - 2026-11-06
+
+Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
+
+#### Fixed
+
+- Registry and `node_modules` version strings with leading or trailing whitespace are no longer treated as stable semver. `parseSemver` checks the raw value; padded entries are ignored so snippets and `upgrade` ranges stay clean `X.Y.Z` / `^X.Y.Z`.
+
 ### [2.2.5] - 2026-11-05
 
 Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.

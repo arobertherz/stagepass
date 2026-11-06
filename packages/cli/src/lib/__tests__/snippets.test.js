@@ -22,6 +22,9 @@ describe('sanitizeSnippetVersion', () => {
     expect(() => sanitizeSnippetVersion('2.0.0</script>')).toThrow(/Invalid version/);
     expect(() => sanitizeSnippetVersion('2.0.0"')).toThrow(/Invalid version/);
     expect(() => sanitizeSnippetVersion('<2.0.0')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion(' 2.0.0')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('2.0.0 ')).toThrow(/Invalid version/);
+    expect(() => sanitizeSnippetVersion('\t2.0.0')).toThrow(/Invalid version/);
   });
 });
 

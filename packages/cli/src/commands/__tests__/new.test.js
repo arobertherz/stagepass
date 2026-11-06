@@ -698,6 +698,29 @@ describe('new: snippet version is the resolved loader version (AC-14)', () => {
     await expectSnippetVersion(r, '2.10.0');
   });
 
+  it('[INV-4] registry whitespace-padded versions never reach README, output or package.json', async () => {
+    const versions = [
+      ' 2.7.0',
+      '2.7.0 ',
+      '\t2.7.0',
+      '2.7.0\n',
+      '2.9.0+EVILMARK5',
+      '02.1.0',
+      '2.3.4',
+    ];
+    const r = await run('snip-ws', { siteModules: 'cookies' }, {
+      fetchPublished: published('3.0.0', versions),
+      cliVersion: '2.2.6',
+      packagesVersion: '2.2.0',
+    });
+    expect(r.code).toBe(0);
+    const readme = await fs.readFile(path.join(r.dir, 'README.md'), 'utf8');
+    const pkg = await fs.readJson(path.join(r.dir, 'package.json'));
+    expect(r.out + readme).not.toMatch(/EVILMARK|\s2\.7\.0|\^\s/);
+    expect(JSON.stringify(pkg)).not.toMatch(/\^\s|\s2\.7\.0/);
+    await expectSnippetVersion(r, '2.3.4');
+  });
+
   it('[INV-4][AC-6] offline ignores installed build-metadata loader in target dir', async () => {
     const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
     const target = path.join(tmp, 'snip-evil-installed');

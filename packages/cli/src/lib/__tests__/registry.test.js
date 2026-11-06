@@ -59,6 +59,23 @@ describe('registry helpers', () => {
     expect(maxSatisfying(['2.9.0+EVILMARK5', '2.4.0-rc.1'], '^2')).toBeNull();
   });
 
+  it('[INV-4] rejects versions with leading or trailing whitespace', () => {
+    expect(satisfiesSimple(' 2.7.0', '^2')).toBe(false);
+    expect(satisfiesSimple('2.7.0 ', '^2')).toBe(false);
+    expect(satisfiesSimple('\t2.7.0', '^2')).toBe(false);
+    expect(satisfiesSimple('2.7.0\n', '^2')).toBe(false);
+    expect(satisfiesSimple('2.3.4', '^2')).toBe(true);
+  });
+
+  it('[INV-4] maxSatisfying ignores whitespace-padded versions in the list', () => {
+    expect(
+      maxSatisfying(
+        [' 2.7.0', '2.7.0 ', '\t2.7.0', '2.7.0\n', '2.9.0+EVILMARK5', '02.1.0', '2.3.4'],
+        '^2'
+      )
+    ).toBe('2.3.4');
+  });
+
   it('rangeHasPerModuleTypes needs a published modules >= 2.2.0 in range', () => {
     expect(rangeHasPerModuleTypes(['2.0.0'], '^2')).toBe(false);
     expect(rangeHasPerModuleTypes(['2.0.0', '2.2.0'], '^2')).toBe(true);
@@ -134,6 +151,13 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
   });
 
+  it('[INV-4] ignores registry versions with whitespace at the edges', async () => {
+    await withInstalled('2.1.0', async (cwd) => {
+      const versions = [' 2.7.0', '2.7.0 ', '\t2.7.0', '2.7.0\n', '2.9.0+EVILMARK5', '2.3.4'];
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', versions), cwd })).toBe('2.3.4');
+    });
+  });
+
   it('offline (or no 2.x published) uses the installed loader, then the bundled one', async () => {
     await withInstalled('2.3.9', async (cwd) => {
       expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.3.9');
@@ -153,6 +177,9 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     ['2.3.4+build.1'],
     ['2.9.0+a-b'],
     ['02.1.0'],
+    [' 2.7.0'],
+    ['2.7.0 '],
+    ['\t2.3.4'],
     ['2.3.4"><script>'],
     [42],
     [''],
