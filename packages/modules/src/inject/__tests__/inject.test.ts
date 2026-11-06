@@ -21,19 +21,21 @@ describe('Injector Module', () => {
   });
 
   describe('Source resolution', () => {
-    it('should resolve to local URL when stagepass is enabled and isLocal is true', () => {
+    it('INV-6 / F-2: empty resolveLocalUrl keeps production src (no invented localhost ?_cb=)', () => {
       const src = 'https://cdn.example.com/lib.js';
       const stagepass = true;
-      const localPath = 'lib.js';
       const vars = (window as any).stagepass.vars;
-      
+      vars.isLocal = true;
+      vars.domain = 'localhost';
+      const resolveLocalUrl = () => '';
+      let resolved = src;
       if (stagepass !== false && vars.isLocal) {
-        const filename = localPath || 'lib.js';
-        const cleanPath = filename.startsWith('/') ? filename.substring(1) : filename;
-        const resolved = `https://${vars.domain}/${cleanPath}?_cb=${vars.timestamp}`;
-        
-        expect(resolved).toBe('https://test.sp/lib.js?_cb=1234567890');
+        const localUrl = resolveLocalUrl();
+        if (localUrl) resolved = localUrl;
       }
+      expect(resolved).toBe(src);
+      expect(resolved.includes('_cb=')).toBe(false);
+      expect(resolved.includes('localhost')).toBe(false);
     });
 
     it('should use production URL when stagepass is false', () => {

@@ -89,3 +89,61 @@ describe('Inject without loader', () => {
     warn.mockRestore();
   });
 });
+
+describe('Inject INV-6 / F-2 localhost without session', () => {
+  beforeAll(async () => {
+    vi.resetModules();
+    const stagepassObj: any = {
+      vars: {
+        isLocal: true,
+        env: 'local',
+        domain: 'localhost',
+        timestamp: 999001,
+        version: '2.2.1',
+      },
+      warn: vi.fn(),
+      resolveLocalUrl: () => '',
+      use: (_name: string, _version: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    (window as any).stagepass = stagepassObj;
+    (globalThis as any).stagepass = stagepassObj;
+    await import('../index.ts');
+  });
+
+  beforeEach(() => {
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  });
+
+  it('INV-6 / F-2: page on localhost, empty resolveLocalUrl → production src unchanged (no ?_cb=)', () => {
+    const inject = (window as any).stagepass.inject;
+    // Do not await: jsdom will not load the remote script; attributes are set sync
+    void inject({
+      src: 'https://cdn.example.com/app.js',
+      position: 'head',
+    });
+    const el = document.querySelector(
+      'script[src="https://cdn.example.com/app.js"]'
+    ) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector('script[src*="_cb="]')).toBeNull();
+    expect(document.querySelector('script[src*="localhost"]')).toBeNull();
+  });
+
+  it('INV-6 / F-2: empty resolveLocalUrl still applies version ?v= on production src', () => {
+    const inject = (window as any).stagepass.inject;
+    void inject({
+      src: 'https://cdn.example.com/app.js',
+      version: '2.2.1',
+      position: 'head',
+    });
+    const el = document.querySelector(
+      'script[src="https://cdn.example.com/app.js?v=2.2.1"]'
+    ) as HTMLScriptElement;
+    expect(el).toBeTruthy();
+    expect(document.querySelector('script[src*="_cb="]')).toBeNull();
+  });
+});

@@ -168,7 +168,6 @@
         const localUrl = sp.resolveLocalUrl(cleanPath);
         if (localUrl) return localUrl;
       }
-      return `https://${vars.domain}/${cleanPath}?_cb=${vars.timestamp}`;
     }
 
     if (version) {

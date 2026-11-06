@@ -300,6 +300,15 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/modules`
 
+### [2.2.1] - 2026-11-06
+
+Patch release of modules only. `@stagepass/cli` stays at 2.2.6; `@stagepass/loader` stays at 2.2.0. Runtime `dist/` for inject differs from 2.2.0 / 2.1.0.
+
+#### Fixed
+
+- NodeNext umbrella re-exports in `global.d.ts` now use explicit `.js` extensions (`./inject.js`, `./cookies.js`, `./maintenance.js`), so `types: ["@stagepass/modules"]` resolves `sp.inject` / `sp.cookies` / `sp.maintenance` under `moduleResolution: "NodeNext"`.
+- Inject local swap only when an active Stagepass session yields a non-empty `resolveLocalUrl` (INV-6). On localhost without a session, production `src` is kept (plus optional `version` / `?v=`); the inventing `https://${domain}/…?_cb=` fallback is removed.
+
 ### [2.2.0] - 2026-11-02
 
 Non-breaking minor release. Runtime files in `dist/` are unchanged.
