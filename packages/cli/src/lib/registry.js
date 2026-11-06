@@ -20,7 +20,7 @@ const PKG_NAME_RE = /^@stagepass\/[a-z0-9][a-z0-9._-]*$/;
  * @returns {{ major: number, minor: number, patch: number, pre: boolean } | null}
  */
 export function parseSemver(version) {
-  const m = SEMVER_RE.exec(String(version).trim());
+  const m = SEMVER_RE.exec(String(version));
   if (!m) return null;
   return { major: +m[1], minor: +m[2], patch: +m[3], pre: Boolean(m[4]) };
 }
@@ -161,7 +161,7 @@ export async function installedLoaderVersion(cwd, fse = fs) {
   try {
     if (!(await fse.pathExists(file))) return null;
     const pkg = await fse.readJson(file);
-    const version = typeof pkg?.version === 'string' ? pkg.version.trim() : '';
+    const version = typeof pkg?.version === 'string' ? pkg.version : '';
     return satisfiesSimple(version, PACKAGES_MAJOR_RANGE) ? version : null;
   } catch {
     return null;

@@ -469,6 +469,26 @@ describe('upgrade: snippet version is the resolved loader version (AC-14)', () =
     expect(out).toContain('(e.g. @2.10.0)');
   });
 
+  it('[INV-4] registry whitespace-padded versions never reach package.json or snippet', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0' });
+    const versions = [
+      ' 2.7.0',
+      '2.7.0 ',
+      '\t2.7.0',
+      '2.7.0\n',
+      '2.9.0+EVILMARK5',
+      '2.3.4',
+    ];
+    const { code, out } = await run({ siteModules: 'cookies' }, published('3.0.0', versions));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+    expect(out).toContain('(e.g. @2.3.4)');
+    expect(out).not.toMatch(/\^\s/);
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2.3.4');
+    expect(JSON.stringify(pkg)).not.toMatch(/\^\s|\s2\.7\.0/);
+  });
+
   it('[INV-4][AC-6] offline ignores installed build-metadata / prerelease loader', async () => {
     const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
     await writePkg({ '@stagepass/loader': '^2.0.0' });
