@@ -106,6 +106,12 @@ describe('check-release-version', () => {
       expect(() => parseReleaseTag(value)).toThrow(/Not a package release tag|required/);
     }
   });
+
+  it('fails closed on SemVer build metadata such as +b1', () => {
+    expect(() => parseReleaseTag('modules-v2.2.2+b1')).toThrow(/Not a package release tag/);
+    expect(() => parseReleaseTag('cli-v2.2.1+build')).toThrow(/Not a package release tag/);
+    expect(() => releasePlan('modules-v2.2.2+b1', ROOT)).toThrow(/Not a package release tag/);
+  });
 });
 
 describe('check-release-version process (main)', () => {
@@ -159,6 +165,11 @@ describe('check-release-version process (main)', () => {
     for (const value of INJECTION_REFS) {
       assertFailedWithoutSelection(runMain([value]));
     }
+  });
+
+  it('fails without selection on SemVer build metadata such as +b1', () => {
+    assertFailedWithoutSelection(runMain(['modules-v2.2.2+b1']));
+    assertFailedWithoutSelection(runMain(['cli-v2.2.1+build']));
   });
 
   it('fails without selection when the named package version does not match', () => {
@@ -269,6 +280,8 @@ describe('release workflow process shape', () => {
     expect(check('cli-v2.2.6')).toBe(true);
     expect(check('modules-v2.0.0-beta.1')).toBe(true);
     expect(check('v2.2.2')).toBe(false);
+    expect(check('modules-v2.2.2+b1')).toBe(false);
+    expect(check('cli-v2.2.1+build')).toBe(false);
     for (const value of INJECTION_REFS) {
       expect(check(value)).toBe(false);
     }
