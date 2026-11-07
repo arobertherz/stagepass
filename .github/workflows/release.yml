@@ -3,7 +3,15 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'cli-v*'
+      - 'loader-v*'
+      - 'modules-v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Package release ref (cli-vX, loader-vX, or modules-vX)
+        required: true
+        type: string
 
 jobs:
   stage:
@@ -12,10 +20,22 @@ jobs:
     runs-on: [self-hosted, cerebro]
     permissions:
       contents: read
+    env:
+      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
 
     steps:
+      - name: Validate release ref
+        run: |
+          if [[ ! "$RELEASE_REF" =~ ^(cli|loader|modules)-v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$ ]]; then
+            echo "Not a package release ref" >&2
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_REF }}
+          persist-credentials: false
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -48,37 +68,27 @@ jobs:
       - name: Packed CLI smoke test (npm pack, global install, new + install + build)
         run: node scripts/test-cli-packed.mjs
 
-      - name: Verify tag matches package versions
+      - name: Verify package tag matches the selected package version
         id: versions
-        run: node scripts/check-release-version.mjs "${GITHUB_REF_NAME}"
+        run: node scripts/check-release-version.mjs "$RELEASE_REF"
+
+      - name: Require selected package
+        if: steps.versions.outputs.stage_dir == ''
+        run: exit 1
 
       # npm provenance (--provenance) requires a supported cloud CI OIDC
       # environment. Self-hosted runners are not supported, so we omit it.
-      - name: Stage @stagepass/modules
-        if: steps.versions.outputs.stage_modules == 'true'
-        working-directory: packages/modules
+      - name: Stage the selected package
+        if: steps.versions.outputs.stage_dir != ''
+        working-directory: packages/${{ steps.versions.outputs.stage_dir }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
-
-      - name: Stage @stagepass/loader
-        if: steps.versions.outputs.stage_loader == 'true'
-        working-directory: packages/loader
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
-
-      - name: Stage @stagepass/cli
-        if: steps.versions.outputs.stage_cli == 'true'
-        working-directory: packages/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm stage publish --tag ${{ steps.versions.outputs.dist_tag }} --access public
+          DIST_TAG: ${{ steps.versions.outputs.dist_tag }}
+        run: npm stage publish --tag "$DIST_TAG" --access public
 
       - name: List staged packages
+        if: steps.versions.outputs.stage_dir != ''
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          (cd packages/modules && npm stage list)
-          (cd packages/loader && npm stage list)
-          (cd packages/cli && npm stage list)
+          STAGE_DIR: ${{ steps.versions.outputs.stage_dir }}
+        run: (cd "packages/$STAGE_DIR" && npm stage list)

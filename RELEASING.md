@@ -16,8 +16,8 @@ Workflow: `.github/workflows/release.yml` (and `scripts/check-release-version.mj
 
 | Version shape | Example tag | npm dist-tag at staging |
 | :--- | :--- | :--- |
-| Prerelease (contains `-`) | `v2.2.0-beta.1` | `next` |
-| Stable | `v2.2.0` | `next` |
+| Prerelease (contains `-`) | `modules-v2.2.0-beta.1` | `next` |
+| Stable | `loader-v2.2.0` | `next` |
 
 Since 2.2.0 **every** release is staged under `next`. Approving a stage therefore never moves `latest`, so `npm install @stagepass/cli` keeps installing the previous version until a maintainer promotes the new one explicitly (section 3). This keeps a bad build from reaching `latest` by a single approval click.
 
@@ -27,28 +27,26 @@ Always test betas with an **exact** version pin.
 
 ### 1a. Bump versions
 
-Set the same prerelease version in all three `packages/*/package.json` files (and any internal peer ranges), e.g. `2.1.0-beta.1`.
+Bump **only the package you intend to stage** in that package's `packages/<name>/package.json` (and any internal peer range that must mention the new version). The three packages have independent versions and do not need to share a number. Example: you may set `@stagepass/modules` to `2.2.2-beta.1` while leaving CLI and loader unchanged.
 
 Update `CHANGELOG.md` and docs as needed. Commit on the release branch.
 
 ### 1b. Tag and push
 
 ```bash
-git tag v2.1.0-beta.1
-git push origin v2.1.0-beta.1
+git tag modules-v2.1.0-beta.1
+git push origin modules-v2.1.0-beta.1
 ```
 
-The tag **without** the leading `v` must equal the `version` of the packages you release. CI stages only the packages whose version matches the tag and fails if none match (`scripts/check-release-version.mjs`).
-
-**Partial release** (e.g. a CLI-only patch): bump only that package (e.g. `@stagepass/cli` to `2.1.1`), tag `v2.1.1`. The other packages are skipped and keep their staged/published version. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
+Each release selects **exactly one** package with a package-specific tag (`cli-vX`, `loader-vX`, `modules-vX`) or the same `ref` via `workflow_dispatch`. The version after `-v` must equal that package's `package.json` version (`scripts/check-release-version.mjs`). A shared `v*` tag does not start staging. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
 
 Before staging, CI runs `scripts/test-cli-packed.mjs`: it packs the CLI, loader and modules, checks the tarball contents (templates, `global.d.ts`, per-module `*.d.ts`, dist files), installs the CLI tarball globally into a temp prefix, runs `stagepass new` (ts with modules `none` and `cookies`, js with `all`) with `--install` (an `npm` shim adds the local loader/modules tarballs, so unpublished versions resolve), runs `tsc --noEmit` to check that `sp` and only the declared modules are typed, runs `npm run build`, and finally runs `stagepass upgrade` on an old-style project. Run it locally with `node scripts/test-cli-packed.mjs` after `npm run build`.
 
 ### 1c. CI stages with `--tag next`
 
-Workflow: `.github/workflows/release.yml` (push of tags `v*`, runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
+Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`, which checks out that validated tag as `refs/tags/<ref>`; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
 
-It builds, tests, verifies versions, then runs in each package directory:
+It builds, tests, verifies versions, then runs in the selected package directory:
 
 ```bash
 npm stage publish --tag next --access public
@@ -58,7 +56,7 @@ npm stage publish --tag next --access public
 
 ### 1d. Maintainer promotes (2FA)
 
-On a trusted machine:
+On a trusted machine, list the package you just staged (the other two commands are independent examples, not a required trio):
 
 ```bash
 npm stage list @stagepass/modules
@@ -66,7 +64,7 @@ npm stage list @stagepass/loader
 npm stage list @stagepass/cli
 ```
 
-Approve each stage id (order does not matter; modules → loader → cli is fine):
+Approve **the stage id of the package that this tag or workflow run staged**. `npm stage approve` always refers to that one stage ID. If you released more than one package, you did so with separate tags (or `workflow_dispatch` refs) and therefore have separate stage IDs — approve each independently. There is no required approval order and no implied same-version or single-run rule; a sequence such as modules → loader → cli is not a release policy:
 
 ```bash
 npm stage approve <stage-id>
@@ -91,22 +89,22 @@ Test on a generic Webflow staging host such as `my-project.webflow.io` (never a 
 
 After the beta looks good:
 
-1. Bump all three packages to the final version (e.g. `2.2.0`).
+1. Bump **only the package you are releasing** to its final version (e.g. modules `2.2.2`). Do not bump the other packages unless they are themselves part of this intended release — and even then each package still gets its own tag and its own workflow run.
 2. Update `CHANGELOG.md`. Commit.
 3. Tag and push:
 
 ```bash
-git tag v2.2.0
-git push origin v2.2.0
+git tag modules-v2.2.0
+git push origin modules-v2.2.0
 ```
 
-CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
+Repeat the tag (or `workflow_dispatch`) once per package you intend to stage. CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
 
-Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). Until loader and modules of that minor are approved, `npm install` in a freshly scaffolded project fails with `ETARGET`. Approve loader and modules together with the CLI.
+Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). That is a **dependency** constraint, not a same-version or single-workflow rule. If a newly scaffolded project needs a loader or modules version that is not yet approved, `npm install` can fail with `ETARGET`. Stage and approve those packages separately (own bump, own tag, own run, own stage ID) before relying on the scaffold — do not treat this as “always bump and approve all three together”.
 
 ## 3. Promote to `latest` (2FA)
 
-After approval and a check on a Webflow staging site:
+After approval and a check on a Webflow staging site, promote **only the package and version you staged, approved, and verified**. The three commands below are independent examples, not a coupled bump of all packages to the same version:
 
 ```bash
 npm dist-tag add @stagepass/modules@2.2.0 latest
