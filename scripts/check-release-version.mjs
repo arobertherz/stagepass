@@ -9,7 +9,7 @@
  * Usage:
  *   node scripts/check-release-version.mjs modules-v2.2.2
  *   node scripts/check-release-version.mjs loader-v2.3.3
- *   GITHUB_REF_NAME=cli-v2.2.6 node scripts/check-release-version.mjs
+ *   RELEASE_REF=cli-v2.2.6 node scripts/check-release-version.mjs  # omitted arg only; empty does not fall back
  *
  * Exit 0 when the named package version equals the tag version, 1 otherwise.
  */
@@ -90,7 +90,7 @@ export function distTagForVersion(_version) {
 }
 
 function main() {
-  const arg = process.argv[2] || process.env.RELEASE_REF || process.env.GITHUB_REF_NAME || '';
+  const arg = process.argv[2] ?? process.env.RELEASE_REF ?? process.env.GITHUB_REF_NAME ?? '';
   let plan;
   try {
     plan = releasePlan(arg);
@@ -105,7 +105,7 @@ function main() {
   }
 
   const distTag = distTagForVersion(plan.version);
-  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote to latest after verification';
+  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote after verification';
   const selected = plan.stage[0];
   console.log(`✅ Stage ${selected.name}@${selected.version}`);
   for (const pkg of plan.skip) console.log(`   skip  ${pkg.name}@${pkg.version}`);

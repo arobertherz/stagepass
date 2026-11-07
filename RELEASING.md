@@ -44,7 +44,7 @@ Before staging, CI runs `scripts/test-cli-packed.mjs`: it packs the CLI, loader 
 
 ### 1c. CI stages with `--tag next`
 
-Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`, which checks out that ref; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
+Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`, which checks out that validated tag as `refs/tags/<ref>`; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
 
 It builds, tests, verifies versions, then runs in the selected package directory:
 

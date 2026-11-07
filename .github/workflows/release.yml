@@ -34,7 +34,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: refs/tags/${{ env.RELEASE_REF }}
           persist-credentials: false
 
       - name: Setup Node.js 22
@@ -71,6 +71,10 @@ jobs:
       - name: Verify package tag matches the selected package version
         id: versions
         run: node scripts/check-release-version.mjs "$RELEASE_REF"
+
+      - name: Require selected package
+        if: steps.versions.outputs.stage_dir == ''
+        run: exit 1
 
       # npm provenance (--provenance) requires a supported cloud CI OIDC
       # environment. Self-hosted runners are not supported, so we omit it.

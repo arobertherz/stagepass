@@ -7,8 +7,61 @@ import {
 } from '../../../../../scripts/check-release-version.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../../../');
+const SCRIPT = path.join(ROOT, 'scripts/check-release-version.mjs');
+const WORKFLOW = path.join(ROOT, '.github/workflows/release.yml');
+
+function runMain(args, extraEnv = {}) {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'sp-gh-out-'));
+  const outFile = path.join(tmp, 'github_output.txt');
+  writeFileSync(outFile, '');
+  const env = { ...process.env, GITHUB_OUTPUT: outFile };
+  delete env.RELEASE_REF;
+  delete env.GITHUB_REF_NAME;
+  Object.assign(env, extraEnv);
+  const res = spawnSync(process.execPath, [SCRIPT, ...args], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env,
+  });
+  const fileOut = readFileSync(outFile, 'utf8');
+  rmSync(tmp, { recursive: true, force: true });
+  return {
+    status: res.status,
+    stdout: res.stdout ?? '',
+    stderr: res.stderr ?? '',
+    fileOut,
+  };
+}
+
+function assertFailedWithoutSelection(result) {
+  expect(result.status).not.toBe(0);
+  expect(result.fileOut).not.toMatch(/(?:^|\n)stage_dir=/);
+  expect(result.fileOut).not.toMatch(/(?:^|\n)dist_tag=/);
+}
+
+function tokens(s) {
+  return s.split(/[\s,=:"'` ;|<>()[\]{}]+/).filter(Boolean);
+}
+
+const INJECTION_REFS = [
+  'cli-v$(whoami)',
+  'cli-v2.2.6$(whoami)',
+  'modules-v2.2.2; echo pwned',
+  'loader-v2.3.3`id`',
+  'modules-v2.2.2 && id',
+  'modules-v2.2.2\nid',
+  ' modules-v2.2.2',
+  'modules-v2.2.2 ',
+  'cli-v2',
+  'cli-v2.2',
+  'cli-v',
+  'cli-v2.2.2-BETA.1',
+];
 
 describe('check-release-version', () => {
   it('parses package-specific release tags', () => {
@@ -49,22 +102,175 @@ describe('check-release-version', () => {
   });
 
   it('rejects shell-injection and malformed refs', () => {
-    const attacks = [
-      'cli-v$(whoami)',
-      'cli-v2.2.6$(whoami)',
-      'modules-v2.2.2; echo pwned',
-      'loader-v2.3.3`id`',
-      'modules-v2.2.2 && id',
-      'modules-v2.2.2\nid',
-      ' modules-v2.2.2',
-      'modules-v2.2.2 ',
-      'cli-v2',
-      'cli-v2.2',
-      'cli-v',
-      'cli-v2.2.2-BETA.1',
-    ];
-    for (const value of attacks) {
+    for (const value of INJECTION_REFS) {
       expect(() => parseReleaseTag(value)).toThrow(/Not a package release tag|required/);
+    }
+  });
+});
+
+describe('check-release-version process (main)', () => {
+  const packages = readPackageVersions(ROOT);
+  const modules = packages.find((pkg) => pkg.dir === 'modules');
+  const modulesRef = `modules-v${modules.version}`;
+
+  it('writes stage_dir and dist_tag=next and exits 0 for a matching package tag', () => {
+    const result = runMain([modulesRef]);
+    expect(result.status).toBe(0);
+    expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
+    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+    expect(result.fileOut).not.toMatch(/latest/);
+    const found = tokens(`${result.stdout}\n${result.fileOut}`);
+    expect(found).toContain('next');
+    expect(found).not.toContain('latest');
+  });
+
+  it('uses RELEASE_REF when the CLI argument is omitted', () => {
+    const result = runMain([], { RELEASE_REF: modulesRef });
+    expect(result.status).toBe(0);
+    expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
+    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+  });
+
+  it('uses GITHUB_REF_NAME when the CLI argument and RELEASE_REF are omitted', () => {
+    const result = runMain([], { GITHUB_REF_NAME: modulesRef });
+    expect(result.status).toBe(0);
+    expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
+    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+  });
+
+  it('does not fall back to a valid env value when the CLI argument is empty', () => {
+    const result = runMain([''], {
+      RELEASE_REF: modulesRef,
+      GITHUB_REF_NAME: modulesRef,
+    });
+    assertFailedWithoutSelection(result);
+  });
+
+  it('fails without selection when the argument is omitted and no env ref is set', () => {
+    assertFailedWithoutSelection(runMain([]));
+  });
+
+  it('fails without selection on a shared v-tag', () => {
+    assertFailedWithoutSelection(runMain([`v${modules.version}`]));
+    assertFailedWithoutSelection(runMain(['v2.2.2']));
+  });
+
+  it('fails without selection on injection and malformed refs', () => {
+    for (const value of INJECTION_REFS) {
+      assertFailedWithoutSelection(runMain([value]));
+    }
+  });
+
+  it('fails without selection when the named package version does not match', () => {
+    assertFailedWithoutSelection(runMain(['modules-v0.0.0-never']));
+  });
+
+  it('stages each matching package through main and always emits next', () => {
+    for (const pkg of packages) {
+      const result = runMain([`${pkg.dir}-v${pkg.version}`]);
+      expect(result.status).toBe(0);
+      expect(result.fileOut).toMatch(new RegExp(`^stage_dir=${pkg.dir}$`, 'm'));
+      expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+      expect(tokens(`${result.stdout}\n${result.fileOut}`)).not.toContain('latest');
+    }
+  });
+});
+
+describe('release workflow process shape', () => {
+  const yaml = readFileSync(WORKFLOW, 'utf8');
+
+  function runBlockText(source) {
+    const chunks = [];
+    let inRun = false;
+    let runIndent = 0;
+    for (const line of source.split('\n')) {
+      if (/^\s+run:/.test(line)) {
+        inRun = true;
+        runIndent = line.search(/\S/);
+        chunks.push(line);
+        continue;
+      }
+      if (inRun) {
+        if (line.trim() === '') {
+          chunks.push(line);
+          continue;
+        }
+        const indent = line.search(/\S/);
+        if (indent > runIndent) {
+          chunks.push(line);
+          continue;
+        }
+        inRun = false;
+      }
+    }
+    return chunks.join('\n');
+  }
+
+  it('does not interpolate inputs.ref or ref_name inside run blocks', () => {
+    expect(runBlockText(yaml)).not.toMatch(
+      /\$\{\{[^}]*(inputs\.ref|github\.event\.inputs\.ref|github\.ref_name)[^}]*\}\}/
+    );
+  });
+
+  it('validates the ref and checks out refs/tags/ of that validated value', () => {
+    expect(yaml.indexOf('Validate release ref')).toBeGreaterThan(-1);
+    expect(yaml.indexOf('Validate release ref')).toBeLessThan(yaml.indexOf('Checkout code'));
+    expect(yaml).toContain(
+      '[[ ! "$RELEASE_REF" =~ ^(cli|loader|modules)-v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-z0-9.]+)?$ ]]'
+    );
+    expect(yaml).toMatch(/ref:\s*refs\/tags\/\$\{\{\s*env\.RELEASE_REF\s*\}\}/);
+    expect(yaml).toMatch(/persist-credentials:\s*false/);
+  });
+
+  it('uses package-specific tag filters and env values for staging', () => {
+    expect(yaml).toContain("- 'cli-v*'");
+    expect(yaml).toContain("- 'loader-v*'");
+    expect(yaml).toContain("- 'modules-v*'");
+    expect(yaml).not.toMatch(/^\s+-\s+'v\*'\s*$/m);
+    expect(yaml).toContain('npm stage publish --tag "$DIST_TAG"');
+    expect(yaml).toContain('cd "packages/$STAGE_DIR"');
+  });
+
+  it('fails when stage_dir is missing instead of skipping staging', () => {
+    const idx = yaml.search(/if:\s*steps\.versions\.outputs\.stage_dir == ''/);
+    expect(idx).toBeGreaterThan(-1);
+    expect(yaml.slice(idx, idx + 120)).toMatch(/exit 1/);
+  });
+
+  it('does not force-publish, unpublish, or set latest', () => {
+    const lines = yaml
+      .split('\n')
+      .map((line) => line.replace(/(^|\s)#.*$/, ''))
+      .filter(Boolean);
+    for (const line of lines) {
+      expect(line).not.toMatch(/\bnpm\s+publish\b/);
+      expect(line).not.toMatch(/\bnpm\s+unpublish\b/);
+      expect(line).not.toMatch(/--force\b/);
+      expect(line).not.toMatch(/(--tag|--dist-tag)[ =]+['"]?latest\b/);
+      expect(line).not.toMatch(/dist-tag\s+add\b[^\n]*\blatest\b/);
+    }
+  });
+
+  it('bash release-ref regex accepts package tags and rejects injection', () => {
+    const check = (value) =>
+      spawnSync(
+        'bash',
+        [
+          '-c',
+          '[[ "$1" =~ ^(cli|loader|modules)-v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-z0-9.]+)?$ ]]',
+          'bash',
+          value,
+        ],
+        { encoding: 'utf8' }
+      ).status === 0;
+
+    expect(check('modules-v2.2.2')).toBe(true);
+    expect(check('loader-v2.3.3')).toBe(true);
+    expect(check('cli-v2.2.6')).toBe(true);
+    expect(check('modules-v2.0.0-beta.1')).toBe(true);
+    expect(check('v2.2.2')).toBe(false);
+    for (const value of INJECTION_REFS) {
+      expect(check(value)).toBe(false);
     }
   });
 });
