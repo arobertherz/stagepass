@@ -8,7 +8,7 @@ import {
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../../../');
@@ -83,8 +83,8 @@ describe('check-release-version', () => {
     expect(packages).toHaveLength(3);
     for (const pkg of packages) {
       const plan = releasePlan(`${pkg.dir}-v${pkg.version}`, ROOT);
-      expect(plan.stage.map((item) => item.dir)).toEqual([pkg.dir]);
-      expect(plan.stage.length + plan.skip.length).toBe(3);
+      expect(plan.stage).toEqual([pkg]);
+      expect(plan.skip).toEqual([]);
     }
   });
 
@@ -112,6 +112,26 @@ describe('check-release-version', () => {
     expect(() => parseReleaseTag('cli-v2.2.1+build')).toThrow(/Not a package release tag/);
     expect(() => releasePlan('modules-v2.2.2+b1', ROOT)).toThrow(/Not a package release tag/);
   });
+
+  it('reads only the named package file and does not require the others', () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), 'sp-one-pkg-'));
+    try {
+      mkdirSync(path.join(tmp, 'packages', 'modules'), { recursive: true });
+      writeFileSync(
+        path.join(tmp, 'packages', 'modules', 'package.json'),
+        JSON.stringify({ name: '@stagepass/modules', version: '9.9.9' })
+      );
+      expect(releasePlan('modules-v9.9.9', tmp)).toEqual({
+        version: '9.9.9',
+        stage: [{ dir: 'modules', name: '@stagepass/modules', version: '9.9.9' }],
+        skip: [],
+      });
+      expect(() => releasePlan('cli-v9.9.9', tmp)).toThrow();
+      expect(() => readPackageVersions(tmp)).toThrow();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('check-release-version process (main)', () => {
@@ -122,12 +142,38 @@ describe('check-release-version process (main)', () => {
   it('writes stage_dir and dist_tag=next and exits 0 for a matching package tag', () => {
     const result = runMain([modulesRef]);
     expect(result.status).toBe(0);
-    expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
-    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+    expect(result.fileOut).toBe('stage_dir=modules\ndist_tag=next\n');
     expect(result.fileOut).not.toMatch(/latest/);
     const found = tokens(`${result.stdout}\n${result.fileOut}`);
     expect(found).toContain('next');
     expect(found).not.toContain('latest');
+  });
+
+  it('prints only the selected package on stdout in the contracted two-line form', () => {
+    for (const pkg of packages) {
+      const result = runMain([`${pkg.dir}-v${pkg.version}`]);
+      expect(result.status).toBe(0);
+      const kind = pkg.version.includes('-')
+        ? 'prerelease'
+        : 'stable; promote after verification';
+      expect(result.stdout).toBe(
+        `✅ Stage ${pkg.name}@${pkg.version}\n   dist_tag: next (${kind})\n`
+      );
+      expect(result.fileOut).toBe(`stage_dir=${pkg.dir}\ndist_tag=next\n`);
+      expect(result.stdout).not.toMatch(/\bskip\b/);
+      for (const other of packages) {
+        if (other.dir === pkg.dir) continue;
+        expect(result.stdout).not.toContain(other.name);
+      }
+    }
+  });
+
+  it('fails closed when extra CLI arguments are present', () => {
+    const cli = packages.find((pkg) => pkg.dir === 'cli');
+    assertFailedWithoutSelection(runMain([modulesRef, `cli-v${cli.version}`]));
+    assertFailedWithoutSelection(runMain([modulesRef, 'extra']));
+    assertFailedWithoutSelection(runMain([modulesRef, '']));
+    assertFailedWithoutSelection(runMain(['', modulesRef]));
   });
 
   it('uses RELEASE_REF when the CLI argument is omitted', () => {
