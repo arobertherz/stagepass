@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 /**
- * Verify that a git tag (with or without leading `v`) matches the version
- * field of the Stagepass packages and decide which ones to stage.
+ * Verify a package-specific release tag and decide which one package to stage.
  *
- * Full release: every package matches the tag.
- * Partial release (e.g. a CLI-only patch): at least one package matches; only
- * matching packages are staged, the others keep their already staged/published
- * version. With GITHUB_OUTPUT set, writes `stage_<dir>=true|false`.
+ * Tags look like `modules-v2.2.2`, `loader-v2.3.3`, or `cli-v2.2.6`
+ * (same shape as workflow_dispatch input `ref`). A shared `v*` tag is not a
+ * release tag and stages nothing.
  *
  * Usage:
- *   node scripts/check-release-version.mjs v2.0.0
- *   node scripts/check-release-version.mjs 2.0.0
- *   GITHUB_REF_NAME=v2.0.0 node scripts/check-release-version.mjs
+ *   node scripts/check-release-version.mjs modules-v2.2.2
+ *   node scripts/check-release-version.mjs loader-v2.3.3
+ *   RELEASE_REF=cli-v2.2.6 node scripts/check-release-version.mjs  # omitted arg only; empty does not fall back
  *
- * Exit 0 when at least one package matches, 1 otherwise.
+ * Exit 0 when the named package version equals the tag version, 1 otherwise.
  */
 
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -22,18 +20,22 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PACKAGES = ['cli', 'loader', 'modules'];
+const RELEASE_TAG = /^(cli|loader|modules)-v([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)$/;
 
 /**
- * Strip a leading `v` from a tag name.
+ * Parse `cli-vX`, `loader-vX`, or `modules-vX`. Shared `v*` tags fail closed.
  * @param {string} tag
- * @returns {string}
+ * @returns {{ dir: string, version: string }}
  */
-export function normalizeTagVersion(tag) {
-  if (typeof tag !== 'string' || !tag.trim()) {
+export function parseReleaseTag(tag) {
+  if (typeof tag !== 'string' || !tag) {
     throw new Error('Tag/version argument is required');
   }
-  const trimmed = tag.trim();
-  return trimmed.startsWith('v') ? trimmed.slice(1) : trimmed;
+  const match = RELEASE_TAG.exec(tag);
+  if (!match) {
+    throw new Error(`Not a package release tag: ${tag}`);
+  }
+  return { dir: match[1], version: match[2] };
 }
 
 /**
@@ -51,33 +53,27 @@ export function readPackageVersions(root = ROOT) {
 }
 
 /**
- * @param {string} tag
- * @param {string} [root]
- * @returns {{ ok: true, version: string } | { ok: false, version: string, mismatches: { name: string, version: string }[] }}
- */
-export function checkReleaseVersion(tag, root = ROOT) {
-  const version = normalizeTagVersion(tag);
-  const packages = readPackageVersions(root);
-  const mismatches = packages.filter((p) => p.version !== version);
-  if (mismatches.length > 0) {
-    return { ok: false, version, mismatches };
-  }
-  return { ok: true, version };
-}
-
-/**
- * Packages to stage for a tag (those whose version equals the tag version).
+ * Stage exactly the package named in the tag, if its version equals the tag.
  * @param {string} tag
  * @param {string} [root]
  * @returns {{ version: string, stage: { dir: string, name: string, version: string }[], skip: { dir: string, name: string, version: string }[] }}
  */
 export function releasePlan(tag, root = ROOT) {
-  const version = normalizeTagVersion(tag);
+  const { dir, version } = parseReleaseTag(tag);
   const packages = readPackageVersions(root);
+  const selected = packages.find((pkg) => pkg.dir === dir);
+  if (!selected) {
+    throw new Error(`Unknown package: ${dir}`);
+  }
+  if (selected.version !== version) {
+    throw new Error(
+      `${selected.name}@${selected.version} does not match tag version ${version}`
+    );
+  }
   return {
     version,
-    stage: packages.filter((p) => p.version === version),
-    skip: packages.filter((p) => p.version !== version),
+    stage: [selected],
+    skip: packages.filter((pkg) => pkg.dir !== dir),
   };
 }
 
@@ -94,7 +90,7 @@ export function distTagForVersion(_version) {
 }
 
 function main() {
-  const arg = process.argv[2] || process.env.GITHUB_REF_NAME || '';
+  const arg = process.argv[2] ?? process.env.RELEASE_REF ?? process.env.GITHUB_REF_NAME ?? '';
   let plan;
   try {
     plan = releasePlan(arg);
@@ -103,30 +99,23 @@ function main() {
     process.exit(1);
   }
 
-  if (plan.stage.length === 0) {
-    console.error(`❌ Tag version ${plan.version} does not match any package:`);
-    for (const m of plan.skip) {
-      console.error(`   - ${m.name}@${m.version}`);
-    }
+  if (plan.stage.length !== 1) {
+    console.error(`❌ Tag version ${plan.version} did not select exactly one package`);
     process.exit(1);
   }
 
   const distTag = distTagForVersion(plan.version);
-  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote to latest after verification';
-  if (plan.skip.length === 0) {
-    console.log(`✅ All packages match ${plan.version}`);
-  } else {
-    console.log(`✅ Partial release ${plan.version}:`);
-    for (const p of plan.stage) console.log(`   stage ${p.name}@${p.version}`);
-    for (const p of plan.skip) console.log(`   skip  ${p.name}@${p.version} (unchanged)`);
-  }
+  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote after verification';
+  const selected = plan.stage[0];
+  console.log(`✅ Stage ${selected.name}@${selected.version}`);
+  for (const pkg of plan.skip) console.log(`   skip  ${pkg.name}@${pkg.version}`);
   console.log(`   npm dist-tag: ${distTag} (${kind})`);
 
   if (process.env.GITHUB_OUTPUT) {
-    const staged = new Set(plan.stage.map((p) => p.dir));
-    const lines = PACKAGES.map((dir) => `stage_${dir}=${staged.has(dir)}`);
-    lines.push(`dist_tag=${distTag}`);
-    appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `stage_dir=${selected.dir}\ndist_tag=${distTag}\n`
+    );
   }
 }
 
