@@ -16,8 +16,8 @@ Workflow: `.github/workflows/release.yml` (and `scripts/check-release-version.mj
 
 | Version shape | Example tag | npm dist-tag at staging |
 | :--- | :--- | :--- |
-| Prerelease (contains `-`) | `v2.2.0-beta.1` | `next` |
-| Stable | `v2.2.0` | `next` |
+| Prerelease (contains `-`) | `modules-v2.2.0-beta.1` | `next` |
+| Stable | `loader-v2.2.0` | `next` |
 
 Since 2.2.0 **every** release is staged under `next`. Approving a stage therefore never moves `latest`, so `npm install @stagepass/cli` keeps installing the previous version until a maintainer promotes the new one explicitly (section 3). This keeps a bad build from reaching `latest` by a single approval click.
 
@@ -34,19 +34,17 @@ Update `CHANGELOG.md` and docs as needed. Commit on the release branch.
 ### 1b. Tag and push
 
 ```bash
-git tag v2.1.0-beta.1
-git push origin v2.1.0-beta.1
+git tag modules-v2.1.0-beta.1
+git push origin modules-v2.1.0-beta.1
 ```
 
-The tag **without** the leading `v` must equal the `version` of the packages you release. CI stages only the packages whose version matches the tag and fails if none match (`scripts/check-release-version.mjs`).
-
-**Partial release** (e.g. a CLI-only patch): bump only that package (e.g. `@stagepass/cli` to `2.1.1`), tag `v2.1.1`. The other packages are skipped and keep their staged/published version. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
+Each release selects **exactly one** package with a package-specific tag (`cli-vX`, `loader-vX`, `modules-vX`) or the same `ref` via `workflow_dispatch`. The version after `-v` must equal that package's `package.json` version (`scripts/check-release-version.mjs`). A shared `v*` tag does not start staging. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
 
 Before staging, CI runs `scripts/test-cli-packed.mjs`: it packs the CLI, loader and modules, checks the tarball contents (templates, `global.d.ts`, per-module `*.d.ts`, dist files), installs the CLI tarball globally into a temp prefix, runs `stagepass new` (ts with modules `none` and `cookies`, js with `all`) with `--install` (an `npm` shim adds the local loader/modules tarballs, so unpublished versions resolve), runs `tsc --noEmit` to check that `sp` and only the declared modules are typed, runs `npm run build`, and finally runs `stagepass upgrade` on an old-style project. Run it locally with `node scripts/test-cli-packed.mjs` after `npm run build`.
 
 ### 1c. CI stages with `--tag next`
 
-Workflow: `.github/workflows/release.yml` (push of tags `v*`, runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
+Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
 
 It builds, tests, verifies versions, then runs in each package directory:
 
@@ -96,11 +94,11 @@ After the beta looks good:
 3. Tag and push:
 
 ```bash
-git tag v2.2.0
-git push origin v2.2.0
+git tag modules-v2.2.0
+git push origin modules-v2.2.0
 ```
 
-CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
+Repeat the tag (or `workflow_dispatch`) once per package you intend to stage. CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
 
 Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). Until loader and modules of that minor are approved, `npm install` in a freshly scaffolded project fails with `ETARGET`. Approve loader and modules together with the CLI.
 

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  normalizeTagVersion,
-  checkReleaseVersion,
+  parseReleaseTag,
   distTagForVersion,
   readPackageVersions,
   releasePlan,
@@ -12,9 +11,13 @@ import { fileURLToPath } from 'url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../../../');
 
 describe('check-release-version', () => {
-  it('normalizes leading v', () => {
-    expect(normalizeTagVersion('v2.0.0-beta.1')).toBe('2.0.0-beta.1');
-    expect(normalizeTagVersion('2.0.0-beta.1')).toBe('2.0.0-beta.1');
+  it('parses package-specific release tags', () => {
+    expect(parseReleaseTag('modules-v2.0.0-beta.1')).toEqual({
+      dir: 'modules',
+      version: '2.0.0-beta.1',
+    });
+    expect(parseReleaseTag('loader-v2.3.3')).toEqual({ dir: 'loader', version: '2.3.3' });
+    expect(parseReleaseTag('cli-v2.2.6')).toEqual({ dir: 'cli', version: '2.2.6' });
   });
 
   it('picks next for prereleases and latest otherwise', () => {
@@ -22,30 +25,26 @@ describe('check-release-version', () => {
     expect(distTagForVersion('2.2.0')).toBe('next');
   });
 
-  it('passes when all package versions match the tag', () => {
+  it('stages only the named package when its version matches the tag', () => {
     const packages = readPackageVersions(ROOT);
     expect(packages).toHaveLength(3);
-    const version = packages[0].version;
-    const result = checkReleaseVersion(`v${version}`, ROOT);
-    // Only passes if all three already share the same version
-    if (packages.every((p) => p.version === version)) {
-      expect(result.ok).toBe(true);
+    for (const pkg of packages) {
+      const plan = releasePlan(`${pkg.dir}-v${pkg.version}`, ROOT);
+      expect(plan.stage.map((item) => item.dir)).toEqual([pkg.dir]);
+      expect(plan.stage.length + plan.skip.length).toBe(3);
     }
   });
 
-  it('fails when tag does not match', () => {
-    const result = checkReleaseVersion('v0.0.0-never', ROOT);
-    expect(result.ok).toBe(false);
-    expect(result.mismatches.length).toBeGreaterThan(0);
+  it('fails closed when the package version does not match the tag', () => {
+    expect(() => releasePlan('modules-v0.0.0-never', ROOT)).toThrow(/does not match tag version/);
   });
 
-  it('plans a partial release for packages matching the tag', () => {
+  it('fails closed on a shared v-tag or an unknown package tag', () => {
     const packages = readPackageVersions(ROOT);
-    const cli = packages.find((p) => p.dir === 'cli');
-    const plan = releasePlan(`v${cli.version}`, ROOT);
-    expect(plan.stage.map((p) => p.dir)).toContain('cli');
-    expect(plan.stage.length + plan.skip.length).toBe(3);
-    for (const p of plan.skip) expect(p.version).not.toBe(cli.version);
-    expect(releasePlan('v0.0.0-nope', ROOT).stage).toHaveLength(0);
+    const cli = packages.find((pkg) => pkg.dir === 'cli');
+    expect(() => releasePlan(`v${cli.version}`, ROOT)).toThrow(/Not a package release tag/);
+    expect(() => releasePlan('v2.2.2', ROOT)).toThrow(/Not a package release tag/);
+    expect(() => releasePlan('unknown-v1.0.0', ROOT)).toThrow(/Not a package release tag/);
+    expect(() => releasePlan('foo-v2.2.2', ROOT)).toThrow(/Not a package release tag/);
   });
 });
