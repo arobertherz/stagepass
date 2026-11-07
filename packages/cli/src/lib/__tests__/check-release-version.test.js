@@ -20,7 +20,7 @@ describe('check-release-version', () => {
     expect(parseReleaseTag('cli-v2.2.6')).toEqual({ dir: 'cli', version: '2.2.6' });
   });
 
-  it('picks next for prereleases and latest otherwise', () => {
+  it('always uses next as the staging dist-tag', () => {
     expect(distTagForVersion('2.0.0-beta.1')).toBe('next');
     expect(distTagForVersion('2.2.0')).toBe('next');
   });
@@ -46,5 +46,25 @@ describe('check-release-version', () => {
     expect(() => releasePlan('v2.2.2', ROOT)).toThrow(/Not a package release tag/);
     expect(() => releasePlan('unknown-v1.0.0', ROOT)).toThrow(/Not a package release tag/);
     expect(() => releasePlan('foo-v2.2.2', ROOT)).toThrow(/Not a package release tag/);
+  });
+
+  it('rejects shell-injection and malformed refs', () => {
+    const attacks = [
+      'cli-v$(whoami)',
+      'cli-v2.2.6$(whoami)',
+      'modules-v2.2.2; echo pwned',
+      'loader-v2.3.3`id`',
+      'modules-v2.2.2 && id',
+      'modules-v2.2.2\nid',
+      ' modules-v2.2.2',
+      'modules-v2.2.2 ',
+      'cli-v2',
+      'cli-v2.2',
+      'cli-v',
+      'cli-v2.2.2-BETA.1',
+    ];
+    for (const value of attacks) {
+      expect(() => parseReleaseTag(value)).toThrow(/Not a package release tag|required/);
+    }
   });
 });

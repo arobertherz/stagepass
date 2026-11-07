@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PACKAGES = ['cli', 'loader', 'modules'];
-const RELEASE_TAG = /^(cli|loader|modules)-v(.+)$/;
+const RELEASE_TAG = /^(cli|loader|modules)-v([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)$/;
 
 /**
  * Parse `cli-vX`, `loader-vX`, or `modules-vX`. Shared `v*` tags fail closed.
@@ -28,12 +28,12 @@ const RELEASE_TAG = /^(cli|loader|modules)-v(.+)$/;
  * @returns {{ dir: string, version: string }}
  */
 export function parseReleaseTag(tag) {
-  if (typeof tag !== 'string' || !tag.trim()) {
+  if (typeof tag !== 'string' || !tag) {
     throw new Error('Tag/version argument is required');
   }
-  const match = RELEASE_TAG.exec(tag.trim());
+  const match = RELEASE_TAG.exec(tag);
   if (!match) {
-    throw new Error(`Not a package release tag: ${tag.trim()}`);
+    throw new Error(`Not a package release tag: ${tag}`);
   }
   return { dir: match[1], version: match[2] };
 }
@@ -90,7 +90,7 @@ export function distTagForVersion(_version) {
 }
 
 function main() {
-  const arg = process.argv[2] || process.env.GITHUB_REF_NAME || '';
+  const arg = process.argv[2] || process.env.RELEASE_REF || process.env.GITHUB_REF_NAME || '';
   let plan;
   try {
     plan = releasePlan(arg);
