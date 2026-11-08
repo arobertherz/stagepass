@@ -49,7 +49,7 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 ## Live reload does nothing
 
-* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (not yet in a published release; will ship with the next loader release) **and** an active `?stagepass=<project>.sp` swap session. Published `@stagepass/loader@2` / `2.3.3` does **not** include `live.min.js` (CDN `@2` currently resolves to that publish; `/dist/live.min.js` 404s). See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
+* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published `@stagepass/loader@2` / `2.3.3` (current npm `latest`) does **not** include `live.min.js` (CDN `@2` currently resolves to that publish; `/dist/live.min.js` 404s). See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
 * Run `stagepass dev` inside the **linked** project directory (not only `npm run watch`).
 * Keep a swap session active (not `debug`). The loader opens `EventSource` to `https://<domain.sp>/__stagepass/live` after injecting local assets.
 * If `stagepass dev` is not running, the live chunk closes after the first error and does not retry.

@@ -184,7 +184,7 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ### [2.4.0] - 2026-11-08
 
-Loader-only tag (`loader-v2.4.0`, `cddec72`). Documents the tagged release; not claimed as published on npm or jsDelivr.
+Loader-only release (`loader-v2.4.0`, `cddec72`). Published on npm and jsDelivr as `@stagepass/loader@2.4.0` on 2026-11-08 (17:00:11 Europe/Berlin). Dist-tag `next`; `latest` remains 2.3.3.
 
 #### Added
 

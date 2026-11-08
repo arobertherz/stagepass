@@ -12,7 +12,7 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.3.3`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.4.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
@@ -29,7 +29,7 @@ Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is n
 
 A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
 
-`live.min.js` is the loader **2.4.0** chunk (lazy-loaded during an active swap session). Published **2.3.3** does not contain it.
+`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it. npm `latest` and jsDelivr `@2` still resolve to **2.3.3**, which does not contain it.
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
