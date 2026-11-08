@@ -214,7 +214,9 @@ Go to your live Webflow URL and append the parameter:
 
 **That's it.** The loader will persist this state in `localStorage`. You can now reload the page, browse sub-pages, and Stagepass will inject your local code automatically.
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project (see [dev.md](./dev.md)).
+**Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
+
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project. Live reload / `live.min.js` is not yet in a published loader release; it will ship with the next one. Published `loader@2` / `2.3.3` does not include `live.min.js` (see [dev.md](./dev.md)).
 
 ## Session modes
 
