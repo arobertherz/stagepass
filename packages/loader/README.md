@@ -29,7 +29,7 @@ Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is n
 
 A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
 
-`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it. npm `latest` and jsDelivr `@2` still resolve to **2.3.3**, which does not contain it.
+`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it. npm `latest` is **2.3.3**, which does not contain it. A jsDelivr `@2` embed is currently observed serving 2.3.3; that major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes.
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 

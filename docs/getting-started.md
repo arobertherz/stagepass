@@ -50,7 +50,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
 * **Security First:** Strict origin whitelisting ensures only *your* local machine can inject code.
-* **Live reload:** `stagepass dev` watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain (see [dev.md](./dev.md)).
+* **Live reload:** the unpublished `stagepass dev` command (not in published `@stagepass/cli@2.2.6`; preview or repository CLI) watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain (see [dev.md](./dev.md)).
 * **Zero-cost production mode:** Opt-in `data-stagepass-live-src` so visitors load normal `src` / `href` without depending on the loader (see [loader.md](./loader.md#zero-cost-production-mode)).
 
 ## Installation
@@ -216,7 +216,7 @@ Go to your live Webflow URL and append the parameter:
 
 **Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project. Live reload / `live.min.js` is in published loader **2.4.0** (pin `@2.4.0`). npm `latest` and `loader@2` still resolve to **2.3.3**, which does not include `live.min.js` (see [dev.md](./dev.md)).
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` from a preview or repository CLI build in the linked project. That command is not in published `@stagepass/cli@2.2.6` and is not available on npm yet. Live reload / `live.min.js` is in published loader **2.4.0** (pin `@2.4.0`). Published **2.3.3** (current npm `latest`) does not include it. A jsDelivr `@2` embed is currently observed serving 2.3.3; that major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes (see [dev.md](./dev.md)).
 
 ## Session modes
 
