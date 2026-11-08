@@ -216,7 +216,7 @@ Go to your live Webflow URL and append the parameter:
 
 **Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` from a preview or repository CLI build in the linked project. That command is not in published `@stagepass/cli@2.2.6` and is not available on npm yet. Live reload / `live.min.js` is in published loader **2.4.0** (pin `@2.4.0`). Published **2.3.3** (current npm `latest`) does not include it. A jsDelivr `@2` embed is currently observed serving 2.3.3; that major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes (see [dev.md](./dev.md)).
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` from a preview or repository CLI build in the linked project. That command is not in published `@stagepass/cli@2.2.6` and is not available on npm yet. Live reload / `live.min.js` is in published loader **2.4.0** (npm `latest`; pin `@2.4.0`). Published **2.3.3** does not include it. A jsDelivr `@2` embed is a major-range alias, not the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3 (see [dev.md](./dev.md)).
 
 ## Session modes
 
