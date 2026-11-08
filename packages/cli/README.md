@@ -70,13 +70,27 @@ All commands support `-v, --verbose` where applicable.
 
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
 - Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
-- Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user (same privilege model as interactive `caddy start`). `start` kickstarts the agent when present; `stop` bootouts until the next login. If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Interactive `start` confirms before signalling any non-caddy listener.
 - `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist.
-- Re-run `stagepass autostart on` after moving Node/CLI installs or Homebrew prefix so ProgramArguments and PATH stay absolute and valid.
-- macOS may prompt for Local Network / firewall access when Caddy binds; grant permission for the Node binary used in the LaunchAgent when asked.
-- Desktop packaging / global installs: prefer a stable absolute `stagepass` on PATH (npm global or Homebrew). Avoid relying on nvm shims that disappear outside login shells; `autostart on` realpaths the CLI entry it can see at enable time.
-- Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md). Development/test checkouts can use the monorepo `packages/cli` path; stable installs use the published `@stagepass/cli` package — keep those paths distinct when comparing behavior.
+- Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
+
+#### macOS permissions (keep these separate)
+
+These are different prompts. Grant only the narrow dialog macOS shows — Stagepass never asks for Full Disk Access or any security bypass.
+
+| Concern | What it is | Typical fix |
+| :--- | :--- | :--- |
+| **System CA trust** | Trusting Caddy’s local CA in the System keychain (`stagepass certs trust` / `caddy trust`) so browsers accept `https://*.sp`. | Run `stagepass certs check`, then `certs trust` if needed. Unrelated to TCC file access. |
+| **Browser Local Network Access** | Chrome (and similar) gating public HTTPS pages that fetch `https://*.sp` / loopback. | Allow Local Network for the **browser** when it prompts. Not a Node Desktop-files grant. |
+| **Node files access (TCC)** | macOS may ask the **Node** binary for access to a folder (commonly **Desktop**) when the CLI or LaunchAgent reads a project / test package living there. | Grant that folder to Node if you intentionally keep projects on Desktop. Prefer installing the CLI in a stable location (below) so everyday use does not depend on Desktop TCC. |
+
+#### Install location and LaunchAgent paths
+
+- Prefer a **stable** global install (`npm install -g @stagepass/cli` into the normal npm prefix, or another fixed absolute path). Avoid pointing autostart at a temporary Desktop unpack / ad-hoc test tarball when you can use the published package instead.
+- `autostart on` records **absolute** Node and CLI paths (often Homebrew Cellar Node + the realpathed `stagepass` entry) plus the validated Homebrew `PATH`. It does not follow later `brew` upgrades automatically.
+- After a Homebrew Node upgrade/cleanup, moving the CLI, or changing the npm prefix, run `stagepass autostart on` again so ProgramArguments stay valid. A brief local outage while the agent reloads is expected.
+- Upgrading the global CLI package does **not** rewrite an existing LaunchAgent that still points at an older test path. Switch deliberately: `stagepass autostart off` then `autostart on` with the stable CLI you want. Do **not** delete a test directory while a loaded agent still references it — disable/refresh the agent first.
+- Development checkouts (`packages/cli`, Desktop test packs) and the published global install are different binaries; compare behaviour with one style at a time.
 
 ### `new` options
 
@@ -248,10 +262,11 @@ Hand-written content outside `# START:` / `# END:` markers is left untouched. Un
 | Symptom | What to check |
 | :--- | :--- |
 | Autostart runs at login but `caddy: command not found` / daemon exits | Re-run `stagepass autostart on` on **2.2.7+** so the plist embeds Homebrew `PATH`. Confirm `brew --prefix` and that `which caddy` points at `$prefix/bin/caddy` (Cellar symlink OK). |
+| macOS asks Node for Desktop access | Normal TCC when the CLI/agent reads a project under Desktop. Grant the folder or move the project / use a stable global CLI install. Not the same as browser Local Network or CA trust. |
+| Autostart still runs an old Desktop test binary after `npm i -g` | Global upgrade does not migrate LaunchAgent ProgramArguments. `autostart off` then `on` with the stable CLI; do not remove the old path while the agent still references it. |
 | `stagepass start` spinner floods the terminal (weird ANSI) | Upgrade to 2.2.7+ (spinner geometry guard). Rare with TTY width `0`. |
 | `start` asks for a password at every boot | 2.2.7+ drops unconditional `sudo -v`. Only confirmed conflict resolution may use `sudo kill` / `apachectl`. |
 | Port 443 bind failure under LaunchAgent | Expected when something else owns 443; daemon exits `0` (no restart loop). Free the port or use interactive `stagepass start`. |
-| Comparing test vs stable installs | Monorepo `packages/cli` / `npm link` paths differ from global `@stagepass/cli@2.2.x`. Prefer one install style per checklist run (`TESTING-macos.md`). |
 
 ## Related Packages
 

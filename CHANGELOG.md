@@ -29,7 +29,11 @@ Patch release of the CLI only. `@stagepass/loader` stays at **2.4.0**; `@stagepa
 
 #### Docs
 
-- Autostart / Homebrew PATH / permission / start–stop LaunchAgent contract; `RELEASING.md` single-package `cli-v*` → stage `next` → 2FA approve → explicit `latest`. Bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+- Autostart / Homebrew PATH / start–stop LaunchAgent contract; macOS permissions split into system CA trust, browser Local Network Access, and Node folder TCC (e.g. Desktop) — not conflated with firewall/FDA. Stable global install vs temporary Desktop test packs; LaunchAgent absolute paths need deliberate `autostart off`/`on` after CLI moves (upgrade does not auto-migrate). `RELEASING.md` single-package `cli-v*` → stage `next` → 2FA approve → explicit `latest`. Bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+
+#### Verified on macOS (compatible 2.2.7 artifact; not a cold-boot claim)
+
+Interactive accept of the compatible CLI build (product tree `bb07d46`): normal start ~2.1s, verbose ~1.8s, direct stop, `autostart on`/bootstrap, verbose kickstart ~10.6s, agent stop/bootout, normal bootstrap start ~10.6s, off/on retained; 14 TLS checks (12 HTTP 404 + 2 HTTP 200); CA/config/backup hashes unchanged. Global `@stagepass/cli@2.2.6` left installed for rollback. **Cold-boot/login LaunchAgent PASS remains scoped to the earlier `dc927de` observation only** — do not treat it as proven for published 2.2.7. Remaining open limits: full P1 negatives, fresh demo, `.sp`/Webflow scoped cases, and a dedicated cold boot of the 2.2.7 artifact.
 
 ### [2.2.6] - 2026-11-06
 
