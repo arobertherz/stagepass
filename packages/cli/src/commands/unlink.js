@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import { resolveLinkDomain } from '../lib/domain.js';
 import { removeBlock } from '../lib/caddyfile.js';
 import { getCaddyfilePath, getProjectsPath } from '../lib/paths.js';
@@ -22,7 +22,7 @@ export async function unlink(domain, options = {}) {
   const caddyFilePath = getCaddyfilePath();
   const projectsPath = getProjectsPath();
 
-  const spinner = ora(`Unlinking ${chalk.bold(targetDomain)}...`).start();
+  const spinner = createSpinner(`Unlinking ${chalk.bold(targetDomain)}...`).start();
 
   try {
     if (!(await fs.pathExists(caddyFilePath))) {

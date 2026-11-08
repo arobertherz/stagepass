@@ -1,70 +1,71 @@
 # Releasing Stagepass
 
-Stagepass publishes `@stagepass/cli`, `@stagepass/loader`, and `@stagepass/modules` to npm via a **two-step** flow: CI **stages** packages; a maintainer **approves** them with 2FA.
+Stagepass publishes `@stagepass/cli`, `@stagepass/loader`, and `@stagepass/modules` to npm via a **two-step** flow: CI **stages** one selected package under the `next` dist-tag; a maintainer **approves** that stage with 2FA, then **explicitly** promotes it to `latest` when ready.
 
-Every release ships **first as a prerelease**, then as a stable version after staging-site verification. Breaking changes only land in a new major (v3).
+The three packages have **independent versions**. A release never requires bumping all three together. Breaking changes only land in a new major (v3).
+
+Workflows in this repo: `.github/workflows/release.yml` (stage) and `.github/workflows/test.yml` (CI). There is **no** `promote.yml`.
 
 ## Prerequisites
 
 - Maintainer access to the npm packages
-- npm CLI **≥ 11.15.0** and Node **≥ 22.14.0** on the machine that approves
+- npm CLI **≥ 11.15.0** and Node **≥ 22.14.0** on the machine that approves staged packages
 - Repo secret `NPM_TOKEN` on GitHub (used only by the release workflow to stage)
 
 ## Dist-tag rules
 
-Workflow: `.github/workflows/release.yml` (and `scripts/check-release-version.mjs`):
-
 | Version shape | Example tag | npm dist-tag at staging |
 | :--- | :--- | :--- |
 | Prerelease (contains `-`) | `modules-v2.2.0-beta.1` | `next` |
-| Stable | `loader-v2.2.0` | `next` |
+| Stable | `cli-v2.2.7` | `next` |
 
-Since 2.2.0 **every** release is staged under `next`. Approving a stage therefore never moves `latest`, so `npm install @stagepass/cli` keeps installing the previous version until a maintainer promotes the new one explicitly (section 3). This keeps a bad build from reaching `latest` by a single approval click.
+Every release is staged under **`next`**. Approving a stage does **not** move `latest`. Consumers on `npm install @stagepass/cli` keep the previous `latest` until a maintainer runs `npm dist-tag add … latest` (section 3).
 
 Always test betas with an **exact** version pin.
 
-## 1. Prerelease first
+## 1. Prerelease (optional) or stable — one package
 
-### 1a. Bump versions
+### 1a. Bump **only** the package you intend to stage
 
-Set the same prerelease version in all three `packages/*/package.json` files (and any internal peer ranges), e.g. `2.1.0-beta.1`.
+Edit that package’s `packages/<name>/package.json` version (and any peer/range that must mention it). Leave the other packages unchanged unless they are themselves part of a separate release.
 
-Update `CHANGELOG.md` and docs as needed. Commit on the release branch.
+Update `CHANGELOG.md` and package docs as needed. Commit on the appropriate branch (`master` or `release/*`).
 
-### 1b. Tag and push
+**CLI note:** On the CLI release line, keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules versions **in this monorepo checkout** when a lockstep test exists. That constant is an offline snippet fallback; `stagepass new` / `upgrade` still resolve live registry pins. Do **not** republish loader/modules solely to change CLI docs.
+
+### 1b. Tag and push **one** package tag
 
 ```bash
-git tag modules-v2.1.0-beta.1
-git push origin modules-v2.1.0-beta.1
+git tag cli-v2.2.7
+git push origin cli-v2.2.7
 ```
 
-Each release selects **exactly one** package with a package-specific tag (`cli-vX`, `loader-vX`, `modules-vX`) or the same `ref` via `workflow_dispatch`. The version after `-v` must equal that package's `package.json` version (`scripts/check-release-version.mjs`). A shared `v*` tag does not start staging. Keep `STAGEPASS_PACKAGES_VERSION` in `packages/cli/src/lib/versions.js` equal to the loader/modules version (a test enforces this).
+Each release selects **exactly one** package with a package-specific tag (`cli-vX`, `loader-vX`, `modules-vX`) or the same `ref` via `workflow_dispatch`. The version after `-v` must equal that package’s `package.json` version (`scripts/check-release-version.mjs`). A shared `v*` tag does **not** start staging.
 
-Before staging, CI runs `scripts/test-cli-packed.mjs`: it packs the CLI, loader and modules, checks the tarball contents (templates, `global.d.ts`, per-module `*.d.ts`, dist files), installs the CLI tarball globally into a temp prefix, runs `stagepass new` (ts with modules `none` and `cookies`, js with `all`) with `--install` (an `npm` shim adds the local loader/modules tarballs, so unpublished versions resolve), runs `tsc --noEmit` to check that `sp` and only the declared modules are typed, runs `npm run build`, and finally runs `stagepass upgrade` on an old-style project. Run it locally with `node scripts/test-cli-packed.mjs` after `npm run build`.
+Before staging, CI runs `scripts/test-cli-packed.mjs` (packs CLI/loader/modules as needed for the smoke, installs the CLI tarball, exercises `new` / `upgrade`). Run it locally with `node scripts/test-cli-packed.mjs` after `npm run build` when touching CLI/scaffold.
 
 ### 1c. CI stages with `--tag next`
 
-Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`, which checks out that validated tag as `refs/tags/<ref>`; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
+Workflow: `.github/workflows/release.yml` (push of tags `cli-v*` / `loader-v*` / `modules-v*`, or `workflow_dispatch` with the same `ref`; runner `[self-hosted, cerebro]`, repo `arobertherz/stagepass` only).
 
-It builds, tests, verifies versions, then runs in the selected package directory:
+It builds, tests, verifies the selected package version, then runs in that package directory:
 
 ```bash
 npm stage publish --tag next --access public
 ```
 
-**Provenance:** `--provenance` is **not** used. npm provenance requires a supported cloud CI OIDC environment; the self-hosted runner is not supported.
+**Provenance:** `--provenance` is **not** used (self-hosted runner is not a supported OIDC provenance environment).
 
-### 1d. Maintainer promotes (2FA)
+### 1d. Maintainer approves the stage (2FA) — human gate
 
-On a trusted machine:
+On a trusted machine, list stages for the package you just published:
 
 ```bash
-npm stage list @stagepass/modules
-npm stage list @stagepass/loader
 npm stage list @stagepass/cli
+# or @stagepass/loader / @stagepass/modules for those tags
 ```
 
-Approve each stage id (order does not matter; modules → loader → cli is fine):
+Approve **only the stage id** for that package/version:
 
 ```bash
 npm stage approve <stage-id>
@@ -72,52 +73,54 @@ npm stage approve <stage-id>
 
 Or approve in the npm website **Staged Packages** tab. Reject with `npm stage reject <stage-id>` if needed.
 
-### 1e. Verify on a Webflow staging site
+If you released more than one package, you used separate tags and therefore have separate stage IDs — approve each independently. There is no required approval order.
 
-Pin the **exact** beta version (ranges like `@2` will not pick it up):
+### 1e. Verify on a Webflow staging site (loader/modules)
+
+When releasing loader/modules, pin the **exact** version (ranges like `@2` will not pick a beta):
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.1.0-beta.1/dist/loader.min.js"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.1.0-beta.1/dist/inject.min.js"></script>
 ```
 
-Test on a generic Webflow staging host such as `my-project.webflow.io` (never a real customer domain). Confirm loader/modules behaviour before promoting to stable.
+Test on a generic Webflow staging host such as `my-project.webflow.io` (never a real customer domain) before promoting to `latest`.
 
-## 2. Stable release
+## 2. CLI-only example (stable patch)
 
-After the beta looks good:
+Example for `@stagepass/cli@2.2.7` while leaving loader/modules on their current published versions:
 
-1. Bump all three packages to the final version (e.g. `2.2.0`).
-2. Update `CHANGELOG.md`. Commit.
-3. Tag and push:
+1. Bump **only** `packages/cli/package.json` to `2.2.7`.
+2. Update CLI changelog / README. Commit.
+3. Tag and push `cli-v2.2.7`.
+4. Wait for `release.yml` to stage under `next`.
+5. `npm stage approve <cli-stage-id>` (2FA).
+6. Promote to `latest` only after acceptance (section 3).
 
-```bash
-git tag modules-v2.2.0
-git push origin modules-v2.2.0
-```
+## 3. Promote to `latest` (explicit, 2FA)
 
-Repeat the tag (or `workflow_dispatch`) once per package you intend to stage. CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
-
-Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). Until loader and modules of that minor are approved, `npm install` in a freshly scaffolded project fails with `ETARGET`. Approve loader and modules together with the CLI.
-
-## 3. Promote to `latest` (2FA)
-
-After approval and a check on a Webflow staging site:
+After stage approval and verification, promote **only** the package and version you staged:
 
 ```bash
-npm dist-tag add @stagepass/modules@2.2.0 latest
-npm dist-tag add @stagepass/loader@2.2.0 latest
-npm dist-tag add @stagepass/cli@2.2.0 latest
+npm dist-tag add @stagepass/cli@2.2.7 latest
+# independently, when those packages are released:
+# npm dist-tag add @stagepass/loader@X.Y.Z latest
+# npm dist-tag add @stagepass/modules@X.Y.Z latest
 ```
 
 Verify:
 
 ```bash
+npm view @stagepass/cli dist-tags
 npm view @stagepass/loader dist-tags
 npm view @stagepass/modules dist-tags
-npm view @stagepass/cli dist-tags
 ```
 
-`latest` should point at the version you just promoted. Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg can pick up a new stable 2.x as soon as it is published (CDN range resolution is not tied to `latest`), so only approve stable stages that are ready for live sites.
+`latest` must point at the version you just promoted. Sites that pin `@1` stay on 1.x. Major CDN pins such as `@2` can pick up a new stable 2.x once published (CDN range resolution is not tied to `latest`), so only promote stables that are ready for live sites.
+
+## 4. What not to invent
+
+- Do **not** expect a `promote.yml` workflow in this repository.
+- Do **not** require a lockstep version bump of all three packages for a single-package release.
+- Do **not** treat stage approval as moving `latest`; that step is always an explicit `npm dist-tag add`.

@@ -40,17 +40,26 @@ stagepass start
 - [ ] After trust, Safari / Chrome / Firefox show a valid certificate for `https://my-project.sp`
 - [ ] There is **no** `certs renew` command in 2.1.0
 
+## Permissions (do not conflate)
+
+- [ ] **CA trust** checked via `certs check` / `certs trust` (System keychain) — separate from TCC
+- [ ] **Browser Local Network Access** granted in the browser if the live site loads `*.sp` — separate from Node
+- [ ] If macOS prompts **Node** for **Desktop** (or another folder) access because the project/test pack lives there, grant that folder only — not Full Disk Access
+- [ ] Prefer a stable `npm install -g @stagepass/cli` path for acceptance; temporary Desktop test packs are fine for a one-off check but refresh autostart before deleting them
+
 ## autostart / daemon
 
 - [ ] `stagepass autostart status` shows label `io.github.arobertherz.stagepass`
-- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths
+- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths and an `EnvironmentVariables` `PATH` that includes Homebrew `bin`/`sbin` from `brew --prefix` (Cellar symlink for `caddy` is OK)
+- [ ] With a sparse launchd-like PATH, `daemon` still finds `caddy` via the plist PATH
 - [ ] Plist has `RunAtLoad` and `KeepAlive` / `SuccessfulExit` false
 - [ ] Logs appear under `~/.stagepass/logs/`
-- [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
-- [ ] `stagepass stop` still stops services; when autostart is on it prints a hint that login may restart Caddy
+- [ ] `stagepass start` does **not** prompt for sudo when port 443 is free / only caddy listens; with a foreign listener it asks before SIGTERM and again before SIGKILL
+- [ ] With autostart on: bootstrap if needed, kickstart via `start`; `stop` bootouts (until next login) then stops Caddy/PHP; `autostart off` / `on` retained
+- [ ] After moving Node/CLI or leaving a Desktop test path, `autostart off` then `on` with the stable CLI (upgrade alone does not migrate ProgramArguments)
 - [ ] `stagepass autostart off` boots out the agent and removes the plist
 - [ ] If port 443 cannot be bound, daemon logs a clear message and exits `0` (no KeepAlive restart-loop; not a silent success)
-- [ ] Cold-start daemon logs cert root/trust only (no TLS handshake attempts before `caddy run`)
+- [ ] Optional separate checklist: logout/login cold boot of **this** installed version (not assumed by the 2.2.7 interactive accept)
 
 ## Regression (must stay unchanged)
 

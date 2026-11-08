@@ -12,6 +12,9 @@ import {
 } from './paths.js';
 import { defaultExec, resolveCommand } from './exec.js';
 
+/** Default PATH used by macOS user LaunchAgents (no Homebrew). */
+export const LAUNCHD_MINIMAL_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+
 /**
  * Escape a string for use inside an XML plist text node.
  * @param {string} value
@@ -23,6 +26,33 @@ export function escapeXml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/**
+ * Build LaunchAgent PATH: validated Homebrew bin/sbin + launchd minimal dirs.
+ * Does not inherit the interactive user environment.
+ * @param {string} brewPrefix Absolute Homebrew prefix (`brew --prefix`)
+ * @returns {string}
+ */
+export function buildAutostartPathEnv(brewPrefix) {
+  if (typeof brewPrefix !== 'string' || brewPrefix.length === 0) {
+    throw new Error('brewPrefix is required');
+  }
+  if (!path.isAbsolute(brewPrefix)) {
+    throw new Error(`brewPrefix must be absolute (got: ${brewPrefix})`);
+  }
+  if (/[\r\n\0]/.test(brewPrefix)) {
+    throw new Error('brewPrefix must not contain control characters');
+  }
+  // `:` would split PATH entries; reject before embedding.
+  if (brewPrefix.includes(path.delimiter)) {
+    throw new Error(
+      `brewPrefix must not contain PATH delimiter (${path.delimiter})`
+    );
+  }
+  const bin = path.join(brewPrefix, 'bin');
+  const sbin = path.join(brewPrefix, 'sbin');
+  return `${bin}${path.delimiter}${sbin}${path.delimiter}${LAUNCHD_MINIMAL_PATH}`;
 }
 
 /**
@@ -65,6 +95,17 @@ export function buildLaunchctlPrintArgs(uid, label = LAUNCH_AGENT_LABEL) {
 }
 
 /**
+ * launchctl kickstart arguments (gui domain).
+ * `-k` kills any existing instance before starting.
+ * @param {number|string} uid
+ * @param {string} [label]
+ * @returns {string[]}
+ */
+export function buildLaunchctlKickstartArgs(uid, label = LAUNCH_AGENT_LABEL) {
+  return ['kickstart', '-k', `gui/${uid}/${label}`];
+}
+
+/**
  * Render a LaunchAgent plist that runs `stagepass daemon` at login.
  *
  * Port 443: existing `stagepass start` runs `caddy start` as the user (sudo is
@@ -72,9 +113,13 @@ export function buildLaunchctlPrintArgs(uid, label = LAUNCH_AGENT_LABEL) {
  * same bind privileges as interactive `start` on macOS. If bind fails at
  * runtime, `daemon` logs a clear error and exits 0 so KeepAlive does not loop.
  *
+ * `pathEnv` is required so launchd (minimal PATH) can still resolve Homebrew
+ * `brew` / `caddy` by bare name without inheriting the interactive user env.
+ *
  * @param {object} opts
  * @param {string} opts.nodePath
  * @param {string} opts.cliPath
+ * @param {string} opts.pathEnv Validated PATH for EnvironmentVariables
  * @param {string} [opts.label]
  * @param {string} [opts.stdoutPath]
  * @param {string} [opts.stderrPath]
@@ -89,6 +134,13 @@ export function renderLaunchAgentPlist(opts) {
   const stdoutPath = opts.stdoutPath || getDaemonStdoutLogPath();
   const stderrPath = opts.stderrPath || getDaemonStderrLogPath();
   const workingDirectory = opts.workingDirectory || os.homedir();
+  const pathEnv = opts.pathEnv;
+  if (typeof pathEnv !== 'string' || pathEnv.length === 0) {
+    throw new Error('pathEnv is required for LaunchAgent EnvironmentVariables');
+  }
+  if (/[\r\n\0]/.test(pathEnv)) {
+    throw new Error('pathEnv must not contain control characters');
+  }
 
   const argXml = programArguments
     .map((a) => `\t\t<string>${escapeXml(a)}</string>`)
@@ -106,6 +158,11 @@ ${argXml}
 \t</array>
 \t<key>WorkingDirectory</key>
 \t<string>${escapeXml(workingDirectory)}</string>
+\t<key>EnvironmentVariables</key>
+\t<dict>
+\t\t<key>PATH</key>
+\t\t<string>${escapeXml(pathEnv)}</string>
+\t</dict>
 \t<key>RunAtLoad</key>
 \t<true/>
 \t<key>KeepAlive</key>
@@ -221,6 +278,228 @@ export async function resolveAutostartPaths(opts = {}) {
 }
 
 /**
+ * True when `absolutePath` is the Homebrew prefix or a path beneath it.
+ * @param {string} absolutePath
+ * @param {string} brewPrefix
+ */
+function isPathUnderPrefix(absolutePath, brewPrefix) {
+  return (
+    absolutePath === brewPrefix ||
+    absolutePath.startsWith(`${brewPrefix}${path.sep}`)
+  );
+}
+
+/**
+ * Validate a tool as launchd will see it: the PATH shim must live in
+ * `prefix/bin` or `prefix/sbin`. The realpath target may be under Cellar
+ * (normal Homebrew layout) but must remain under the same prefix, be a
+ * regular file, and be executable.
+ *
+ * @param {object} opts
+ * @param {string} opts.name
+ * @param {string} opts.shimPath Absolute path returned by `which` / PATH lookup
+ * @param {string} opts.brewPrefix
+ * @param {(p: string) => Promise<string>} opts.realpath
+ * @param {(p: string) => Promise<boolean>} opts.pathExists
+ * @param {(p: string) => Promise<import('node:fs').Stats>} opts.stat
+ * @returns {Promise<{ ok: true, path: string, canonicalPath: string } | { ok: false, error: string }>}
+ */
+async function validatePrefixPathTool(opts) {
+  const { name, shimPath, brewPrefix, realpath, pathExists, stat } = opts;
+  const shimCheck = await requireAbsoluteExistingPath(shimPath, name, pathExists);
+  if (!shimCheck.ok) return shimCheck;
+
+  const prefixBin = path.join(brewPrefix, 'bin');
+  const prefixSbin = path.join(brewPrefix, 'sbin');
+  const shimDir = path.dirname(shimCheck.path);
+  if (shimDir !== prefixBin && shimDir !== prefixSbin) {
+    return {
+      ok: false,
+      error: `${name} PATH entry must be in ${prefixBin} or ${prefixSbin} (got ${shimDir}).`,
+    };
+  }
+
+  let canonicalPath;
+  try {
+    canonicalPath = await realpath(shimCheck.path);
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Could not realpath ${name} at ${shimCheck.path}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  if (!isPathUnderPrefix(canonicalPath, brewPrefix)) {
+    return {
+      ok: false,
+      error: `${name} realpath (${canonicalPath}) is not under brew --prefix (${brewPrefix}).`,
+    };
+  }
+
+  let st;
+  try {
+    st = await stat(canonicalPath);
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Could not stat ${name} at ${canonicalPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+  if (!st.isFile()) {
+    return {
+      ok: false,
+      error: `${name} resolves to a non-file: ${canonicalPath}`,
+    };
+  }
+  if (!(st.mode & 0o111)) {
+    return {
+      ok: false,
+      error: `${name} is not executable: ${canonicalPath}`,
+    };
+  }
+
+  return { ok: true, path: shimCheck.path, canonicalPath };
+}
+
+/**
+ * Resolve Homebrew + Caddy for the LaunchAgent runtime environment.
+ * Uses the interactive enable-time PATH to locate tools, then records a
+ * launchd-safe PATH from the validated `brew --prefix` (Apple Silicon
+ * `/opt/homebrew` or Intel `/usr/local` via brew itself — not hardcoded).
+ *
+ * PATH shims must sit in `prefix/bin` or `prefix/sbin`. Realpaths may point
+ * into `Cellar/...` (standard Homebrew) as long as they stay under the prefix.
+ *
+ * @param {object} [opts]
+ * @param {import('./exec.js').ExecFn} [opts.exec]
+ * @param {(p: string) => Promise<string>} [opts.realpath]
+ * @param {(p: string) => Promise<boolean>} [opts.pathExists]
+ * @param {(p: string) => Promise<import('node:fs').Stats>} [opts.stat]
+ * @returns {Promise<{
+ *   ok: boolean,
+ *   error?: string,
+ *   brewPath?: string,
+ *   caddyPath?: string,
+ *   brewPrefix?: string,
+ *   pathEnv?: string,
+ * }>}
+ */
+export async function resolveAutostartRuntimeEnvironment(opts = {}) {
+  const exec = opts.exec || defaultExec;
+  const realpath =
+    opts.realpath || ((p) => fs.realpath(p).then((r) => String(r)));
+  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
+  const stat = opts.stat || ((p) => fs.stat(p));
+
+  const brewWhich = await resolveCommand('brew', exec);
+  if (!brewWhich) {
+    return {
+      ok: false,
+      error:
+        'Homebrew `brew` not found. Install Homebrew and ensure it is on PATH before enabling autostart.',
+    };
+  }
+  const brewShim = path.resolve(brewWhich);
+  const brewShimCheck = await requireAbsoluteExistingPath(
+    brewShim,
+    'brew',
+    pathExists
+  );
+  if (!brewShimCheck.ok) {
+    return { ok: false, error: brewShimCheck.error };
+  }
+
+  let brewPrefix = '';
+  try {
+    // Invoke via the PATH shim (not Cellar realpath) — matches user `brew --prefix`.
+    const { stdout } = await exec(brewShimCheck.path, ['--prefix']);
+    brewPrefix = String(stdout || '').trim();
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Could not read Homebrew prefix via brew --prefix: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  if (!brewPrefix || !path.isAbsolute(brewPrefix) || /[\r\n\0]/.test(brewPrefix)) {
+    return {
+      ok: false,
+      error: `Invalid Homebrew prefix from brew --prefix: ${brewPrefix || '(empty)'}`,
+    };
+  }
+  if (brewPrefix.includes(path.delimiter)) {
+    return {
+      ok: false,
+      error: `Homebrew prefix contains PATH delimiter: ${brewPrefix}`,
+    };
+  }
+
+  const prefixBin = path.join(brewPrefix, 'bin');
+  if (!(await pathExists(prefixBin))) {
+    return {
+      ok: false,
+      error: `Homebrew prefix bin directory does not exist: ${prefixBin}`,
+    };
+  }
+
+  const brewTool = await validatePrefixPathTool({
+    name: 'brew',
+    shimPath: brewShimCheck.path,
+    brewPrefix,
+    realpath,
+    pathExists,
+    stat,
+  });
+  if (!brewTool.ok) {
+    return { ok: false, error: brewTool.error };
+  }
+
+  const caddyWhich = await resolveCommand('caddy', exec);
+  if (!caddyWhich) {
+    return {
+      ok: false,
+      error:
+        'Caddy not found. Run `stagepass setup` (or `brew install caddy`) before enabling autostart.',
+    };
+  }
+  const caddyTool = await validatePrefixPathTool({
+    name: 'caddy',
+    shimPath: path.resolve(caddyWhich),
+    brewPrefix,
+    realpath,
+    pathExists,
+    stat,
+  });
+  if (!caddyTool.ok) {
+    return { ok: false, error: caddyTool.error };
+  }
+
+  let pathEnv;
+  try {
+    pathEnv = buildAutostartPathEnv(brewPrefix);
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  return {
+    ok: true,
+    brewPath: brewTool.path,
+    caddyPath: caddyTool.path,
+    brewPrefix,
+    pathEnv,
+  };
+}
+
+/**
  * @param {object} [opts]
  * @param {import('./exec.js').ExecFn} [opts.exec]
  * @param {number|string} [opts.uid]
@@ -264,6 +543,7 @@ export async function getAutostartStatus(opts = {}) {
 export async function enableAutostart(opts = {}) {
   const exec = opts.exec || defaultExec;
   const uid = opts.uid ?? process.getuid?.() ?? os.userInfo().uid;
+  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
   const paths =
     opts.paths ||
     (await resolveAutostartPaths({
@@ -271,7 +551,7 @@ export async function enableAutostart(opts = {}) {
       argv1: opts.argv1,
       exec,
       realpath: opts.realpath,
-      pathExists: opts.pathExists,
+      pathExists,
     }));
 
   if (!paths.ok) {
@@ -285,11 +565,26 @@ export async function enableAutostart(opts = {}) {
       error: 'Autostart nodePath and cliPath must be absolute.',
     };
   }
-  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
   if (!(await pathExists(paths.nodePath)) || !(await pathExists(paths.cliPath))) {
     return {
       ok: false,
       error: 'Autostart nodePath or cliPath does not exist on disk.',
+    };
+  }
+
+  const runtime =
+    opts.runtime ||
+    (await resolveAutostartRuntimeEnvironment({
+      exec,
+      realpath: opts.realpath,
+      pathExists,
+    }));
+  if (!runtime.ok || !runtime.pathEnv) {
+    return {
+      ok: false,
+      error:
+        runtime.error ||
+        'Could not resolve Homebrew/Caddy paths for LaunchAgent PATH.',
     };
   }
 
@@ -299,12 +594,14 @@ export async function enableAutostart(opts = {}) {
   const writeFile = opts.writeFile || ((p, c) => fs.writeFile(p, c, 'utf8'));
   const logsDir = opts.logsDir || getLogsDir();
 
+  // Write only after node/cli + Homebrew/Caddy prerequisites validate.
   await ensureDir(agentsDir);
   await ensureDir(logsDir);
 
   const plist = renderLaunchAgentPlist({
     nodePath: paths.nodePath,
     cliPath: paths.cliPath,
+    pathEnv: runtime.pathEnv,
     stdoutPath: opts.stdoutPath || getDaemonStdoutLogPath(),
     stderrPath: opts.stderrPath || getDaemonStderrLogPath(),
     workingDirectory: opts.workingDirectory || os.homedir(),
@@ -330,7 +627,7 @@ export async function enableAutostart(opts = {}) {
     };
   }
 
-  return { ok: true, plistPath, paths, error: null };
+  return { ok: true, plistPath, paths, runtime, error: null };
 }
 
 /**

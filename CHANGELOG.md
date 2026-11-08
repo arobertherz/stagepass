@@ -15,6 +15,26 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.7] - 2026-11-08
+
+Patch release of the CLI only. `@stagepass/loader` stays at **2.4.0**; `@stagepass/modules` latest **2.2.0** / next **2.2.2** are unchanged. `engines.node` remains `>=18.0.0`. No dependency major bumps.
+
+#### Fixed
+
+- LaunchAgent autostart embeds a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel. PATH shims must live in `prefix/bin` or `prefix/sbin`; Cellar realpaths under the same prefix are accepted. Prerequisites are validated before the plist is written.
+- Ora spinners no longer treat TTY width `0` / invalid / live resize-to-zero as usable geometry (avoids runaway ANSI clears).
+- `stagepass start` closes the parent logfile FD after `caddy start` (execa@8 does not hang when a daemon grandchild inherits the log handles).
+- `stagepass start` no longer runs unconditional `sudo -v` or a `sudo lsof | …` shell pipeline. Port 443 is inspected with argv `lsof` (no sudo). Conflicting listeners are signalled only after confirmation: **SIGTERM** first, **SIGKILL** only after a separate confirm if still listening. Non-interactive runs refuse to signal. Privilege (`sudo kill` / `apachectl`) is used only when the confirmed operation needs it.
+- When a LaunchAgent plist is installed, `start` bootstraps if needed then `launchctl kickstart` (falls back to direct `caddy start`). `stop` `launchctl bootout`s first (until next login) before stopping Caddy/PHP. PHP `brew services` behaviour is unchanged.
+
+#### Docs
+
+- Autostart / Homebrew PATH / start–stop LaunchAgent contract; macOS permissions split into system CA trust, browser Local Network Access, and Node folder TCC (e.g. Desktop) — not conflated with firewall/FDA. Stable global install vs temporary Desktop test packs; LaunchAgent absolute paths need deliberate `autostart off`/`on` after CLI moves (upgrade does not auto-migrate). `RELEASING.md` single-package `cli-v*` → stage `next` → 2FA approve → explicit `latest`. Bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+
+#### Verified on macOS (compatible 2.2.7 artifact; not a cold-boot claim)
+
+Interactive accept of the compatible CLI build (product tree `bb07d46`): normal start ~2.1s, verbose ~1.8s, direct stop, `autostart on`/bootstrap, verbose kickstart ~10.6s, agent stop/bootout, normal bootstrap start ~10.6s, off/on retained; 14 TLS checks (12 HTTP 404 + 2 HTTP 200); CA/config/backup hashes unchanged. Global `@stagepass/cli@2.2.6` left installed for rollback. **Cold-boot/login LaunchAgent PASS remains scoped to the earlier `dc927de` observation only** — do not treat it as proven for published 2.2.7. Remaining open limits: full P1 negatives, fresh demo, `.sp`/Webflow scoped cases, and a dedicated cold boot of the 2.2.7 artifact.
+
 ### [2.2.6] - 2026-11-06
 
 Patch release of the CLI only. At publish time `@stagepass/loader` and `@stagepass/modules` were 2.2.0; `STAGEPASS_PACKAGES_VERSION` later tracks 2.2.2 without a CLI version bump.
