@@ -12,16 +12,24 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.3.1`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.4.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.3.1"
+  data-stagepass-version="2.3.3"
 ></script>
 ```
 
 unpkg serves the same paths if you need an alternative CDN. Always embed the full `/dist/loader.min.js` path (not a short package URL that redirects); otherwise session chunks resolve from the wrong folder. Or set `data-stagepass-flag-base`.
+
+## Known limits (scoped acceptance)
+
+Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is not proof of the full default `setup` / `start` / `stop` path, System Trust / `certs renew`, autostart / login / boot / OS-crash recovery, or a real `.sp` resolver + production Webflow origin path.
+
+A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
+
+`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it. npm `latest` is **2.3.3**, which does not contain it. A jsDelivr `@2` embed is currently observed serving 2.3.3; that major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes.
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
@@ -92,19 +100,25 @@ Shown only while a session is active (including debug).
 - Errors: `sp.error`, `sp.log('error', …)`, `console.error`, uncaught errors (with stack), failed resource loads, unhandled rejections (with stack). Local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor". Sanitized errors from other origins show as "Error in a cross-origin script (details only in DevTools console)".
 - Accessibility: the pill is a button with `aria-expanded`, the card a `role="dialog"`; focus moves into the card and back to the pill; reduced motion makes all changes instant.
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
-- The UI lives in `dist/flag.min.js` (about 3.2 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). The flag chunk also bootstraps `live.min.js` during a swap session. All three are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the three files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
+- The UI lives in `dist/flag.min.js` (about 3.2 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the flag files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
+- Loader **2.4.0** only: during a swap session the flag chunk also bootstraps `live.min.js` (lazy EventSource client). Published **2.3.3** does not ship that chunk.
 
 ## Zero-cost production mode
 
-Opt-in with `data-stagepass-live-src="true"` on the loader tag. Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See the root README section “Zero-cost production mode” for migration, SRI, and limitations.
+Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0**). Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See [Zero-cost production mode](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#zero-cost-production-mode) for migration, SRI, and limitations.
 
 ## Runtime API
 
 Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`; both always assigned in 2.x). Optional custom alias via `data-stagepass-alias` when free. Types ship in `global.d.ts` (complete `sp` API with JSDoc and examples, typed `sp.on(...)` events). Add `"@stagepass/loader"` to `compilerOptions.types` (or `/// <reference types="@stagepass/loader" />`). In debug mode, after the flag chunk loads, reading `sp.vars` once hints toward the flat helpers (reads before the chunk has loaded do not hint).
 
+Two layers (do not conflate):
+
+1. **Endpoint / session choice:** `*.sp` vs `localhost` / `localhost:<port>` vs `debug`.
+2. **`sp.env()`:** `local` only for an active `*.sp` swap session; a `localhost` / `localhost:<port>` session is `production` (since 2.3.1 / 2.3.3). `sp.vars.isLocal` remains “swap active **or** page on localhost” and is not the same question as `sp.env()`.
+
 ```js
-sp.vars.isLocal     // boolean: session swap active or page on localhost
-sp.vars.env         // 'local' | 'staging' | 'production' (localhost counts as local)
+sp.vars.isLocal     // boolean: session swap active or page on localhost (≠ sp.env())
+sp.vars.env         // 'local' | 'staging' | 'production' (page/host heuristic; not sp.env())
 sp.vars.domain      // active .sp domain, or page hostname when no swap
 sp.vars.timestamp   // session start ms while swapping; otherwise 0
 sp.vars.version     // package version (build-time)
@@ -112,8 +126,9 @@ sp.vars.client      // theme / browser / os / device / viewport / locale / capab
 
 // Flat helpers (additive)
 sp.env()            // 'local' | 'staging' | 'production'
-                    // local = active swap to a .sp domain
+                    // local = active swap to a .sp domain only
                     // staging = *.webflow.io or data-stagepass-staging-hosts
+                    // else production (a localhost session is production)
 sp.is('staging')
 sp.can('localStorage') // also: sessionStorage, cookies, serviceWorker
 sp.client('theme')     // or sp.client() for the whole object

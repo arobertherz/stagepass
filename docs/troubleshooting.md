@@ -49,8 +49,8 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 ## Live reload does nothing
 
-* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (not yet in a published release; will ship with the next loader release) **and** an active `?stagepass=<project>.sp` swap session. Published `@stagepass/loader@2` / `2.3.3` does **not** include `live.min.js` (CDN `@2` currently resolves to that publish; `/dist/live.min.js` 404s). See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
-* Run `stagepass dev` inside the **linked** project directory (not only `npm run watch`).
+* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** (current npm `latest`) does **not** include `live.min.js`. A jsDelivr `@2` embed is currently observed serving that publish (`/dist/live.min.js` 404s); the major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
+* `stagepass dev` is not in published `@stagepass/cli@2.2.6`. Use a preview or repository CLI build inside the **linked** project directory (not only `npm run watch`).
 * Keep a swap session active (not `debug`). The loader opens `EventSource` to `https://<domain.sp>/__stagepass/live` after injecting local assets.
 * If `stagepass dev` is not running, the live chunk closes after the first error and does not retry.
 * Public-origin sessions still need Local Network / Loopback permission and a trusted Stagepass CA (see [Public origin to .sp (ERR_FAILED)](#public-origin-to-sp-err_failed)).

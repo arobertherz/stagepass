@@ -23,15 +23,14 @@ macOS is required for system commands. See [docs/getting-started.md](docs/gettin
 stagepass setup && stagepass start
 stagepass new demo --yes --staging demo.webflow.io
 cd demo && stagepass link --origin demo.webflow.io
-stagepass dev
 ```
 
-In Webflow head code (prefer an exact pin in production):
+In Webflow head code (prefer major pin `@2`; exact pin optional):
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.3.1/dist/loader.min.js"
-  data-stagepass-version="2.3.1"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.4.0/dist/loader.min.js"
+  data-stagepass-version="2.4.0"
 ></script>
 <script
   data-src="https://cdn.example.com/js/app.min.js"
@@ -50,7 +49,7 @@ Open `https://your-site/?stagepass=demo.sp`. Details: [docs/getting-started.md](
 | [CLI](docs/cli.md) | Commands, flags, AGENTS.md templates |
 | [Loader](docs/loader.md) | Version pinning, attributes, Runtime API, security |
 | [Modules](docs/modules.md) | inject, cookies, maintenance |
-| [Live reload](docs/dev.md) | `stagepass dev` (no Vite) |
+| [Live reload](docs/dev.md) | Guide for the upcoming `stagepass dev` CLI command (not in published `@stagepass/cli@2.2.6`); client chunk `live.min.js` belongs to published loader 2.4.0 (npm `latest` remains 2.3.3) |
 | [Migration](docs/migration.md) | 1.x → 2.x ([full guide](MIGRATION.md)) |
 | [Troubleshooting](docs/troubleshooting.md) | Common fixes |
 

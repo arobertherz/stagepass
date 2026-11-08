@@ -29,7 +29,7 @@ Always test betas with an **exact** version pin.
 
 Bump **only the package you intend to stage** in that package's `packages/<name>/package.json` (and any internal peer range that must mention the new version). The three packages have independent versions and do not need to share a number. Example: you may set `@stagepass/modules` to `2.2.2-beta.1` while leaving CLI and loader unchanged.
 
-Update `CHANGELOG.md` and docs as needed. Commit on the release branch.
+Update `CHANGELOG.md` and docs as needed (maintainer duty, not a workflow gate). Commit on the release branch.
 
 ### 1b. Tag and push
 
@@ -121,3 +121,13 @@ npm view @stagepass/cli dist-tags
 ```
 
 `latest` should point at the version you just promoted. Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg can pick up a new stable 2.x as soon as it is published (CDN range resolution is not tied to `latest`), so only approve stable stages that are ready for live sites.
+
+## Required human checklist (not automated)
+
+`.github/workflows/release.yml` covers ref validation, install, build, package tests, packed smoke, selector, and one `npm stage publish --tag next`. It does **not** cover the items below. Complete them before treating a release as public-ready:
+
+1. GitHub README and the npm package README (this repo’s `packages/<name>/README.md`) describe the same published version and do not advertise unpublished commands as available.
+2. Website changelog / release notes on stagepass.one match the public notes (manual content export; the website does not auto-sync from this repo at build time).
+3. Published date in CHANGELOG is the real publication/tag date, not a later CSS or metadata fix.
+4. After registry publication: record npm `gitHead` / integrity and check the jsDelivr CDN hash for the exact file that was published.
+5. Known limits and any documented reviewer exception (for example an individual size-ceiling exception) are written in the public notes. Human-verified facts stay human-verified; CI green is not a substitute.
