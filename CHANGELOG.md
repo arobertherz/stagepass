@@ -29,14 +29,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
 - `stagepass dev` (#11): project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (no Vite). Caddy `reverse_proxy` with `flush_interval -1`, same CORS / LNA policy as assets; `devPort` stored in `projects.json` only while running and cleared when the PID is dead.
 
-### `@stagepass/loader`
-
-- Opt-in **zero-cost production mode** via `data-stagepass-live-src="true"` on the loader tag: tagged assets keep a normal `src` / `href` (optional `integrity`); without a session the loader does not touch them; with an active swap session they are rewritten to the local `.sp` URL before classic scripts run (MutationObserver; Firefox uses `beforescriptexecute` → convert to `data-src` → existing swap path). Legacy `data-src` / `data-href` is unchanged and remains the default. The "Live-src script already executing" warning is dropped (silent skip when the loader is not sync in `<head>` before tagged assets).
-- **Core slim:** session-only work moved into `flag.min.js` so every live-site visitor downloads less. The live-reload hook (`stagepass.live.v1` + appending `live.min.js`) and the one-time debug `sp.vars` hint now live in the flag chunk; duplicate local-path warnings (`Multiple assets resolve to local file…`) also run there (core only marks explicit `data-stagepass-path` on tracked files). `sp.vars` is again a plain frozen property in the core (2.3.1 form); reads in debug before the flag chunk has loaded simply do not hint. Visitor path without a session is unchanged (no new requests, same globals / `sp` API / production `data-src`/`data-href` / `?v=` / console behaviour).
-- Measured `loader.min.js`: was ~16501 / 7124 / 6355 (raw / gzip / brotli) after the live hook landed in core; now ~14882 / 6566 / 5866 (2.3.1 baseline was 13798 / 6257 / 5588). Remaining core delta is the minimal live-src MutationObserver / Firefox hook.
-- Lazy `live.min.js` chunk (#11): during an active swap session the **flag chunk** appends it from the same folder as `flag-card.min.js` and opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; closes after the first error when `stagepass dev` is not running. Never loaded without a session.
-- `sp` and `stagepass` remain always assigned (2.x compatibility; custom `data-stagepass-alias` still only when free). Client detection stays eager (2.0.0 behaviour).
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -189,6 +181,28 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/loader`
+
+### [2.4.0] - 2026-11-08
+
+Loader-only tag (`loader-v2.4.0`, `cddec72`). Documents the tagged release; not claimed as published on npm or jsDelivr.
+
+#### Added
+
+- Opt-in zero-cost production mode via `data-stagepass-live-src="true"` on the loader tag: tagged assets keep a normal `src` / `href` (optional `integrity`); without a session the loader does not touch them; with an active swap session they are rewritten to the local `.sp` URL before classic scripts run (MutationObserver; Firefox uses `beforescriptexecute` → convert to `data-src` → existing swap path). Legacy `data-src` / `data-href` is unchanged and remains the default. The "Live-src script already executing" warning is dropped (silent skip when the loader is not sync in `<head>` before tagged assets).
+- Lazy `live.min.js` during an active swap session (EventSource to `/__stagepass/live`). CSS-only events replace local stylesheets (cache-bust / swap, no full reload); other events call `location.reload()`. The chunk is never loaded without a session. It closes after the first error when the unpublished `stagepass dev` SSE server is not running.
+
+#### Changed
+
+- Session-only work moved into `flag.min.js` (core slim). The live-reload hook (`stagepass.live.v1` + appending `live.min.js`) and the one-time debug `sp.vars` hint now live in the flag chunk; duplicate local-path warnings (`Multiple assets resolve to local file…`) also run there (core only marks explicit `data-stagepass-path` on tracked files). `sp.vars` is again a plain frozen property in the core (2.3.1 form); reads in debug before the flag chunk has loaded simply do not hint. Visitor path without a session is unchanged (no new requests, same globals / `sp` API / production `data-src`/`data-href` / `?v=` / console behaviour). `sp` and `stagepass` remain always assigned (2.x compatibility; custom `data-stagepass-alias` still only when free). Client detection stays eager (2.0.0 behaviour).
+- Measured `loader.min.js`: ~14882 / 6566 / 5866 (raw / gzip / brotli); 2.3.1 was 13798 / 6257 / 5588. The remaining core size stays above the 2.3.1 ceiling that 2.3.3 used. That was accepted as a **documented individual Donna exception**, not as a new permanent size baseline, and not as a full-review PASS.
+
+#### Known limits
+
+- Live reload acceptance is scoped localhost only. Not accepted: full default lifecycle `setup` / `start` / `stop`, System Trust / `certs renew`, autostart, login, boot, OS-crash recovery, or a real `.sp` + production Webflow origin path.
+
+#### Fixed
+
+- Retains published 2.3.3 guards: localhost ports 1–65535 without leading zeros; shared `isValidDomain` via `FlagState.vd`; ×N and time separated by a real space.
 
 ### [2.3.1] - 2026-11-02
 
