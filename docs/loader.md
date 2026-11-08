@@ -6,7 +6,7 @@ Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). CDN
 
 Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production CDN embeds, pin the **major** (`@2`), or an **exact** version when you want to freeze one publish and avoid alias caching.
 
-**Published 2.3.3 vs master:** jsDelivr `@2` is a major-range alias and currently resolves to published `@stagepass/loader` **2.3.3**, which does **not** include `live.ts` / `dist/live.min.js` (CDN `/dist/live.min.js` on `@2` / `@2.3.3` 404s — version scope, not a packaging bug in 2.3.3). The live-reload client exists on **master** (this documentation line; the loader `package.json` on master may still say `2.3.1`). Do not assume a CDN `@2` embed ships live reload.
+**Published 2.3.3 and live reload:** jsDelivr `@2` is a major-range alias and currently resolves to published `@stagepass/loader` **2.3.3**, which does **not** include `live.ts` / `dist/live.min.js` (CDN `/dist/live.min.js` on `@2` / `@2.3.3` 404s — version scope, not a packaging bug in 2.3.3). Live reload / `live.min.js` is not yet in a published release; it will ship with the next loader release. Do not assume a CDN `@2` embed ships live reload.
 
 ### Recommended (`@2`)
 
@@ -292,4 +292,4 @@ More CLI security notes: [`packages/cli/README.md`](../packages/cli/README.md).
 
 ## Dev chunks
 
-While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. Published `loader@2` / `2.3.3` does not include `live.min.js`; use a master (or future) build that ships it for `stagepass dev` live reload. See [dev.md](./dev.md) and [Version pinning](#version-pinning).
+While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. Published `loader@2` / `2.3.3` does not include `live.min.js`; live reload will ship with the next published `@stagepass/loader` release. See [dev.md](./dev.md) and [Version pinning](#version-pinning).

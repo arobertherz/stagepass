@@ -216,7 +216,7 @@ Go to your live Webflow URL and append the parameter:
 
 **Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project with a loader build that ships `live.min.js` (master / future publish — not published `loader@2` / `2.3.3`; see [dev.md](./dev.md)).
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project. Live reload / `live.min.js` is not yet in a published loader release; it will ship with the next one. Published `loader@2` / `2.3.3` does not include `live.min.js` (see [dev.md](./dev.md)).
 
 ## Session modes
 
