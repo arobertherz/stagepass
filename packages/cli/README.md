@@ -49,11 +49,11 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
-| `stagepass start` | Start background Caddy & PHP services. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass start` | Start Caddy & PHP. No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). |
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
-| `stagepass stop` | Stop background services. Prints a hint when login autostart is enabled. |
+| `stagepass stop` | Stop Caddy & PHP. If autostart is installed/loaded, `launchctl bootout` first (until next login); use `autostart off` to disable permanently. |
 | `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, plus the current project's declared modules vs. its live site). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
@@ -71,7 +71,7 @@ All commands support `-v, --verbose` where applicable.
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
 - Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
-- Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
+- Autostart runs as your user (same privilege model as interactive `caddy start`). `start` kickstarts the agent when present; `stop` bootouts until the next login. If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Interactive `start` confirms before signalling any non-caddy listener.
 - `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist.
 - Re-run `stagepass autostart on` after moving Node/CLI installs or Homebrew prefix so ProgramArguments and PATH stay absolute and valid.
 - macOS may prompt for Local Network / firewall access when Caddy binds; grant permission for the Node binary used in the LaunchAgent when asked.
@@ -249,6 +249,7 @@ Hand-written content outside `# START:` / `# END:` markers is left untouched. Un
 | :--- | :--- |
 | Autostart runs at login but `caddy: command not found` / daemon exits | Re-run `stagepass autostart on` on **2.2.7+** so the plist embeds Homebrew `PATH`. Confirm `brew --prefix` and that `which caddy` points at `$prefix/bin/caddy` (Cellar symlink OK). |
 | `stagepass start` spinner floods the terminal (weird ANSI) | Upgrade to 2.2.7+ (spinner geometry guard). Rare with TTY width `0`. |
+| `start` asks for a password at every boot | 2.2.7+ drops unconditional `sudo -v`. Only confirmed conflict resolution may use `sudo kill` / `apachectl`. |
 | Port 443 bind failure under LaunchAgent | Expected when something else owns 443; daemon exits `0` (no restart loop). Free the port or use interactive `stagepass start`. |
 | Comparing test vs stable installs | Monorepo `packages/cli` / `npm link` paths differ from global `@stagepass/cli@2.2.x`. Prefer one install style per checklist run (`TESTING-macos.md`). |
 

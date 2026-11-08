@@ -48,7 +48,8 @@ stagepass start
 - [ ] Plist has `RunAtLoad` and `KeepAlive` / `SuccessfulExit` false
 - [ ] Logs appear under `~/.stagepass/logs/`
 - [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
-- [ ] `stagepass stop` still stops services; when autostart is on it prints a hint that login may restart Caddy
+- [ ] `stagepass start` does **not** prompt for sudo when port 443 is free / only caddy listens; with a foreign listener it asks before SIGTERM and again before SIGKILL
+- [ ] With autostart on, `stagepass start` kickstarts the LaunchAgent; `stagepass stop` bootouts (until next login) then stops Caddy/PHP
 - [ ] `stagepass autostart off` boots out the agent and removes the plist
 - [ ] If port 443 cannot be bound, daemon logs a clear message and exits `0` (no KeepAlive restart-loop; not a silent success)
 - [ ] Cold-start daemon logs cert root/trust only (no TLS handshake attempts before `caddy run`)

@@ -27,10 +27,12 @@ describe('public start path: execa@8 + logfile FD', () => {
       tempDirs.push(td);
       const fakeCaddy = path.join(td, 'caddy');
       const logFile = path.join(td, 'server.log');
+      // CommonJS so the temp file works without a nearby `"type":"module"` package.json
+      // (Node 18/22/24 all resolve bare `caddy` scripts as CJS by default).
       fs.writeFileSync(
         fakeCaddy,
         `#!/usr/bin/env node
-import { spawn } from 'node:child_process';
+const { spawn } = require('node:child_process');
 if (process.argv[2] === 'stop') process.exit(0);
 if (process.argv[2] === 'start') {
   const child = spawn(process.execPath, ['-e', 'setInterval(()=>{}, 1000)'], {
@@ -57,9 +59,9 @@ process.exit(1);
         // Resolve `execa` from the CLI package / workspace install.
         cwd: path.resolve(DIR, '../../..'),
       });
-      expect(result.timedOut, result.output).toBe(false);
-      expect(result.capped).toBe(false);
-      expect(result.code).toBe(0);
+      expect(result.timedOut, `timedOut output=${result.output}`).toBe(false);
+      expect(result.capped, `capped output=${result.output}`).toBe(false);
+      expect(result.code, `code output=${result.output}`).toBe(0);
       expect(result.output).toContain('START_FD_OK');
       expect(result.aliveAfterClose).toBe(false);
     },

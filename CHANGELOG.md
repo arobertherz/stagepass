@@ -24,10 +24,12 @@ Patch release of the CLI only. `@stagepass/loader` stays at **2.4.0**; `@stagepa
 - LaunchAgent autostart embeds a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel. PATH shims must live in `prefix/bin` or `prefix/sbin`; Cellar realpaths under the same prefix are accepted. Prerequisites are validated before the plist is written.
 - Ora spinners no longer treat TTY width `0` / invalid / live resize-to-zero as usable geometry (avoids runaway ANSI clears).
 - `stagepass start` closes the parent logfile FD after `caddy start` (execa@8 does not hang when a daemon grandchild inherits the log handles).
+- `stagepass start` no longer runs unconditional `sudo -v` or a `sudo lsof | …` shell pipeline. Port 443 is inspected with argv `lsof` (no sudo). Conflicting listeners are signalled only after confirmation: **SIGTERM** first, **SIGKILL** only after a separate confirm if still listening. Non-interactive runs refuse to signal. Privilege (`sudo kill` / `apachectl`) is used only when the confirmed operation needs it.
+- When a LaunchAgent plist is installed, `start` bootstraps if needed then `launchctl kickstart` (falls back to direct `caddy start`). `stop` `launchctl bootout`s first (until next login) before stopping Caddy/PHP. PHP `brew services` behaviour is unchanged.
 
 #### Docs
 
-- Autostart / Homebrew PATH / permission notes; bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+- Autostart / Homebrew PATH / permission / start–stop LaunchAgent contract; `RELEASING.md` single-package `cli-v*` → stage `next` → 2FA approve → explicit `latest`. Bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
 
 ### [2.2.6] - 2026-11-06
 
