@@ -55,9 +55,17 @@ if (mode === 'pty-native') {
     configurable: true,
     get: () => geometry.rows,
   });
-  stream.clearLine = () => {};
   stream.cursorTo = () => {};
   stream.moveCursor = () => {};
+  // Safe path: no-op clears (we only assert bounded exit).
+  // Raw-ora path: each clearLine emits a byte so the ora@7 cols=0 Infinity
+  // clear loop is observable to the parent's output budget (and CI!=TTY).
+  stream.clearLine =
+    impl === 'raw-ora'
+      ? () => {
+          stream.write('x');
+        }
+      : () => {};
   stream.on('data', (chunk) => {
     bytes += chunk.length;
     if (bytes > OUTPUT_BUDGET) {
@@ -69,7 +77,10 @@ if (mode === 'pty-native') {
 
 const spinner =
   impl === 'raw-ora'
-    ? ora({ text, stream, discardStdin: false })
+    ? // Force the enabled spinner path: under CI, is-interactive() is false and
+      // ora would otherwise no-op, skip the cols=0 clear loop, and print HARNESS_OK.
+      // Geometry still comes from stream.columns === 0 (ora uses `columns ?? 80`).
+      ora({ text, stream, discardStdin: false, isEnabled: true })
     : createSpinner(text, { stream, discardStdin: false });
 
 spinner.start();

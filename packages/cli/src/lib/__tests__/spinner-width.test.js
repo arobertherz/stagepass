@@ -147,6 +147,7 @@ describe('spinner width safety', () => {
         'raw-ora-cols0'
       );
       // Must not complete successfully: parent deadline/outputcap (or child overflow exit).
+      // Fixture forces isEnabled + cols=0 so ora@7 clear loop runs even when CI=true.
       expect(result.output.includes('HARNESS_OK')).toBe(false);
       expect(
         result.timedOut ||
