@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import path from 'path';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import {
   getCaddyfilePath,
   getServerLogPath,
@@ -89,7 +89,7 @@ export async function start(options = {}) {
     }]);
 
     if (shouldKill) {
-      const killSpinner = ora('Freeing port...').start();
+      const killSpinner = createSpinner('Freeing port...').start();
       const success = await killProcess(conflict);
       if (success) killSpinner.succeed('Port freed.');
       else {
@@ -109,18 +109,20 @@ export async function start(options = {}) {
   }
 
   // 3. Boot services
-  const spinner = ora('Booting background services...').start();
-  
-  // Prepare logging (standard mode)
+  const spinner = createSpinner('Booting background services...').start();
+
+  // Prepare logging (standard mode). execa@8 with numeric FDs does not hang when
+  // a daemon grandchild inherits the log handles; still close the parent copy.
+  /** @type {number|null} */
+  let logFd = null;
   let stdioMode = 'ignore';
   if (options.verbose) {
     spinner.stop();
     console.log(chalk.dim('--- Verbose Logs ---'));
     stdioMode = 'inherit';
   } else {
-    // Redirect stdout/stderr to logfile
-    const logStream = fs.openSync(logFile, 'w');
-    stdioMode = ['ignore', logStream, logStream];
+    logFd = fs.openSync(logFile, 'w');
+    stdioMode = ['ignore', logFd, logFd];
   }
 
   try {
@@ -145,6 +147,14 @@ export async function start(options = {}) {
     if (!options.verbose) {
         console.log(chalk.red('See error log for details:'));
         console.log(chalk.dim(logFile));
+    }
+  } finally {
+    if (logFd != null) {
+      try {
+        fs.closeSync(logFd);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

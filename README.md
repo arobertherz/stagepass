@@ -309,7 +309,7 @@ Typical order: `setup` → `start` → `link` (then `reload` / `unlink` / `stop`
 | `stagepass doctor` | Read-only stack diagnostics (never sudo), plus the current project's declared modules vs. its live site. `--json`, `--skip-site`. Exit `1` on any fail. |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
-| `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
+| `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon` (embeds validated Homebrew PATH; does not inherit your shell env). |
 | `stagepass daemon` | Foreground LaunchAgent helper (`caddy run`); non-interactive; never sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project. |

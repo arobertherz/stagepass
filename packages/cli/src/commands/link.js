@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import { resolveLinkDomain } from '../lib/domain.js';
 import { renderSiteBlock, upsertBlock, parseBlocks } from '../lib/caddyfile.js';
 import {
@@ -87,7 +87,7 @@ export async function link(domain, options = {}) {
     );
   }
 
-  const spinner = ora(`Linking ${chalk.bold(targetDomain)}...`).start();
+  const spinner = createSpinner(`Linking ${chalk.bold(targetDomain)}...`).start();
 
   try {
     await fs.ensureDir(caddyDir);

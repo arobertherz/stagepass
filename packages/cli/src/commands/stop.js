@@ -1,12 +1,12 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import { getAutostartStatus } from '../lib/autostart.js';
 
 export async function stop(options = {}) {
   console.log(chalk.bold('\n🛑 Stopping Stagepass...'));
   
-  const spinner = ora('Shutting down services...').start();
+  const spinner = createSpinner('Shutting down services...').start();
   const stdioMode = options.verbose ? 'inherit' : 'ignore';
 
   if (options.verbose) {

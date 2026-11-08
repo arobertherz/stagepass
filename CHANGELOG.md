@@ -15,6 +15,20 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.7] - 2026-11-08
+
+Patch release of the CLI only. `@stagepass/loader` stays at **2.4.0**; `@stagepass/modules` latest **2.2.0** / next **2.2.2** are unchanged. `engines.node` remains `>=18.0.0`. No dependency major bumps.
+
+#### Fixed
+
+- LaunchAgent autostart embeds a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel. PATH shims must live in `prefix/bin` or `prefix/sbin`; Cellar realpaths under the same prefix are accepted. Prerequisites are validated before the plist is written.
+- Ora spinners no longer treat TTY width `0` / invalid / live resize-to-zero as usable geometry (avoids runaway ANSI clears).
+- `stagepass start` closes the parent logfile FD after `caddy start` (execa@8 does not hang when a daemon grandchild inherits the log handles).
+
+#### Docs
+
+- Autostart / Homebrew PATH / permission notes; bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+
 ### [2.2.6] - 2026-11-06
 
 Patch release of the CLI only. At publish time `@stagepass/loader` and `@stagepass/modules` were 2.2.0; `STAGEPASS_PACKAGES_VERSION` later tracks 2.2.2 without a CLI version bump.

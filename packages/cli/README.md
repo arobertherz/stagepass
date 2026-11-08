@@ -72,7 +72,11 @@ All commands support `-v, --verbose` where applicable.
 - Prefer CDN major pin `@2` in Webflow custom code (doctor warns if recommended snippets would use `@latest`).
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user (same privilege model as `caddy start` inside `stagepass start`). If port 443 cannot be bound, `daemon` logs a clear error and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts.
-- Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
+- `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist.
+- Re-run `stagepass autostart on` after moving Node/CLI installs or Homebrew prefix so ProgramArguments and PATH stay absolute and valid.
+- macOS may prompt for Local Network / firewall access when Caddy binds; grant permission for the Node binary used in the LaunchAgent when asked.
+- Desktop packaging / global installs: prefer a stable absolute `stagepass` on PATH (npm global or Homebrew). Avoid relying on nvm shims that disappear outside login shells; `autostart on` realpaths the CLI entry it can see at enable time.
+- Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md). Development/test checkouts can use the monorepo `packages/cli` path; stable installs use the published `@stagepass/cli` package — keep those paths distinct when comparing behavior.
 
 ### `new` options
 
@@ -238,6 +242,15 @@ stagepass link --no-allow-all-origins
 ```
 
 Hand-written content outside `# START:` / `# END:` markers is left untouched. Unparsable legacy blocks are left unchanged with a warning. Migration is idempotent (second run does nothing and creates no new backup).
+
+## Troubleshooting (CLI)
+
+| Symptom | What to check |
+| :--- | :--- |
+| Autostart runs at login but `caddy: command not found` / daemon exits | Re-run `stagepass autostart on` on **2.2.7+** so the plist embeds Homebrew `PATH`. Confirm `brew --prefix` and that `which caddy` points at `$prefix/bin/caddy` (Cellar symlink OK). |
+| `stagepass start` spinner floods the terminal (weird ANSI) | Upgrade to 2.2.7+ (spinner geometry guard). Rare with TTY width `0`. |
+| Port 443 bind failure under LaunchAgent | Expected when something else owns 443; daemon exits `0` (no restart loop). Free the port or use interactive `stagepass start`. |
+| Comparing test vs stable installs | Monorepo `packages/cli` / `npm link` paths differ from global `@stagepass/cli@2.2.x`. Prefer one install style per checklist run (`TESTING-macos.md`). |
 
 ## Related Packages
 

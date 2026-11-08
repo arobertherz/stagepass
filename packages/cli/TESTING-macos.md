@@ -43,7 +43,8 @@ stagepass start
 ## autostart / daemon
 
 - [ ] `stagepass autostart status` shows label `io.github.arobertherz.stagepass`
-- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths
+- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths and an `EnvironmentVariables` `PATH` that includes Homebrew `bin`/`sbin` from `brew --prefix` (Cellar symlink for `caddy` is OK)
+- [ ] With a sparse launchd-like PATH, `daemon` still finds `caddy` via the plist PATH (or cold login after `autostart on`)
 - [ ] Plist has `RunAtLoad` and `KeepAlive` / `SuccessfulExit` false
 - [ ] Logs appear under `~/.stagepass/logs/`
 - [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
