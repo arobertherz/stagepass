@@ -433,4 +433,27 @@ describe('dev flag v2', () => {
     window.dispatchEvent(new Event('error'));
     expect(document.getElementById('stagepass-flag')).toBeNull();
   });
+
+  it('warns once per local path when two non-explicit swaps collide', async () => {
+    startSession('my-project.sp');
+    const warn = console.warn as unknown as ReturnType<typeof vi.fn>;
+    document.body.innerHTML =
+      '<script data-stagepass data-src="https://cdn.example.com/a/main.js"></script>' +
+      '<script data-stagepass data-src="https://cdn.example.com/b/main.js"></script>';
+    // Core tracks files; dup warning runs in the flag chunk
+    await boot(false);
+    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Multiple assets resolve to local file/);
+    await import('../flag-entry.js');
+    expect(warn.mock.calls.flat().join(' ')).toMatch(/Multiple assets resolve to local file "main\.js"/);
+  });
+
+  it('does not warn when colliding paths use data-stagepass-path', async () => {
+    startSession('my-project.sp');
+    const warn = console.warn as unknown as ReturnType<typeof vi.fn>;
+    document.body.innerHTML =
+      '<script data-stagepass data-stagepass-path="a/main.js" data-src="https://cdn.example.com/a/main.js"></script>' +
+      '<script data-stagepass data-stagepass-path="b/main.js" data-src="https://cdn.example.com/b/main.js"></script>';
+    await boot(true);
+    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Multiple assets resolve to local file/);
+  });
 });

@@ -28,5 +28,11 @@ describe('deprecated globals removed', () => {
     expect(src).not.toMatch(/\.splog\s*=/);
     expect(src).not.toMatch(/\.spwarn\s*=/);
     expect(src).not.toMatch(/\.sperror\s*=/);
+    // Session-only: live hook, vars hint and dup-path copy live in the flag chunk
+    expect(src).not.toContain('stagepass.live.v1');
+    expect(src).not.toContain('__stagepass/live');
+    expect(src).not.toContain('Prefer sp.env()/is()/can()/client()/on()');
+    expect(src).not.toContain('Multiple assets resolve to local file');
+    expect(src).not.toContain('Live-src script already executing');
   });
 });

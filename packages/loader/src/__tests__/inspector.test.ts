@@ -224,9 +224,12 @@ describe('dev flag inspector', () => {
     for (const domain of ['localhost', 'localhost:3000', 'localhost:65535', 'My-Project.SP']) {
       localStorage.clear();
       sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
       loc.href = 'https://wlncw02.webflow.io/';
       startSession(domain === 'My-Project.SP' ? 'my-project.sp' : domain);
-      document.body.innerHTML = '';
       await boot();
       let db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
       expect(db.textContent).toBe('Debug mode');
@@ -236,9 +239,12 @@ describe('dev flag inspector', () => {
       // Simulate a stored prev that isValidDomain accepts but the old .sp-only regex rejected.
       if (domain === 'My-Project.SP') localStorage.setItem('stagepass:prev', 'My-Project.SP');
       sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
       loc.href = 'https://wlncw02.webflow.io/';
       startSession('debug');
-      document.body.innerHTML = '';
       await boot();
       const c = (await openCard()).card!;
       db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];
@@ -266,10 +272,13 @@ describe('dev flag inspector', () => {
     ]) {
       localStorage.clear();
       sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
       loc.href = 'https://wlncw02.webflow.io/';
       startSession('debug');
       localStorage.setItem('stagepass:prev', bad);
-      document.body.innerHTML = '';
       await boot();
       const db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
       expect(db.disabled, bad).toBe(true);
@@ -281,10 +290,13 @@ describe('dev flag inspector', () => {
     for (const bad of ['localhost:0', 'localhost:080']) {
       localStorage.clear();
       sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
       loc.href = 'https://wlncw02.webflow.io/';
       startSession('debug');
       localStorage.setItem('stagepass:prev', bad);
-      document.body.innerHTML = '';
       await boot();
       const c = (await openCard()).card!;
       const db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];

@@ -11,6 +11,27 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+_(no other packages in this prep)_
+
+## `@stagepass/loader`
+
+### [2.4.0] - 2026-11-08
+
+Minor loader-only release (CLI / modules not published with this tag). Ships `dist/live.min.js` and keeps the 2.3.3 port / Back-to-local / ×N-space fixes.
+
+#### Added
+
+- Opt-in zero-cost production mode via `data-stagepass-live-src="true"`.
+- Lazy `live.min.js` chunk during an active swap session (EventSource to `/__stagepass/live`).
+
+#### Changed
+
+- Core slim: session-only work in `flag.min.js`; new size baseline above the 2.3.1 ceiling used for 2.3.3.
+
+#### Fixed
+
+- Retains published 2.3.3 guards: localhost ports 1–65535 without leading zeros; shared `isValidDomain` via `FlagState.vd`; ×N and time separated by a real space.
+
 - `@stagepass/modules`: the peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does.
 

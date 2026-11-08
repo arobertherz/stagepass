@@ -10,13 +10,20 @@ import { fileURLToPath } from 'url';
  * Raise these limits only on purpose.
  * 2.3.0 loader.min.js: 13395 B min / 6067 B gzip / 5407 B brotli.
  * 2.3.1 adds flag base resolution (loader folder, option, fallback): 13798 / 6257 / 5588.
+ * Unreleased (core slim): live hook, vars debug hint and duplicate-path warnings moved into
+ * flag.min.js; live-src keeps a minimal MutationObserver / beforescriptexecute hook in the
+ * core (must run before the parser prepares a script). Measured loader.min.js
+ * 14882 / 6566 / 5866; flag.min.js 7404 / 3216 / 2802; flag-card 11894 / 4936 / 4341;
+ * live.min.js 1485 / 811 / 703. Budgets = measured + at most 64 B headroom.
  */
 const BUDGET = {
-  'loader.min.js': { min: 14080, gzip: 6400, br: 5760 },
+  'loader.min.js': { min: 14946, gzip: 6630, br: 5930 },
   // Dev-only chunks, fetched only while a Stagepass session is active
-  'flag.min.js': { min: 6528, gzip: 2816, br: 2496 },
+  'flag.min.js': { min: 7468, gzip: 3280, br: 2866 },
   // Fetched by the flag on the first expand
-  'flag-card.min.js': { min: 12288, gzip: 5120, br: 4480 },
+  'flag-card.min.js': { min: 11958, gzip: 5000, br: 4405 },
+  // Live reload EventSource client (swap session only; bootstrapped by the flag chunk)
+  'live.min.js': { min: 1549, gzip: 875, br: 767 },
 };
 
 const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../dist');
