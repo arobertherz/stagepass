@@ -26,9 +26,13 @@ stagepass dev
 
 Then open the live site with `?stagepass=my-project.sp`.
 
+**Prerequisites (public origin):** for a public `https://` page that swaps to `https://<project>.sp` (typically `127.0.0.1`), allow Chrome **Local network** / **Loopback network** for that origin and trust the Stagepass local CA. These are separate failure modes (`LocalNetworkAccessPermissionDenied` vs `ERR_CERT_AUTHORITY_INVALID`). Details: [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
+
+**Version split:** published `@stagepass/loader` **2.3.3** (jsDelivr `@2` currently resolves there) does **not** ship `dist/live.min.js`. The live-reload client (`live.ts` → `live.min.js`, lazy-loaded during a swap session) exists on **master** (this documentation line). Automatic CSS swap / JS reload from `stagepass dev` requires a loader build that actually includes `live.min.js` **and** an active swap session. Overlay of production assets still needs `data-stagepass` tags as in [getting-started.md](./getting-started.md) / [loader.md](./loader.md).
+
 ## Loader side
 
-With an **active swap session** (not `debug`), after local assets are injected the loader lazily loads `live.min.js` from the same base URL as the flag chunks. The chunk opens:
+With an **active swap session** (not `debug`), after local assets are injected a loader that ships the live chunk lazily loads `live.min.js` from the same base URL as the flag chunks. The chunk opens:
 
 ```text
 EventSource('https://<domain.sp>/__stagepass/live')
