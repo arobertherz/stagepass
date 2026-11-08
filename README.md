@@ -49,7 +49,7 @@ Open `https://your-site/?stagepass=demo.sp`. Details: [docs/getting-started.md](
 | [CLI](docs/cli.md) | Commands, flags, AGENTS.md templates |
 | [Loader](docs/loader.md) | Version pinning, attributes, Runtime API, security |
 | [Modules](docs/modules.md) | inject, cookies, maintenance |
-| [Live reload](docs/dev.md) | Guide for the upcoming `stagepass dev` CLI command (not in published `@stagepass/cli@2.2.6`); client chunk `live.min.js` belongs to published loader 2.4.0 (npm `latest` remains 2.3.3) |
+| [Live reload](docs/dev.md) | Guide for the upcoming `stagepass dev` CLI command (not in published `@stagepass/cli@2.2.6`); client chunk `live.min.js` belongs to published loader 2.4.0 (npm `latest`) |
 | [Migration](docs/migration.md) | 1.x → 2.x ([full guide](MIGRATION.md)) |
 | [Troubleshooting](docs/troubleshooting.md) | Common fixes |
 

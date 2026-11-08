@@ -49,7 +49,7 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 ## Live reload does nothing
 
-* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** (current npm `latest`) does **not** include `live.min.js`. A jsDelivr `@2` embed is currently observed serving that publish (`/dist/live.min.js` 404s); the major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
+* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**, npm `latest`; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** does **not** include `live.min.js`. A jsDelivr `@2` embed is a major-range alias, not the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
 * `stagepass dev` is not in published `@stagepass/cli@2.2.6`. Use a preview or repository CLI build inside the **linked** project directory (not only `npm run watch`).
 * Keep a swap session active (not `debug`). The loader opens `EventSource` to `https://<domain.sp>/__stagepass/live` after injecting local assets.
 * If `stagepass dev` is not running, the live chunk closes after the first error and does not retry.

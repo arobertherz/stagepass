@@ -17,7 +17,7 @@ Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict se
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.3.3"
+  data-stagepass-version="2.4.0"
 ></script>
 ```
 
@@ -29,7 +29,7 @@ Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is n
 
 A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
 
-`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it. npm `latest` is **2.3.3**, which does not contain it. A jsDelivr `@2` embed is currently observed serving 2.3.3; that major-range alias is not the same as the `latest` dist-tag and can change when the CDN refreshes.
+`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it (npm `latest` is **2.4.0**). A jsDelivr `@2` embed is a major-range alias, not the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3.
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 

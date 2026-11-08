@@ -120,7 +120,9 @@ npm view @stagepass/modules dist-tags
 npm view @stagepass/cli dist-tags
 ```
 
-`latest` should point at the version you just promoted. Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg can pick up a new stable 2.x as soon as it is published (CDN range resolution is not tied to `latest`), so only approve stable stages that are ready for live sites.
+`latest` should point at the version you just promoted. Promoting the intended default dist-tag is a required completion step for a stable public release, not an optional later loop. The workflow only publishes as `next`. If the public tag should be `latest`, run `npm dist-tag add` for that package and version and check `npm view <pkg> dist-tags` in the same sitting. Do not treat a version as the public default while `latest` still points at the previous release, and do not wait for another approval round to notice.
+
+Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg resolve a 2.x range on the CDN; that alias is not the npm `latest` dist-tag and can lag after a publish, so only approve stable stages that are ready for live sites. Prefer an exact pin when a specific build must load immediately.
 
 ## Required human checklist (not automated)
 
@@ -131,3 +133,5 @@ npm view @stagepass/cli dist-tags
 3. Published date in CHANGELOG is the real publication/tag date, not a later CSS or metadata fix.
 4. After registry publication: record npm `gitHead` / integrity and check the jsDelivr CDN hash for the exact file that was published.
 5. Known limits and any documented reviewer exception (for example an individual size-ceiling exception) are written in the public notes. Human-verified facts stay human-verified; CI green is not a substitute.
+6. Consciously set and verify the intended default dist-tag. After a stable publish, `latest` should point at that version unless you intentionally left it on `next`. Confirm with `npm view <pkg> dist-tags` before updating website badges (`LOADER_V`, latest-on-npm) or docs that say what `latest` is.
+7. jsDelivr/unpkg `@2` is a major-range alias and is not the npm `latest` tag. CDN aliases can keep serving an older 2.x build until they refresh. Document an exact pin when a specific build is required, and do not write that `@2` is `latest`.
