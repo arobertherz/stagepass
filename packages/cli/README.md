@@ -121,7 +121,12 @@ The legacy boolean `"modules": true|false` is still read; `upgrade` replaces it 
 
 ### Live site detection
 
-`new --site`, `upgrade` and `doctor` read the modules from the live site: one public `GET` of the origin, https only, no cookies or auth headers, about 5 s timeout, a size cap, at most 3 redirects (all https). Only `<script src>` attributes are parsed with a regex (HTML comments ignored); nothing is executed. Recognised: `@stagepass/loader` and `@stagepass/modules` `dist/{inject,cookies,maintenance,all}` files on `cdn.jsdelivr.net/npm/` or `unpkg.com/`, any version (`@2`, `@2.0.0`, none). The npm dependency in `package.json` is only a hint.
+`new --site`, `upgrade` and `doctor` read the modules from the live site: one public `GET` of the origin, https only, no cookies or auth headers, about 5 s timeout, a size cap, at most 3 redirects (all https). Only `<script src>` attributes are parsed with a regex (HTML comments ignored); nothing is executed. Recognised:
+
+- CDN (`cdn.jsdelivr.net/npm/` or `unpkg.com/`): full `/dist/{loader,inject,cookies,maintenance,all}(.min).js` paths, any version (`@2`, `@2.0.0`, none), and package-root URLs such as `…/@stagepass/loader@2` or `…/@stagepass/modules@2` (optional trailing slash / query). Package-root maps from each package’s `main` field (loader → `loader`, modules → `all`); there is no `unpkg` / `jsdelivr` / `exports` override in those packages.
+- Self-hosted: a Stagepass build filename under a `/stagepass/` path segment (relative or other-origin absolute), a relative `…/@stagepass/…` path (e.g. copied from `node_modules`), or the same filename on a `<script>` that also has a `data-stagepass-*` attribute; renamed loader files that carry a loader-config attribute (`data-stagepass-version`, `data-stagepass-live-src`, …). Result `cdn` is `self`. Bare `loader.js` / `all.min.js` from other libraries without a Stagepass hint are ignored. Absolute URLs on foreign hosts that only mimic an `@stagepass` CDN path (no `/stagepass/` segment and no data attribute) are ignored.
+
+Still not recognised: tags without `src`, `data-src` only, other hosts without a Stagepass hint, and module ids that cannot be inferred from the filename. `upgrade` syncs the detected modules list into the project; it does not rewrite self-hosted embeds to CDN URLs (printed Webflow snippets remain the recommended CDN form). The npm dependency in `package.json` is only a hint.
 
 ### `upgrade` options
 

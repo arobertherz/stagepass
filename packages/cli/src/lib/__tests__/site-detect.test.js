@@ -95,6 +95,107 @@ describe('parseStagepassScripts (fixtures)', () => {
   });
 });
 
+describe('parseStagepassScripts (package-root CDN)', () => {
+  it.each([
+    ['https://unpkg.com/@stagepass/loader@2', { version: '2', cdn: 'unpkg' }],
+    ['https://unpkg.com/@stagepass/loader@2/', { version: '2', cdn: 'unpkg' }],
+    ['https://unpkg.com/@stagepass/loader@2?v=1', { version: '2', cdn: 'unpkg' }],
+    ['https://unpkg.com/@stagepass/loader', { version: 'latest', cdn: 'unpkg' }],
+    ['https://cdn.jsdelivr.net/npm/@stagepass/loader@2', { version: '2', cdn: 'jsdelivr' }],
+    ['https://cdn.jsdelivr.net/npm/@stagepass/loader@2/', { version: '2', cdn: 'jsdelivr' }],
+    ['//cdn.jsdelivr.net/npm/@stagepass/loader@2.3.1', { version: '2.3.1', cdn: 'jsdelivr' }],
+  ])('loader package root %s', (src, loader) => {
+    const r = parseStagepassScripts(`<script src="${src}"></script>`);
+    expect(r.loader).toEqual(loader);
+    expect(r.modules).toEqual([]);
+  });
+
+  it.each([
+    ['https://unpkg.com/@stagepass/modules@2', '2', 'unpkg'],
+    ['https://unpkg.com/@stagepass/modules@2/', '2', 'unpkg'],
+    ['https://unpkg.com/@stagepass/modules', 'latest', 'unpkg'],
+    ['https://cdn.jsdelivr.net/npm/@stagepass/modules@2', '2', 'jsdelivr'],
+    ['https://cdn.jsdelivr.net/npm/@stagepass/modules@2?module', '2', 'jsdelivr'],
+  ])('modules package root %s maps to all (package.json main)', (src, version, cdn) => {
+    const r = parseStagepassScripts(`<script src="${src}"></script>`);
+    expect(r.loader).toBeNull();
+    expect(r.modules).toEqual([{ id: 'all', version, cdn }]);
+    expect(detectedModulesList(r)).toEqual(['all']);
+  });
+
+  it('package-root loader + modules together', () => {
+    const html = `
+<script src="https://unpkg.com/@stagepass/loader@2"></script>
+<script src="https://unpkg.com/@stagepass/modules@2"></script>`;
+    const r = parseStagepassScripts(html);
+    expect(r.loader).toEqual({ version: '2', cdn: 'unpkg' });
+    expect(detectedModulesList(r)).toEqual(['all']);
+  });
+});
+
+describe('parseStagepassScripts (self-hosted)', () => {
+  it('matches loader with data-stagepass-* attribute', () => {
+    const r = parseStagepassScripts(
+      '<script src="/assets/loader.min.js" data-stagepass-version="2.3.1"></script>'
+    );
+    expect(r.loader).toEqual({ version: '2.3.1', cdn: 'self' });
+  });
+
+  it('matches known build file under a /stagepass/ path', () => {
+    const html = `
+<script src="/vendor/stagepass/loader.min.js"></script>
+<script src="/vendor/stagepass/inject.min.js"></script>
+<script src="/vendor/stagepass/cookies.js"></script>`;
+    const r = parseStagepassScripts(html);
+    expect(r.loader).toEqual({ version: 'latest', cdn: 'self' });
+    expect(r.modules).toEqual([
+      { id: 'inject', version: 'latest', cdn: 'self' },
+      { id: 'cookies', version: 'latest', cdn: 'self' },
+    ]);
+    expect(detectedModulesList(r)).toEqual(['inject', 'cookies']);
+  });
+
+  it('matches renamed file with loader-config data attribute', () => {
+    const r = parseStagepassScripts(
+      '<script src="/js/sp-runtime.js" data-stagepass-live-src="true" data-stagepass-version="2"></script>'
+    );
+    expect(r.loader).toEqual({ version: '2', cdn: 'self' });
+    expect(r.modules).toEqual([]);
+  });
+
+  it('matches node_modules/@stagepass paths', () => {
+    const r = parseStagepassScripts(
+      '<script src="/node_modules/@stagepass/modules/dist/all.min.js"></script>'
+    );
+    expect(r.modules).toEqual([{ id: 'all', version: 'latest', cdn: 'self' }]);
+  });
+
+  it('does not match bare loader.js without a Stagepass hint', () => {
+    const r = parseStagepassScripts('<script src="/js/loader.js"></script>');
+    expect(r).toEqual({ loader: null, modules: [] });
+  });
+
+  it('does not match other libraries all.min.js without a Stagepass hint', () => {
+    const r = parseStagepassScripts('<script src="https://cdn.example.com/libs/all.min.js"></script>');
+    expect(r).toEqual({ loader: null, modules: [] });
+  });
+
+  it('does not match project asset tags with data-stagepass and a non-Stagepass filename', () => {
+    const r = parseStagepassScripts(
+      '<script src="https://cdn.example.com/js/main.js" data-stagepass="true" data-stagepass-path="dist/main.js"></script>'
+    );
+    expect(r).toEqual({ loader: null, modules: [] });
+  });
+
+  it('ignores commented-out self-hosted and package-root tags', () => {
+    const html = `
+<!-- <script src="https://unpkg.com/@stagepass/loader@2"></script> -->
+<!-- <script src="/stagepass/loader.min.js"></script> -->
+<script src="/other.js"></script>`;
+    expect(parseStagepassScripts(html)).toEqual({ loader: null, modules: [] });
+  });
+});
+
 describe('detectSite', () => {
   it('fetches https without credentials and detects modules', async () => {
     const fetch = vi.fn(async () => htmlResponse(fixture('single.html')));
