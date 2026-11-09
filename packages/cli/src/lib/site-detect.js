@@ -16,8 +16,18 @@ export const DETECT_MAX_REDIRECTS = 3;
 // Bounded attribute run keeps the scan linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
 const SRC_ATTR_RE = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
-const STAGEPASS_SRC_RE =
-  /^(?:https?:)?\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?\/dist\/([a-z]+)(?:\.min)?\.js(?:[?#].*)?$/i;
+// CDN /dist/<file>.js or package-root URLs (optional slash/query); root via package `main`.
+const STAGEPASS_CDN_RE =
+  /^(?:https?:)?\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?(?:\/dist\/([a-z]+)(?:\.min)?\.js)?\/?(?:[?#].*)?$/i;
+// Self-hosted build filenames (need Stagepass path or data-* hint).
+const STAGEPASS_FILE_RE = /(?:^|\/)(loader|inject|cookies|maintenance|all)(?:\.min)?\.js$/i;
+// `…/stagepass/…` always; `…/@stagepass/…` only for relative src (blocks foreign-host spoofs).
+const STAGEPASS_PATH_HINT_RE = /(?:^|\/)(stagepass\/|@stagepass(?:\/|$))/i;
+const DATA_STAGEPASS_ATTR_RE = /\sdata-stagepass(?:-[a-z0-9-]+)?\s*=/i;
+const LOADER_CONFIG_ATTR_RE =
+  /\sdata-stagepass-(?:version|session-hours|mute-console|cachebust|staging-hosts|alias|live-src|flag-base)\s*=/i;
+const VERSION_ATTR_RE = /\sdata-stagepass-version\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+const SAFE_VERSION_RE = /^[0-9A-Za-z][0-9A-Za-z.^~_-]*$/;
 
 /**
  * Normalize a live site input (host or https URL) to an https URL.
@@ -88,6 +98,14 @@ export function parseStagepassScripts(html) {
   let loader = null;
   /** @type {Map<string, { id: string, version: string, cdn: string }>} */
   const modules = new Map();
+  const q = (m) => (m?.[1] ?? m?.[2] ?? m?.[3] ?? '').trim();
+  const take = (file, version, cdn) => {
+    if (file === 'loader') {
+      if (!loader) loader = { version, cdn };
+    } else if (MODULE_CHOICES.includes(file) && !modules.has(file)) {
+      modules.set(file, { id: file, version, cdn });
+    }
+  };
   // Ignore commented-out tags; the HTML is only scanned, never executed.
   const source = stripHtmlComments(String(html || ''));
 
@@ -95,20 +113,38 @@ export function parseStagepassScripts(html) {
     const tag = match[0];
     const attr = SRC_ATTR_RE.exec(tag);
     if (!attr) continue;
-    const src = (attr[1] ?? attr[2] ?? attr[3] ?? '').trim();
-    const m = STAGEPASS_SRC_RE.exec(src);
-    if (!m) continue;
-    const cdn = m[1].toLowerCase().startsWith('unpkg') ? 'unpkg' : 'jsdelivr';
-    const pkg = m[2].toLowerCase();
-    const version = m[3] || 'latest';
-    const file = m[4].toLowerCase();
-    if (pkg === 'loader') {
-      if (file === 'loader' && !loader) loader = { version, cdn };
+    const src = q(attr);
+
+    const cdnMatch = STAGEPASS_CDN_RE.exec(src);
+    if (cdnMatch) {
+      const pkg = cdnMatch[2].toLowerCase();
+      // Package-root: packages/*/package.json `main` (no CDN exports override).
+      const file = (cdnMatch[4] || (pkg === 'modules' ? 'all' : 'loader')).toLowerCase();
+      if (pkg === 'loader' ? file === 'loader' : file !== 'loader') {
+        take(
+          file,
+          cdnMatch[3] || 'latest',
+          cdnMatch[1].toLowerCase().startsWith('unpkg') ? 'unpkg' : 'jsdelivr'
+        );
+      }
       continue;
     }
-    if (MODULE_CHOICES.includes(file) && !modules.has(file)) {
-      modules.set(file, { id: file, version, cdn });
+
+    // Self-hosted: known filename + path/data hint, or renamed file with loader-config attrs.
+    const absolute = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src);
+    const pathname = src.replace(/^(?:[a-z][a-z0-9+.-]*:)?\/\/[^/?#]*/i, '').split(/[?#]/)[0];
+    if (!pathname) continue;
+    const fileMatch = STAGEPASS_FILE_RE.exec(pathname);
+    const hint = STAGEPASS_PATH_HINT_RE.exec(pathname);
+    const hasPathHint = hint && (hint[1].startsWith('stagepass') || !absolute);
+    const vraw = q(VERSION_ATTR_RE.exec(tag));
+    const version = SAFE_VERSION_RE.test(vraw) ? vraw : 'latest';
+
+    if (fileMatch && (hasPathHint || DATA_STAGEPASS_ATTR_RE.test(tag))) {
+      take(fileMatch[1].toLowerCase(), version, 'self');
+      continue;
     }
+    if (LOADER_CONFIG_ATTR_RE.test(tag) && !loader) loader = { version, cdn: 'self' };
   }
 
   return { loader, modules: [...modules.values()] };
