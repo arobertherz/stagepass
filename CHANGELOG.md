@@ -428,6 +428,10 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/modules`
 
+### [2.2.2] - 2026-11-06
+
+Already on npm dist-tag `next` since 2026-11-06; promoting to `latest` on 2026-11-09. No republish, tag, or version bump.
+
 ### [2.2.0] - 2026-11-02
 
 Non-breaking minor release. Runtime files in `dist/` are unchanged.
