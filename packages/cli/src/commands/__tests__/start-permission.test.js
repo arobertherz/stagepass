@@ -8,6 +8,8 @@ import {
   isSafePid,
   start,
 } from '../start.js';
+import { certsCheck } from '../certs.js';
+import { runDoctor } from '../../lib/doctor.js';
 
 const okCerts = {
   root: { status: 'ok', reason: 'ok' },
@@ -15,6 +17,12 @@ const okCerts = {
   handshakes: [],
   orphans: [],
 };
+
+/** @param {unknown[][]} calls */
+function assertNoSudo(calls) {
+  const sudo = calls.filter((c) => c[0] === 'sudo');
+  expect(sudo, `unexpected sudo calls: ${JSON.stringify(sudo)}`).toEqual([]);
+}
 
 describe('start privilege / port safety', () => {
   /** @type {string[]} */
@@ -314,5 +322,163 @@ describe('start LaunchAgent kickstart wiring', () => {
       uid: 501,
     });
     expect(calls.some((c) => c[0] === 'caddy' && c[1] === 'start')).toBe(true);
+  });
+});
+
+describe('start privilege model [F-04]', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    [
+      'LaunchAgent loaded',
+      {
+        loaded: true,
+        plistExists: true,
+        plistPath: '/tmp/agent.plist',
+      },
+    ],
+    [
+      'LaunchAgent not loaded (bootstrap path)',
+      {
+        loaded: false,
+        plistExists: true,
+        plistPath: '/tmp/agent.plist',
+      },
+    ],
+    [
+      'direct caddy start',
+      {
+        loaded: false,
+        plistExists: false,
+        plistPath: '/tmp/missing.plist',
+      },
+    ],
+  ])(
+    '[F-04] standby start (%s) never calls sudo of any kind',
+    async (_label, autostart) => {
+      /** @type {unknown[][]} */
+      const calls = [];
+      const exec = vi.fn(async (file, args = []) => {
+        calls.push([file, ...(Array.isArray(args) ? args : [])]);
+        return { stdout: '', stderr: '', code: 0 };
+      });
+      await start({
+        exec,
+        interactive: true,
+        verbose: true,
+        skipHandshake: true,
+        runCertsCheck: async () => okCerts,
+        findPort443Conflict: async () => null,
+        getAutostartStatus: async () => autostart,
+        uid: 501,
+      });
+      assertNoSudo(calls);
+      expect(calls.some((c) => c[0] === 'sudo' && c[1] === '-v')).toBe(false);
+      expect(calls.some((c) => c[0] === 'sudo' && c[1] === 'kill')).toBe(false);
+    }
+  );
+
+  it('[F-04] declining the SIGTERM prompt yields zero sudo and zero kill calls', async () => {
+    /** @type {unknown[][]} */
+    const calls = [];
+    const exec = vi.fn(async (file, args = []) => {
+      calls.push([file, ...(Array.isArray(args) ? args : [])]);
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const result = await resolvePort443Conflict(
+      { pid: '4242', name: 'OtherApp' },
+      {
+        exec,
+        confirm: async () => false,
+        sleep: async () => {},
+      }
+    );
+    expect(result).toEqual({ ok: false, cancelled: true });
+    assertNoSudo(calls);
+    expect(calls.every((c) => c[0] !== 'kill')).toBe(true);
+  });
+
+  it('[F-04] unprivileged kill success never escalates to sudo', async () => {
+    /** @type {unknown[][]} */
+    const calls = [];
+    const exec = vi.fn(async (file, args = []) => {
+      calls.push([file, ...(Array.isArray(args) ? args : [])]);
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const result = await resolvePort443Conflict(
+      { pid: '4242', name: 'OtherApp' },
+      {
+        exec,
+        confirm: async () => true,
+        sleep: async () => {},
+        recheck: async () => null,
+      }
+    );
+    expect(result.ok).toBe(true);
+    expect(calls.some((c) => c[0] === 'kill')).toBe(true);
+    assertNoSudo(calls);
+  });
+
+  it('[F-04] certs check never calls sudo', async () => {
+    /** @type {unknown[][]} */
+    const calls = [];
+    const exec = vi.fn(async (file, args = []) => {
+      calls.push([file, ...(Array.isArray(args) ? args : [])]);
+      if (file === 'sudo') throw new Error('certs check must never call sudo');
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    await certsCheck({
+      exec,
+      skipHandshake: true,
+      json: true,
+      brewPrefix: '/opt/homebrew',
+    });
+    assertNoSudo(calls);
+  });
+
+  it('[F-04] doctor never calls sudo', async () => {
+    /** @type {unknown[][]} */
+    const calls = [];
+    await runDoctor({
+      skipHandshake: true,
+      skipSite: true,
+      projectChecks: false,
+      projectCdnResult: { ok: true, offenders: [] },
+      resolverPath: '/tmp/missing-resolver-sp',
+      caddyfilePath: '/tmp/missing-Caddyfile',
+      projectsPath: '/tmp/missing-projects.json',
+      rootCaPath: '/tmp/missing-root.crt',
+      plistPath: '/tmp/missing.plist',
+      pathExists: async () => false,
+      readFile: async () => {
+        throw new Error('missing');
+      },
+      exec: async (file, args = []) => {
+        calls.push([file, ...(Array.isArray(args) ? args : [])]);
+        if (file === 'sudo') throw new Error('doctor must never call sudo');
+        if (file === '/usr/bin/env' && args[0] === 'which') {
+          return { stdout: `/usr/local/bin/${args[1]}\n`, stderr: '', code: 0 };
+        }
+        if (file === 'brew') return { stdout: '/usr/local\n', stderr: '', code: 0 };
+        if (file === 'lsof') {
+          return {
+            stdout:
+              'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\ncaddy 9 me 8u IPv6 0x1 0t0 TCP *:443 (LISTEN)\n',
+            stderr: '',
+            code: 0,
+          };
+        }
+        if (file === 'launchctl') {
+          throw Object.assign(new Error('not loaded'), { code: 1 });
+        }
+        return { stdout: '', stderr: '', code: 0 };
+      },
+    });
+    assertNoSudo(calls);
   });
 });
