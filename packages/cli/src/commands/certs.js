@@ -169,7 +169,9 @@ export async function certsCheck(options = {}) {
           ? chalk.green('ok')
           : hs.status === 'warn'
             ? chalk.yellow('warn')
-            : chalk.red('fail');
+            : hs.status === 'skip'
+              ? chalk.dim('not checkable')
+              : chalk.red('fail');
       console.log(`[${tag}] TLS ${hs.servername}: ${hs.reason}`);
     }
   }
@@ -524,6 +526,10 @@ export async function certsRenew(options = {}) {
   if (result.deleted.length > 0) {
     if (result.reloaded) {
       console.log(chalk.green('caddy reload completed.'));
+    } else if (result.reloadDeferred) {
+      console.log(
+        chalk.yellow('Caddy is not running; certs issue on next `stagepass start`.')
+      );
     } else {
       console.log(
         chalk.red(`caddy reload failed: ${result.reloadError || 'unknown error'}`)

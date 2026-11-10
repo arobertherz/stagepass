@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +13,23 @@ import {
   assertNoDestructiveCertOps,
   DESTRUCTIVE_CERT_OPS,
   runCertsCheck,
+  handshakeLocalDomain,
+  isCaddyServing443,
+  domainsNeedingSiteCertRenewal,
 } from '../certs.js';
+
+/** @param {import('node:crypto').X509Certificate} peer */
+function mockTlsConnect(peer) {
+  return (_opts, onSecure) => {
+    const socket = {
+      getPeerX509Certificate: () => peer,
+      destroy() {},
+      on() {},
+    };
+    process.nextTick(() => onSecure());
+    return socket;
+  };
+}
 
 const fixturesDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -249,5 +265,113 @@ describe('certificate helpers', () => {
     expect(report.secondaryRoots[0]?.fingerprint256).toBe(secondaryFp);
     expect(report.orphans.map((o) => o.sha256)).toContain(otherFp);
     expect(report.orphans.map((o) => o.sha256)).not.toContain(secondaryFp);
+  });
+});
+
+describe('[M-1] TLS only when Caddy serves :443', () => {
+  const rootPath = path.join(fixturesDir, 'test-ca.crt');
+  const sitePem = fs.readFileSync(path.join(fixturesDir, 'test-site.crt'));
+  const siteCert = loadCertificate(sitePem);
+  const rootCert = loadCertificate(fs.readFileSync(rootPath));
+  const midLife = new Date(
+    new Date(rootCert.validFrom).getTime() + 24 * 60 * 60 * 1000
+  );
+  const securityOut = fs.readFileSync(
+    path.join(fixturesDir, 'security-find-certificate.txt'),
+    'utf8'
+  );
+
+  it('[M-1] isCaddyServing443 detects caddy vs foreign vs empty', async () => {
+    expect(
+      await isCaddyServing443({
+        exec: async () => ({
+          stdout: 'COMMAND PID\ncaddy 1\n',
+          stderr: '',
+          code: 0,
+        }),
+      })
+    ).toBe(true);
+    expect(
+      await isCaddyServing443({
+        exec: async () => ({
+          stdout: 'COMMAND PID\nPython 9\n',
+          stderr: '',
+          code: 0,
+        }),
+      })
+    ).toBe(false);
+    expect(
+      await isCaddyServing443({
+        exec: async () => {
+          const err = new Error('no listener');
+          /** @type {any} */ (err).code = 1;
+          throw err;
+        },
+      })
+    ).toBe(false);
+  });
+
+  it('[M-1] skips handshakes when :443 is not caddy (no TLS fail / renew)', async () => {
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: midLife,
+      domains: ['my-project.sp', 'other.sp'],
+      caddyServing443: false,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(report.handshakes).toEqual([
+      {
+        status: 'skip',
+        servername: 'my-project.sp',
+        reason: 'Caddy is not serving :443; TLS not checkable.',
+      },
+      {
+        status: 'skip',
+        servername: 'other.sp',
+        reason: 'Caddy is not serving :443; TLS not checkable.',
+      },
+    ]);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([]);
+  });
+
+  it('[M-1] reports fail + renew for bad leaf while Caddy serves :443', async () => {
+    const expiredNow = new Date(
+      new Date(siteCert.validTo).getTime() + 24 * 60 * 60 * 1000
+    );
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: expiredNow,
+      domains: ['my-project.sp'],
+      caddyServing443: true,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(connect).toHaveBeenCalled();
+    expect(report.handshakes[0]?.status).toBe('fail');
+    expect(report.handshakes[0]?.reason).toMatch(/expired/i);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([
+      'my-project.sp',
+    ]);
+  });
+
+  it('[M-1] SAN mismatch while Caddy serves :443 is fail for renew', async () => {
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: midLife,
+      domains: ['wrong.sp'],
+      caddyServing443: true,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(report.handshakes[0]?.status).toBe('fail');
+    expect(report.handshakes[0]?.reason).toMatch(/SAN|CN/i);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([
+      'wrong.sp',
+    ]);
   });
 });

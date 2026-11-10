@@ -420,7 +420,7 @@ export async function runDoctor(opts = {}) {
     checks.push(
       check(
         `certs.tls.${hs.servername}`,
-        hs.status,
+        hs.status === 'skip' ? 'info' : hs.status,
         hs.reason || `TLS check for ${hs.servername}`
       )
     );

@@ -21,6 +21,23 @@ describe('start helpers', () => {
     expect(findings.some((f) => f.kind === 'orphans')).toBe(true);
   });
 
+  it('[M-1] skip handshakes never become TLS fail / renew findings', () => {
+    const findings = summarizeCertFindings({
+      root: { status: 'ok', reason: 'ok' },
+      trust: { trusted: true },
+      handshakes: [
+        {
+          status: 'skip',
+          servername: 'a.sp',
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        },
+      ],
+      orphans: [],
+    });
+    expect(findings.some((f) => f.kind === 'site')).toBe(false);
+    expect(findings.some((f) => /TLS fail/i.test(f.message))).toBe(false);
+  });
+
   it('exports isSafePid', () => {
     expect(isSafePid('42')).toBe(true);
     expect(isSafePid('01')).toBe(false);

@@ -147,16 +147,7 @@ export function parseSecurityFindCertificateOutput(output) {
   return results;
 }
 
-/**
- * Compare local root against System keychain trust store (report only).
- * Never deletes keychain items.
- *
- * @param {object} opts
- * @param {string} opts.rootFingerprintSha256
- * @param {import('./exec.js').ExecFn} [opts.exec]
- * @param {string} [opts.keychainPath]
- * @param {string} [opts.searchName]
- */
+/** Compare local root fingerprint to System keychain (report only). */
 export async function inspectKeychainTrust(opts) {
   const exec = opts.exec || defaultExec;
   const keychainPath =
@@ -196,14 +187,7 @@ export async function inspectKeychainTrust(opts) {
   };
 }
 
-/**
- * Read and assess the on-disk Caddy local root CA.
- * @param {object} [opts]
- * @param {string} [opts.rootPath]
- * @param {Date} [opts.now]
- * @param {(p: string) => Promise<boolean>} [opts.pathExists]
- * @param {(p: string, enc: string) => Promise<string>} [opts.readFile]
- */
+/** Assess on-disk Caddy local root CA. */
 export async function checkLocalRootCa(opts = {}) {
   const rootPath = opts.rootPath || getCaddyRootCaPath();
   const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
@@ -259,16 +243,31 @@ export async function checkLocalRootCa(opts = {}) {
   };
 }
 
+/** True when lsof shows caddy on TCP 443. */
+export async function isCaddyServing443(opts = {}) {
+  const exec = opts.exec || defaultExec;
+  try {
+    const { stdout } = await exec('lsof', ['-nP', '-iTCP:443', '-sTCP:LISTEN']);
+    return String(stdout || '').split('\n').some((line) => {
+      const cmd = line.trim().split(/\s+/)[0] || '';
+      return cmd && cmd !== 'COMMAND' && /caddy/i.test(cmd);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** @param {object} opts */
+async function resolveCaddyServing443(opts) {
+  return typeof opts.caddyServing443 === 'boolean'
+    ? opts.caddyServing443
+    : isCaddyServing443({ exec: opts.exec });
+}
+
 /**
- * Optional TLS handshake against 127.0.0.1:443 with SNI.
- * rejectUnauthorized is false; validity dates and SAN are checked manually.
- *
+ * TLS handshake to 127.0.0.1:443 with SNI (rejectUnauthorized false).
  * @param {object} opts
  * @param {string} opts.servername
- * @param {string} [opts.host]
- * @param {number} [opts.port]
- * @param {number} [opts.timeoutMs]
- * @param {Date} [opts.now]
  * @param {typeof tls.connect} [opts.connect]
  */
 export function handshakeLocalDomain(opts) {
@@ -381,10 +380,7 @@ export function handshakeLocalDomain(opts) {
   });
 }
 
-/**
- * Full read-only certificate report for doctor / certs check.
- * @param {object} [opts]
- */
+/** Read-only cert report for doctor / certs check / start. */
 export async function runCertsCheck(opts = {}) {
   const root = await checkLocalRootCa({
     rootPath: opts.rootPath,
@@ -462,46 +458,47 @@ export async function runCertsCheck(opts = {}) {
 
   const domains = Array.isArray(opts.domains) ? opts.domains : [];
   if (opts.skipHandshake !== true && domains.length > 0) {
-    for (const domain of domains) {
-      const result = await handshakeLocalDomain({
-        servername: domain,
-        host: opts.handshakeHost,
-        port: opts.handshakePort,
-        timeoutMs: opts.handshakeTimeoutMs,
-        now: opts.now,
-        connect: opts.connect,
-      });
-      report.handshakes.push(result);
+    if (!(await resolveCaddyServing443(opts))) {
+      for (const domain of domains) {
+        report.handshakes.push({
+          status: 'skip',
+          servername: domain,
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        });
+      }
+    } else {
+      for (const domain of domains) {
+        report.handshakes.push(
+          await handshakeLocalDomain({
+            servername: domain,
+            host: opts.handshakeHost,
+            port: opts.handshakePort,
+            timeoutMs: opts.handshakeTimeoutMs,
+            now: opts.now,
+            connect: opts.connect,
+          })
+        );
+      }
     }
   }
 
   return report;
 }
 
-/**
- * Destructive certificate capability flags.
- *
- * Permanent deletes of the on-disk root and CN-wildcard keychain deletes stay
- * disabled. Gated ops (`renewRootMoveBackup`, `renewSiteCertDir`,
- * `deleteKeychainItemBySha1`) are reachable only via `certs renew` after
- * explicit confirmation / non-interactive flags.
- */
+/** Gated renew ops only; permanent root/CN deletes stay off. */
 export const DESTRUCTIVE_CERT_OPS = Object.freeze({
   deleteRoot: false,
   deleteKeychainItemByCn: false,
-  /** @deprecated alias kept for older tests; same as deleteKeychainItemByCn */
+  /** @deprecated same as deleteKeychainItemByCn */
   deleteKeychainItem: false,
-  /** @deprecated root is moved, never deleted; use renewRootMoveBackup */
+  /** @deprecated use renewRootMoveBackup */
   renewRoot: false,
   renewRootMoveBackup: true,
   renewSiteCertDir: true,
   deleteKeychainItemBySha1: true,
 });
 
-/**
- * Assert permanent-delete ops stay disabled (read-only / check / trust paths).
- * @returns {true}
- */
+/** @returns {true} */
 export function assertReadOnlyCertOps() {
   if (
     DESTRUCTIVE_CERT_OPS.deleteRoot ||
@@ -531,12 +528,7 @@ export function assertDestructiveCertOpAllowed(op) {
   return true;
 }
 
-/**
- * Normalize a SHA-1 fingerprint to uppercase hex without separators.
- * Rejects non-hex / wrong length.
- * @param {string} value
- * @returns {{ ok: true, sha1: string } | { ok: false, error: string }}
- */
+/** SHA-1 fingerprint: 40 hex chars, uppercase, no separators. */
 export function normalizeSha1Fingerprint(value) {
   const sha1 = normalizeFingerprint(value);
   if (!/^[0-9A-F]{40}$/.test(sha1)) {
@@ -548,14 +540,7 @@ export function normalizeSha1Fingerprint(value) {
   return { ok: true, sha1 };
 }
 
-/**
- * Build argv for `security delete-certificate -Z <sha1> <keychain>`.
- * Never accepts a CN / search name.
- *
- * @param {string} sha1
- * @param {string} [keychainPath]
- * @returns {{ ok: true, args: string[] } | { ok: false, error: string }}
- */
+/** Argv for `security delete-certificate -Z` (never by CN). */
 export function buildSecurityDeleteCertificateArgs(
   sha1,
   keychainPath = '/Library/Keychains/System.keychain'
@@ -571,18 +556,7 @@ export function buildSecurityDeleteCertificateArgs(
   };
 }
 
-/**
- * Resolve a safe on-disk directory for a linked `.sp` site certificate.
- * Guards against path traversal and refuses symlink paths.
- *
- * @param {object} opts
- * @param {string} opts.domain
- * @param {Iterable<string>|string[]} opts.linkedDomains
- * @param {string} [opts.certificatesLocalDir]
- * @param {(p: string) => Promise<import('node:fs').Stats>} [opts.lstat]
- * @param {(p: string) => Promise<boolean>} [opts.pathExists]
- * @returns {Promise<{ ok: true, dir: string } | { ok: false, error: string }>}
- */
+/** Linked `.sp` site cert dir under certificates/local (no traversal/symlinks). */
 export async function resolveSafeSiteCertDir(opts) {
   assertDestructiveCertOpAllowed('renewSiteCertDir');
 
@@ -642,18 +616,8 @@ export async function resolveSafeSiteCertDir(opts) {
 }
 
 /**
- * Delete scoped site certificate dirs for domains whose handshake/check failed,
- * then reload Caddy. Never touches the CA folder.
- *
+ * Delete failing site cert dirs then reload Caddy (or defer if Caddy is down).
  * @param {object} opts
- * @param {string[]} opts.domains domains that failed checks
- * @param {Iterable<string>|string[]} opts.linkedDomains
- * @param {import('./exec.js').ExecFn} [opts.exec]
- * @param {string} [opts.certificatesLocalDir]
- * @param {string} [opts.caddyfilePath]
- * @param {(p: string) => Promise<void>} [opts.remove]
- * @param {(p: string) => Promise<import('node:fs').Stats>} [opts.lstat]
- * @param {(p: string) => Promise<boolean>} [opts.pathExists]
  */
 export async function renewSiteCertificates(opts) {
   assertDestructiveCertOpAllowed('renewSiteCertDir');
@@ -692,32 +656,28 @@ export async function renewSiteCertificates(opts) {
 
   let reloaded = false;
   let reloadError = null;
+  let reloadDeferred = false;
   if (deleted.length > 0) {
-    try {
-      const reloadArgs = ['reload'];
-      if (opts.caddyfilePath) {
-        reloadArgs.push('--config', opts.caddyfilePath);
+    if (!(await resolveCaddyServing443({ ...opts, exec }))) {
+      reloadDeferred = true;
+    } else {
+      try {
+        const reloadArgs = ['reload'];
+        if (opts.caddyfilePath) {
+          reloadArgs.push('--config', opts.caddyfilePath);
+        }
+        await exec('caddy', reloadArgs);
+        reloaded = true;
+      } catch (error) {
+        reloadError = error instanceof Error ? error.message : String(error);
       }
-      await exec('caddy', reloadArgs);
-      reloaded = true;
-    } catch (error) {
-      reloadError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  return { deleted, errors, reloaded, reloadError };
+  return { deleted, errors, reloaded, reloadError, reloadDeferred };
 }
 
-/**
- * Move the local CA authority folder to a timestamped backup (never delete).
- *
- * @param {object} [opts]
- * @param {string} [opts.authorityDir]
- * @param {Date} [opts.now]
- * @param {(src: string, dest: string) => Promise<void>} [opts.move]
- * @param {(p: string) => Promise<boolean>} [opts.pathExists]
- * @param {(p: string) => Promise<import('node:fs').Stats>} [opts.lstat]
- */
+/** Move local CA authority folder to a timestamped backup (never delete). */
 export async function moveLocalCaAuthorityToBackup(opts = {}) {
   assertDestructiveCertOpAllowed('renewRootMoveBackup');
 
@@ -773,14 +733,7 @@ export async function moveLocalCaAuthorityToBackup(opts = {}) {
   return { ok: true, authorityDir, backupDir };
 }
 
-/**
- * Delete a single orphaned keychain certificate by SHA-1 fingerprint.
- *
- * @param {object} opts
- * @param {string} opts.sha1
- * @param {import('./exec.js').ExecFn} [opts.exec]
- * @param {string} [opts.keychainPath]
- */
+/** Delete one orphaned keychain cert by SHA-1. */
 export async function deleteKeychainCertificateBySha1(opts) {
   assertDestructiveCertOpAllowed('deleteKeychainItemBySha1');
   const built = buildSecurityDeleteCertificateArgs(
@@ -802,11 +755,7 @@ export async function deleteKeychainCertificateBySha1(opts) {
   }
 }
 
-/**
- * Domains whose TLS handshake failed in a way that site-cert renew can fix.
- * @param {{ status: string, servername: string, reason?: string }[]} handshakes
- * @returns {string[]}
- */
+/** Server names with handshake status fail (ignores skip/ok/warn). */
 export function domainsNeedingSiteCertRenewal(handshakes = []) {
   return handshakes
     .filter((hs) => hs && hs.status === 'fail' && hs.servername)

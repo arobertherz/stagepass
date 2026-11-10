@@ -115,6 +115,7 @@ describe('renewSiteCertificates', () => {
       linkedDomains: ['demo.sp'],
       certificatesLocalDir: '/tmp/sp-certs-local',
       caddyfilePath: '/tmp/Caddyfile',
+      caddyServing443: true,
       pathExists: async () => true,
       lstat: async () => ({
         isSymbolicLink: () => false,
@@ -132,6 +133,36 @@ describe('renewSiteCertificates', () => {
       '/tmp/Caddyfile',
     ]);
     expect(result.reloaded).toBe(true);
+    expect(result.reloadDeferred).toBe(false);
+  });
+
+  it('[M-1] defers reload when Caddy is not serving :443', async () => {
+    const removed = [];
+    const exec = vi.fn(async () => ({ stdout: '', stderr: '', code: 0 }));
+    const result = await renewSiteCertificates({
+      domains: ['demo.sp'],
+      linkedDomains: ['demo.sp'],
+      certificatesLocalDir: '/tmp/sp-certs-local',
+      caddyfilePath: '/tmp/Caddyfile',
+      caddyServing443: false,
+      pathExists: async () => true,
+      lstat: async () => ({
+        isSymbolicLink: () => false,
+        isDirectory: () => true,
+      }),
+      remove: async (p) => {
+        removed.push(p);
+      },
+      exec,
+    });
+    expect(removed).toEqual([path.join('/tmp/sp-certs-local', 'demo.sp')]);
+    expect(exec).not.toHaveBeenCalledWith(
+      'caddy',
+      expect.arrayContaining(['reload'])
+    );
+    expect(result.reloaded).toBe(false);
+    expect(result.reloadDeferred).toBe(true);
+    expect(result.reloadError).toBeNull();
   });
 });
 
@@ -199,6 +230,19 @@ describe('domainsNeedingSiteCertRenewal', () => {
     expect(
       domainsNeedingSiteCertRenewal([
         { status: 'ok', servername: 'a.sp' },
+        { status: 'fail', servername: 'b.sp', reason: 'expired' },
+      ])
+    ).toEqual(['b.sp']);
+  });
+
+  it('[M-1] ignores skip handshake results', () => {
+    expect(
+      domainsNeedingSiteCertRenewal([
+        {
+          status: 'skip',
+          servername: 'a.sp',
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        },
         { status: 'fail', servername: 'b.sp', reason: 'expired' },
       ])
     ).toEqual(['b.sp']);
