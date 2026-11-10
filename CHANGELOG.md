@@ -30,9 +30,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.3.0-beta.1] - 2026-11-10 (prerelease, not yet published)
+### [2.3.0-beta.1] - 2026-11-10 (prerelease, npm `next`)
 
-Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `next` after staging + 2FA (not `latest`). The monorepo `packages/loader` and `packages/modules` package.json files already sit on the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
+Prerelease of the CLI only. First 2.3.0 line candidate. Published on npm as `@stagepass/cli@2.3.0-beta.1` on 10 November 2026, 20:09 Europe/Berlin, dist-tag `next` only; `latest` stays on 2.2.7. Source tag `cli-v2.3.0-beta.1` (`81a7e80`), npm shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`. The monorepo `packages/loader` and `packages/modules` package.json files already sit on the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
 
 #### Changed interfaces / Notes for upgraders
 
