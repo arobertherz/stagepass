@@ -59,7 +59,9 @@ export async function saveProjects(doc, filePath = getProjectsPath()) {
     version: 1,
     projects: doc.projects || {},
   };
-  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await fs.rename(tmp, filePath);
 }
 
 /**

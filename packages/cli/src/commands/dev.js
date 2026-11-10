@@ -27,15 +27,16 @@ export const DEV_SIGNAL_GRACE_MS = 3000;
 
 const SIGNAL_NUM = /** @type {const} */ ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
 
-/** Exclusive wx lock next to projects.json; dead/unreadable/stale holder → unlink + retry once. */
+/** Exclusive link lock next to projects.json; dead/unreadable/stale holder → unlink + retry once. */
 const DEV_START_LOCK_STALE_MS = 8000;
 async function acquireDevStartLock(projectsPath, fse) {
   const p = path.join(path.dirname(projectsPath), 'projects.dev.lock');
   const rm = () => fse.unlink(p).catch(() => {});
   const grab = async () => {
-    const fd = await fse.open(p, 'wx');
-    try { await fse.writeFile(fd, `${process.pid}\n${Date.now()}\n`); }
-    finally { await fse.close(fd); }
+    const t = `${p}.${process.pid}`;
+    await fse.writeFile(t, `${process.pid}\n${Date.now()}\n`);
+    try { await fse.link(t, p); }
+    finally { await fse.unlink(t).catch(() => {}); }
   };
   const read = async () => {
     try {
