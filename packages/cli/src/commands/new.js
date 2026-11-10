@@ -577,11 +577,24 @@ async function maybeLinkProject(config, targetDir, deps = {}) {
     }
   }
 
-  if (!shouldLink) return;
+  if (!shouldLink) return 0;
 
   const linkFn = deps.link || defaultLink;
   log(chalk.dim(`Linking ${config.name}.sp…`));
-  await linkFn(config.name, { verbose: deps.verbose === true }, { cwd: targetDir, log });
+  const linkCode = await linkFn(
+    config.name,
+    { verbose: deps.verbose === true },
+    { cwd: targetDir, log }
+  );
+  if (typeof linkCode === 'number' && linkCode !== 0) {
+    log(
+      chalk.red(
+        `stagepass link failed (exit ${linkCode}). Project files were kept; fix the error and run \`stagepass link\` again.`
+      )
+    );
+    return linkCode;
+  }
+  return 0;
 }
 
 /**
@@ -601,16 +614,6 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const cwd = deps.cwd || process.cwd();
   const templatesRoot = deps.templatesRoot || defaultTemplatesRoot();
 
-  const preflightDeps = {
-    ...deps,
-    yes: options.yes === true,
-    verbose: options.verbose === true,
-    log,
-    error,
-  };
-  const preflightCode = await maybeDoctorPreflight(preflightDeps);
-  if (preflightCode !== 0) return preflightCode;
-
   const resolved = await resolveNewOptions(nameArg, options, deps);
   if (!resolved.ok) {
     error(chalk.red(resolved.error));
@@ -618,6 +621,19 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   }
 
   const config = resolved.config;
+
+  // Doctor/setup only after validation, never for --dry-run (no side effects).
+  if (config.dryRun !== true) {
+    const preflightDeps = {
+      ...deps,
+      yes: options.yes === true,
+      verbose: options.verbose === true,
+      log,
+      error,
+    };
+    const preflightCode = await maybeDoctorPreflight(preflightDeps);
+    if (preflightCode !== 0) return preflightCode;
+  }
   const targetDir = path.isAbsolute(config.dir)
     ? config.dir
     : path.resolve(cwd, config.dir);
@@ -802,12 +818,13 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   });
   printWebflowSnippets(snippets, log);
 
-  await maybeLinkProject(config, targetDir, {
+  const linkCode = await maybeLinkProject(config, targetDir, {
     ...deps,
     yes: options.yes === true,
     verbose: options.verbose === true,
     log,
   });
+  if (typeof linkCode === 'number' && linkCode !== 0) return linkCode;
 
   return 0;
 }

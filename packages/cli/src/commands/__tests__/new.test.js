@@ -980,6 +980,164 @@ describe('new: origins, php, preflight', () => {
     }
   });
 
+  it('does not run doctor preflight on --dry-run (interactive macOS)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-drypre-'));
+    const runDoctor = vi.fn();
+    const setup = vi.fn();
+    try {
+      const code = await createNew(
+        'dry-pre',
+        {
+          dryRun: true,
+          dir: path.join(tmp, 'dry-pre'),
+          lang: 'ts',
+          styles: 'scss',
+          modules: false,
+          git: false,
+          install: false,
+          author: 'Ada',
+          staging: 'dry.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: true,
+          argv: ['--dry-run', '--no-modules', '--no-git', '--no-install'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: async () => ({ stdout: 'Ada' }),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup,
+          createReadline: () => ({
+            question: vi.fn(async () => ''),
+            close: vi.fn(),
+          }),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).not.toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('validates options before doctor preflight (invalid staging skips doctor)', async () => {
+    const runDoctor = vi.fn();
+    const code = await createNew(
+      'bad-pre',
+      {
+        dir: '/tmp/unused-bad-pre',
+        lang: 'ts',
+        styles: 'scss',
+        modules: false,
+        git: false,
+        install: false,
+        author: 'Ada',
+        staging: ' example.com',
+      },
+      {
+        isTTY: true,
+        argv: ['--no-modules', '--no-git', '--no-install'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: os.tmpdir(),
+        log: () => {},
+        error: () => {},
+        exec: async () => ({ stdout: 'Ada' }),
+        spawn: vi.fn(),
+        platform: 'darwin',
+        runDoctor,
+        setup: vi.fn(),
+        createReadline: () => ({ question: vi.fn(), close: vi.fn() }),
+      }
+    );
+    expect(code).toBe(1);
+    expect(runDoctor).not.toHaveBeenCalled();
+  });
+
+  it('skips doctor preflight when --yes even on a TTY (mutant gate)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-yespre-'));
+    const target = path.join(tmp, 'yespre');
+    const runDoctor = vi.fn();
+    try {
+      const code = await createNew(
+        'yes-pre',
+        { yes: true, dir: target, git: false, siteModules: 'none' },
+        {
+          isTTY: true,
+          argv: ['--yes', '--no-git'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('continues when doctor preflight finds nothing to set up (mutant return 0)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-okpre-'));
+    const target = path.join(tmp, 'okpre');
+    const runDoctor = vi.fn(async () => ({
+      checks: [{ id: 'caddy', status: 'ok', message: 'ok' }],
+      summary: { ok: 1, warn: 0, fail: 0, info: 0 },
+      exitCode: 0,
+      hints: [],
+    }));
+    const setup = vi.fn();
+    const wizardAnswers = ['ok.webflow.io', '', 'n', 'n'];
+    try {
+      const code = await createNew(
+        'ok-pre',
+        {
+          dir: target,
+          lang: 'ts',
+          styles: 'scss',
+          modules: false,
+          git: false,
+          install: false,
+          author: 'Ada',
+        },
+        {
+          isTTY: true,
+          argv: ['--no-modules', '--no-git', '--no-install', '--lang', 'ts', '--styles', 'scss'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: async () => ({ stdout: 'Ada' }),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup,
+          createReadline: () => ({
+            question: vi.fn(async () => wizardAnswers.shift() ?? ''),
+            close: vi.fn(),
+          }),
+          link: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+      expect(await fs.pathExists(target)).toBe(true);
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
   it('offers setup after failing doctor preflight on interactive macOS', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-doc-'));
     const target = path.join(tmp, 'doc');
@@ -1027,6 +1185,44 @@ describe('new: origins, php, preflight', () => {
       expect(code).toBe(0);
       expect(runDoctor).toHaveBeenCalled();
       expect(setup).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('propagates link failure exit code for --link (files kept)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linkfail-'));
+    const target = path.join(tmp, 'linkfail');
+    const link = vi.fn(async () => 7);
+    const logs = [];
+    try {
+      const code = await createNew(
+        'linkfail-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          link: true,
+          staging: 'linkfail.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: (m) => logs.push(String(m ?? '')),
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          link,
+        }
+      );
+      expect(code).toBe(7);
+      expect(link).toHaveBeenCalled();
+      expect(await fs.pathExists(path.join(target, 'stagepass.json'))).toBe(true);
+      expect(logs.join('\n')).toMatch(/link failed/i);
     } finally {
       await fs.remove(tmp);
     }
