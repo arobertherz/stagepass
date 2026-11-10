@@ -22,6 +22,19 @@ import { isPidAlive, isValidDevPort } from '../lib/dev-port.js';
 import { ensureStagepassReady } from '../lib/ensure-running.js';
 import { start as defaultStart } from './start.js';
 
+/** Grace before SIGKILL after a forwarded stop signal (overridable in tests). */
+export const DEV_SIGNAL_GRACE_MS = 3000;
+
+const SIGNAL_NUM = /** @type {const} */ ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
+
+/**
+ * @param {NodeJS.Signals} signal
+ * @returns {number}
+ */
+export function signalExitCode(signal) {
+  return 128 + (SIGNAL_NUM[signal] || 15);
+}
+
 /**
  * Read optional outDir from stagepass.json (default dist).
  * @param {string} cwd
@@ -56,6 +69,7 @@ export async function dev(options = {}, deps = {}) {
     });
   const createServer = deps.createLiveServer || createLiveServer;
   const spawnWatch = deps.spawnWatch || defaultSpawnWatch;
+  const graceMs = typeof deps.signalGraceMs === 'number' ? deps.signalGraceMs : DEV_SIGNAL_GRACE_MS;
 
   const rootCheck = validateRoot(cwd);
   if (!rootCheck.ok) {
@@ -193,11 +207,34 @@ export async function dev(options = {}, deps = {}) {
     }
   };
 
+  /** @type {NodeJS.Signals | null} */
+  let stopSignal = null;
+  /** @param {NodeJS.Signals} signal */
+  const onSignal = (signal) => {
+    stopSignal = signal;
+    void cleanup();
+  };
+  // Register before setProjectDevPort so a signal in the setup window cleans up (P-3 / AC-7).
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  process.once('SIGHUP', onSignal);
+  const detachSignals = () => {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    process.off('SIGHUP', onSignal);
+  };
+
   try {
     await setProjectDevPort(domain, { port: live.port, pid: process.pid }, projectsPath);
+    if (stopSignal) {
+      detachSignals();
+      await cleanup();
+      return signalExitCode(stopSignal);
+    }
     project = await getProject(domain, projectsPath);
     const applied = await applySiteBlock(domain, project, { caddyfilePath, fs: fse });
     if (!applied.ok) {
+      detachSignals();
       await cleanup();
       error(chalk.red(`❌ ${applied.error}`));
       return 1;
@@ -209,24 +246,22 @@ export async function dev(options = {}, deps = {}) {
       if (options.verbose) error(err);
     }
   } catch (err) {
+    detachSignals();
     await cleanup();
     error(chalk.red(err instanceof Error ? err.message : String(err)));
     return 1;
+  }
+
+  if (stopSignal) {
+    detachSignals();
+    await cleanup();
+    return signalExitCode(stopSignal);
   }
 
   log(chalk.green(`Live reload on https://${domain}/__stagepass/live (127.0.0.1:${live.port})`));
   if (options.verbose) {
     log(chalk.dim('Running: npm run watch'));
   }
-
-  const onSignal = () => {
-    void cleanup().finally(() => {
-      /* watch child receives the same signal via process group when possible */
-    });
-  };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
-  process.once('SIGHUP', onSignal);
 
   let watchCode = 1;
   try {
@@ -235,55 +270,79 @@ export async function dev(options = {}, deps = {}) {
       stdio: 'inherit',
       shell: false,
       env: process.env,
+      signalGraceMs: graceMs,
     });
     watchCode = typeof result.code === 'number' ? result.code : 1;
   } catch (err) {
     error(chalk.red(err instanceof Error ? err.message : String(err)));
     watchCode = 1;
   } finally {
-    process.off('SIGINT', onSignal);
-    process.off('SIGTERM', onSignal);
-    process.off('SIGHUP', onSignal);
+    detachSignals();
     await cleanup();
   }
 
+  if (stopSignal) return signalExitCode(stopSignal);
   return watchCode;
 }
 
 /**
- * Spawn without a shell; forward SIGINT/SIGTERM to the child; resolve with exit code.
+ * Spawn without a shell; forward SIGINT/SIGTERM/SIGHUP to the child; SIGKILL after grace.
  * @type {import('../lib/spawn.js').SpawnFn}
  */
-function defaultSpawnWatch(command, args = [], options = {}) {
+export function defaultSpawnWatch(command, args = [], options = {}) {
+  const graceMs =
+    typeof options.signalGraceMs === 'number' ? options.signalGraceMs : DEV_SIGNAL_GRACE_MS;
+  const { signalGraceMs: _omit, ...spawnOpts } = options;
   return new Promise((resolve, reject) => {
     const child = nodeSpawn(command, args, {
       stdio: 'inherit',
-      ...options,
+      ...spawnOpts,
       shell: false,
     });
 
+    let exited = false;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let killTimer;
+
     const forward = (signal) => {
-      if (!child.killed) {
-        try {
-          child.kill(signal);
-        } catch {
-          /* ignore */
-        }
+      try {
+        child.kill(signal);
+      } catch {
+        /* ignore */
       }
+      if (killTimer) clearTimeout(killTimer);
+      killTimer = setTimeout(() => {
+        if (!exited) {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* ignore */
+          }
+        }
+      }, graceMs);
     };
     const onSigInt = () => forward('SIGINT');
     const onSigTerm = () => forward('SIGTERM');
+    const onSigHup = () => forward('SIGHUP');
     process.on('SIGINT', onSigInt);
     process.on('SIGTERM', onSigTerm);
+    process.on('SIGHUP', onSigHup);
 
-    child.on('error', (err) => {
+    const detach = () => {
       process.off('SIGINT', onSigInt);
       process.off('SIGTERM', onSigTerm);
+      process.off('SIGHUP', onSigHup);
+      if (killTimer) clearTimeout(killTimer);
+    };
+
+    child.on('error', (err) => {
+      exited = true;
+      detach();
       reject(err);
     });
     child.on('close', (code, signal) => {
-      process.off('SIGINT', onSigInt);
-      process.off('SIGTERM', onSigTerm);
+      exited = true;
+      detach();
       resolve({ code, signal });
     });
   });
