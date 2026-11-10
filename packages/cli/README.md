@@ -57,7 +57,7 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files: **(unreleased, CLI 2.3.0)**. Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
-| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
+| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm, or `--yes --i-understand-root-renewal`); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
 | `stagepass daemon` | Non-interactive LaunchAgent helper (PHP-FPM ensure, certs log-only, `caddy run`, macOS notifications). Never uses sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
@@ -74,7 +74,7 @@ Features marked **(unreleased, CLI 2.3.0)** are not in published npm `latest` (`
 
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
 - Prefer CDN major pin `@2` in Webflow custom code. Doctor unpinned-CDN warnings (`@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md` / `stagepass.json` / snippet HTML files): **(unreleased, CLI 2.3.0)**.
-- `certs renew` **(unreleased, CLI 2.3.0)** is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
+- `certs renew` **(unreleased, CLI 2.3.0)** is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes; needs two confirmations, or `--yes --i-understand-root-renewal`). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user. `start` / `stop` are autostart-aware (`kickstart` / `bootout`). If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts (name + PID confirmation; SIGTERM then optional SIGKILL).
 - Published CLI requires Node `>=18.0.0`. CLI 2.3.0 (unreleased) raises it to `>=20.17.0`.
