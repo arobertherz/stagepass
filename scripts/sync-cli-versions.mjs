@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Write packages/cli/src/lib/package-versions.js from the monorepo package.json
- * versions. The published CLI cannot read the monorepo at runtime, so this
- * generated module is committed and refreshed via CLI `prepack` and release CI.
+ * Write or verify packages/cli/src/lib/package-versions.js from the monorepo
+ * package.json versions. The published CLI cannot read the monorepo at runtime,
+ * so this generated module is committed and refreshed before release.
  *
- * Usage: node scripts/sync-cli-versions.mjs
+ * Usage:
+ *   node scripts/sync-cli-versions.mjs          # write when drifted
+ *   node scripts/sync-cli-versions.mjs --check  # exit 1 when drifted (no write)
  * Exit 0 when the file already matches (idempotent).
  */
 
@@ -14,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'packages', 'cli', 'src', 'lib', 'package-versions.js');
+const checkOnly = process.argv.includes('--check');
 
 function readPkgVersion(dir) {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'packages', dir, 'package.json'), 'utf8'));
@@ -53,6 +56,13 @@ if (prev === next) {
     `package-versions.js up to date (loader ${loaderVersion}, modules ${modulesVersion})`
   );
   process.exit(0);
+}
+
+if (checkOnly) {
+  console.error(
+    `package-versions.js is out of date (expected loader ${loaderVersion}, modules ${modulesVersion}). Run: node scripts/sync-cli-versions.mjs`
+  );
+  process.exit(1);
 }
 
 writeFileSync(OUT, next, 'utf8');

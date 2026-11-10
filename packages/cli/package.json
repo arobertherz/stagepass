@@ -20,7 +20,7 @@
   "scripts": {
     "start": "node bin/index.js",
     "build": "echo 'No build step required for CLI package'",
-    "prepack": "node ../../scripts/sync-cli-versions.mjs",
+    "prepack": "node ../../scripts/sync-cli-versions.mjs --check",
     "test": "vitest run",
     "test:watch": "vitest"
   },
