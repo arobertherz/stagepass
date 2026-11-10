@@ -6,7 +6,7 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 
 ## Install
 
-Requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew. Development and CI use Node 22 or 24. The floor was raised because `@inquirer/prompts@8` requires it.
+Published CLI 2.2.7 requires Node.js **18+** (`engines.node`: `>=18.0.0`) on **macOS** with Homebrew. CLI 2.3.0 (unreleased) raises the floor to `>=20.17.0` because `@inquirer/prompts@8` requires it. Development and CI use Node 22 or 24.
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -54,28 +54,30 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
 | `stagepass stop` | Stop services. With autostart on: `launchctl bootout` until next login (`autostart off` removes permanently). |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, CDN pins in docs + project files, declared modules vs. live site). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files: **(unreleased, CLI 2.3.0)**. Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
-| `stagepass certs renew` | Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
+| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
 | `stagepass daemon` | Non-interactive LaunchAgent helper (PHP-FPM ensure, certs log-only, `caddy run`, macOS notifications). Never uses sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
 | `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
 | `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). If Stagepass is not running, asks to start it (TTY) or prints a `stagepass start` hint (non-TTY / CI); warns with `stagepass link` when the cwd is not linked. |
-| `stagepass dev` | Like watch, plus live reload on the linked `.sp` domain. Same running check as watch; requires `stagepass link` (hard error if unlinked). |
+| `stagepass dev` | **(unreleased, CLI 2.3.0)** Like watch, plus live reload on the linked `.sp` domain. Same running check as watch; requires `stagepass link` (hard error if unlinked). |
 | `stagepass upgrade` | Bump `@stagepass/*`, sync declared modules, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. |
 
 All commands support `-v, --verbose` where applicable.
 
 ### Doctor / certificates / autostart
 
+Features marked **(unreleased, CLI 2.3.0)** are not in published npm `latest` (`2.2.7`).
+
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
-- Prefer CDN major pin `@2` in Webflow custom code. Doctor warns on `@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md` / `stagepass.json` / snippet HTML files.
-- `certs renew` is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
+- Prefer CDN major pin `@2` in Webflow custom code. Doctor unpinned-CDN warnings (`@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md` / `stagepass.json` / snippet HTML files): **(unreleased, CLI 2.3.0)**.
+- `certs renew` **(unreleased, CLI 2.3.0)** is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user. `start` / `stop` are autostart-aware (`kickstart` / `bootout`). If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts (name + PID confirmation; SIGTERM then optional SIGKILL).
-- Requires Node `>=20.17.0`.
+- Published CLI requires Node `>=18.0.0`. CLI 2.3.0 (unreleased) raises it to `>=20.17.0`.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
 
 ### `new` options
@@ -89,13 +91,13 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `--lang ts\|js` | Language (default: `ts`). |
 | `--styles scss\|css` | Styles (default: `scss`). |
 | `--modules` / `--no-modules` | Include `@stagepass/modules` as npm dependency (default: yes; forced on when `--site-modules` lists a module). |
-| `--site <host>` | Live Webflow site (https) to detect the loaded modules from. Also sets staging `origin` in `stagepass.json`. |
-| `--staging <domain>` | Staging hostname (hostname only; same validation as `--origin`). Stored as `origin`. Must match `--site` when both are set. |
-| `--production <domain>` | Optional production hostname. Stored as `production`. When omitted, prints a short hint to add it later via `stagepass link --origin`. |
+| `--site <host>` | Live Webflow site (https) to detect the loaded modules from. Also sets `origin` in `stagepass.json`. |
+| `--staging <domain>` | **(unreleased, CLI 2.3.0)** Staging hostname (hostname only; same validation as `--origin`). Stored as `origin`. Must match `--site` when both are set. |
+| `--production <domain>` | **(unreleased, CLI 2.3.0)** Optional production hostname. Stored as `production`. When omitted, prints a short hint to add it later via `stagepass link --origin`. |
 | `--site-modules <list>` | Modules the site loads: `none`, `all`, or a comma list of `inject`, `cookies`, `maintenance`. Takes precedence over `--site`. |
-| `--php` / `--no-php` | Enable PHP for the project (`api/` + `php_fastcgi` on link). Default: off. Existing linked projects without `"php"` keep PHP on. |
-| `--php-examples` / `--no-php-examples` | Include `examples/php/` samples (requires `--php`). Default: off. |
-| `--link` / `--no-link` | After scaffolding, run `stagepass link` (macOS only). Default: off; interactive macOS may offer it. |
+| `--php` / `--no-php` | **(unreleased, CLI 2.3.0)** Enable PHP for the project (`api/` + `php_fastcgi` on link). Default: off. Existing linked projects without `"php"` keep PHP on. |
+| `--php-examples` / `--no-php-examples` | **(unreleased, CLI 2.3.0)** Include `examples/php/` samples (requires `--php`). Default: off. |
+| `--link` / `--no-link` | **(unreleased, CLI 2.3.0)** After scaffolding, run `stagepass link` (macOS only). Default: off; interactive macOS may offer it. |
 | `--git` / `--no-git` | `git init` (default: yes). |
 | `--remote <url>` | Set `origin` after git init (rejects URLs with embedded credentials). |
 | `--install` / `--no-install` | Run `npm install` (default: no). |
@@ -104,7 +106,7 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 
 The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + SRI `integrity` in `manifest.json`), scripts `build` / `watch` / `dev` (`dev` aliases `watch`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2` (same major as the CDN pin `@2`; npm installs the newest published 2.x). Per-module types are written only when the published or installed `@stagepass/modules` ships them (2.2.0 and later); otherwise `types` lists the umbrella `@stagepass/modules`.
 
-Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `stagepass setup` if the local stack looks incomplete (never automatic, never under `--yes` / no-TTY, never sudo by itself). It then asks for staging (suggests `<name>.webflow.io`) and optional production, detects modules from staging when possible, then PHP / git / install. Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` / `--staging` detection, else `[]` with a hint. `stagepass link` with no `--origin` flags reads `origin` / `production` from `stagepass.json`.
+Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `stagepass setup` if the local stack looks incomplete (never automatic, never under `--yes` / no-TTY, never sudo by itself). On published CLI 2.2.7, without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint. Staging / production prompts, PHP prompts, `--staging` detection, and `link` reading `origin` / `production` from `stagepass.json` are **(unreleased, CLI 2.3.0)**.
 
 ### Declared modules (`stagepass.json`)
 
@@ -167,7 +169,7 @@ Every change is printed as `file: action` (unchanged files are not listed; skipp
 | `--no-allow-all-origins` | Disable allow-all mode and use the origin allowlist. |
 | `-v, --verbose` | Show Caddy reload output / errors. |
 
-When no `--origin` / `--remove-origin` flags are passed, `link` reads `origin` and optional `production` from `stagepass.json` (written by `stagepass new`). The project's `"php"` flag (when set) controls whether the Caddy site block includes `php_fastcgi`; missing `"php"` keeps the legacy PHP-on behaviour.
+Published CLI 2.2.7 still needs explicit `link --origin` for CORS (even when `new --site` wrote `origin` into `stagepass.json`). `link` reading `origin` / `production` from `stagepass.json` when no `--origin` / `--remove-origin` flags are passed is **(unreleased, CLI 2.3.0)**. The project's `"php"` flag (when set) controlling whether the Caddy site block includes `php_fastcgi` is also **(unreleased, CLI 2.3.0)**; missing `"php"` keeps the legacy PHP-on behaviour.
 
 **`--origin` / `--remove-origin` format:** `example.com`, `www.example.com`, `*.example.com`, or `https://example.com`. Hostnames only (optional leading `*.`); no path, port, or `http://` for live origins.
 
