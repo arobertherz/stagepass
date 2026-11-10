@@ -56,6 +56,20 @@ describe('validateOriginEntry', () => {
       expect(validateOriginEntry(bad).ok).toBe(false);
     }
   });
+
+  it.each([
+    [' example.com'],
+    ['example.com '],
+    ['example.com\n'],
+    ['example.com\t'],
+    ['exa\tmple.com'],
+    ['exa\nmple.com'],
+    ['\u0000example.com'],
+  ])('rejects whitespace/controls in %j without trimming (AC-10)', (input) => {
+    const r = validateOriginEntry(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/whitespace|control/i);
+  });
 });
 
 describe('isBroadWebflowWildcard', () => {

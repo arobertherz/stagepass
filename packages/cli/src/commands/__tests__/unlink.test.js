@@ -68,13 +68,77 @@ other.sp {
       return '';
     });
 
-    await unlink('test', {});
+    const code = await unlink('test', {});
+    expect(code).toBe(0);
 
     expect(fs.writeFile).toHaveBeenCalled();
     const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
     const writtenContent = caddyWrites.at(-1)[1];
     expect(writtenContent).not.toContain('# START: test.sp');
     expect(writtenContent).toContain('other.sp');
+  });
+
+  it('[P-1] returns 1 for an invalid domain', async () => {
+    expect(await unlink('../evil', {})).toBe(1);
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('[P-1] returns 0 when no Caddyfile', async () => {
+    fs.pathExists.mockResolvedValue(false);
+    expect(await unlink('test', {})).toBe(0);
+  });
+
+  it('[P-1] returns 0 when domain is not linked', async () => {
+    fs.pathExists.mockResolvedValue(true);
+    fs.readFile.mockResolvedValue('# empty\n');
+    expect(await unlink('missing', {})).toBe(0);
+  });
+
+  it('[P-1] returns 1 when config update fails', async () => {
+    fs.pathExists.mockResolvedValue(true);
+    fs.readFile.mockResolvedValue(`
+# START: test.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false
+test.sp {
+    handle {
+        root * "/some/path"
+    }
+}
+# END: test.sp
+`);
+    fs.writeFile.mockRejectedValue(new Error('EACCES'));
+    expect(await unlink('test', {})).toBe(1);
+  });
+
+  it('[P-1] returns 0 when Caddy reload fails after unlink', async () => {
+    fs.pathExists.mockResolvedValue(true);
+    fs.readFile.mockImplementation(async (p) => {
+      if (p === mockCaddyFile) {
+        return `
+# START: test.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false
+test.sp {
+    handle {
+        root * "/some/path"
+    }
+}
+# END: test.sp
+`;
+      }
+      if (p === mockProjects) {
+        return JSON.stringify({
+          version: 1,
+          projects: {
+            'test.sp': { root: '/some/path', origins: [], allowAllOrigins: false },
+          },
+        });
+      }
+      return '';
+    });
+    execa.mockRejectedValue(new Error('caddy down'));
+    expect(await unlink('test', {})).toBe(0);
   });
 
   it('should use current directory name if domain not provided', async () => {

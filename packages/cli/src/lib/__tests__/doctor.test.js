@@ -42,6 +42,24 @@ my-project.sp {
     expect(assessCaddyfileStructure('').status).toBe('warn');
   });
 
+  // F-11: `missingRoot.length > 0` must not become `> 1` — a single missing root is a fail.
+  it('[F-11] fails when exactly one Caddyfile block lacks a parseable root', () => {
+    const oneMissing = `# START: broken.sp
+# stagepass-block: v2
+broken.sp {
+    tls internal
+    handle {
+        file_server
+    }
+}
+# END: broken.sp
+`;
+    const r = assessCaddyfileStructure(oneMissing);
+    expect(r.status).toBe('fail');
+    expect(r.message).toMatch(/1 block\(s\) without a parseable root/);
+    expect(r.detail).toBe('broken.sp');
+  });
+
   it('flags @latest, @1, and bare package in recommended snippets', () => {
     expect(findUnpinnedCdnSnippets().ok).toBe(true);
     expect(

@@ -3,6 +3,7 @@ import {
   findPort443Conflict,
   resolvePort443Conflict,
   summarizeCertFindings,
+  isSafePid,
   start,
 } from '../start.js';
 import { LAUNCH_AGENT_LABEL } from '../../lib/autostart.js';
@@ -20,6 +21,28 @@ describe('start helpers', () => {
     expect(findings.some((f) => f.kind === 'orphans')).toBe(true);
   });
 
+  it('[M-1] skip handshakes never become TLS fail / renew findings', () => {
+    const findings = summarizeCertFindings({
+      root: { status: 'ok', reason: 'ok' },
+      trust: { trusted: true },
+      handshakes: [
+        {
+          status: 'skip',
+          servername: 'a.sp',
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        },
+      ],
+      orphans: [],
+    });
+    expect(findings.some((f) => f.kind === 'site')).toBe(false);
+    expect(findings.some((f) => /TLS fail/i.test(f.message))).toBe(false);
+  });
+
+  it('exports isSafePid', () => {
+    expect(isSafePid('42')).toBe(true);
+    expect(isSafePid('01')).toBe(false);
+  });
+
   it('findPort443Conflict returns name and pid from lsof', async () => {
     const conflict = await findPort443Conflict({
       exec: async () => ({
@@ -33,7 +56,22 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     expect(conflict).toEqual({ pid: '4242', name: 'nginx' });
   });
 
-  it('resolvePort443Conflict requires confirm and uses SIGTERM then SIGKILL', async () => {
+  // Mutant: `listener.name || basename(command)` -> `&&` would drop the basename fallback.
+  it('findPort443Conflict falls back to basename when listener name is empty', async () => {
+    const conflict = await findPort443Conflict({
+      exec: async () => ({
+        stdout: `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+/opt/homebrew/bin/weirdd  4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
+`,
+        stderr: '',
+        code: 0,
+      }),
+    });
+    expect(conflict?.pid).toBe('4242');
+    expect(conflict?.name).toMatch(/weirdd/);
+  });
+
+  it('resolvePort443Conflict requires confirm; httpd may use apachectl without sudo -v', async () => {
     const calls = [];
     const confirms = [];
     const result = await resolvePort443Conflict(
@@ -55,8 +93,17 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     expect(result.ok).toBe(true);
     expect(confirms[0]).toMatch(/PID 99/);
     expect(confirms[0]).toMatch(/httpd/);
-    expect(calls.some((c) => c.file === 'sudo' && c.args[0] === '-v')).toBe(true);
-    // apachectl path may short-circuit; ensure no unconfirmed kill-only path
+    expect(calls.some((c) => c.file === 'sudo' && c.args[0] === '-v')).toBe(
+      false
+    );
+    expect(
+      calls.some(
+        (c) =>
+          c.file === 'sudo' &&
+          c.args[0] === 'apachectl' &&
+          c.args[1] === 'stop'
+      )
+    ).toBe(true);
     expect(confirms.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -83,8 +130,10 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     }
   });
 
-  it('escalates to SIGKILL only after second confirmation', async () => {
+  it('escalates to SIGKILL only after second confirmation (unprivileged kill first)', async () => {
     const calls = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     const confirms = [];
     const result = await resolvePort443Conflict(
       { pid: '55', name: 'otherd' },
@@ -92,6 +141,10 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
         exec: async (file, args) => {
           calls.push({ file, args });
           return { stdout: '', stderr: '', code: 0 };
+        },
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
         },
         confirm: async (message) => {
           confirms.push(message);
@@ -105,25 +158,29 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     expect(result.ok).toBe(true);
     expect(result.detail).toBe('SIGKILL');
     expect(confirms).toHaveLength(2);
-    expect(
-      calls.some(
-        (c) =>
-          c.file === 'sudo' &&
-          c.args[0] === 'kill' &&
-          c.args[1] === '-KILL' &&
-          c.args[2] === '55'
-      )
-    ).toBe(true);
+    expect(kills).toEqual([
+      [55, 'SIGTERM'],
+      [55, 'SIGKILL'],
+    ]);
+    expect(calls.every((c) => !(c.file === 'sudo' && c.args[0] === '-v'))).toBe(
+      true
+    );
   });
 
   it('SIGTERM-only path when process exits after first signal', async () => {
     const calls = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     const result = await resolvePort443Conflict(
       { pid: '77', name: 'otherd' },
       {
         exec: async (file, args) => {
           calls.push({ file, args });
           return { stdout: '', stderr: '', code: 0 };
+        },
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
         },
         confirm: async () => true,
         sleep: async () => {},
@@ -132,16 +189,11 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     );
     expect(result.ok).toBe(true);
     expect(result.detail).toBe('SIGTERM');
-    expect(
-      calls.some(
-        (c) =>
-          c.file === 'sudo' &&
-          c.args[0] === 'kill' &&
-          c.args[1] === '-TERM' &&
-          c.args[2] === '77'
-      )
-    ).toBe(true);
+    expect(kills).toEqual([[77, 'SIGTERM']]);
     expect(calls.every((c) => !(c.args || []).includes('-KILL'))).toBe(true);
+    expect(calls.every((c) => !(c.file === 'sudo' && c.args[0] === '-v'))).toBe(
+      true
+    );
   });
 });
 
@@ -158,7 +210,8 @@ describe('start autostart / certs integration', () => {
 
   it('uses launchctl kickstart when LaunchAgent is loaded', async () => {
     const calls = [];
-    await start({
+    // F-11: kickstart success path must return exactly 0 (not undefined).
+    const code = await start({
       verbose: true,
       interactive: false,
       skipHandshake: true,
@@ -180,6 +233,7 @@ describe('start autostart / certs integration', () => {
       }),
       uid: 501,
     });
+    expect(code).toBe(0);
     expect(
       calls.some(
         (c) =>

@@ -2,12 +2,15 @@ name: Tests
 
 on:
   push:
-    branches: [master, main]
+    # release/** and fix/** so release branches are tested before merge
+    branches: [master, main, 'release/**', 'fix/**']
   pull_request:
     branches: [master, main]
 
 jobs:
   test:
+    # Fork PRs must not run on the self-hosted runner
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, cerebro]
 
     strategy:
@@ -43,6 +46,8 @@ jobs:
         run: node scripts/test-cli-packed.mjs
 
   e2e:
+    # Fork PRs must not run on the self-hosted runner
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, cerebro]
     steps:
       - name: Checkout code

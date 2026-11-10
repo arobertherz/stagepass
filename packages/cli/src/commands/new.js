@@ -11,6 +11,9 @@ import {
   defaultTemplatesRoot,
   planScaffoldFiles,
   findConflicts,
+  assertScaffoldParentPath,
+  writeScaffoldFiles,
+  rollbackScaffold,
 } from '../lib/scaffold.js';
 import {
   buildWebflowSnippets,
@@ -68,7 +71,8 @@ export function resolveBoolFlag(_options, key, argv, defaultValue) {
  * @returns {{ ok: true, value: string } | { ok: true, value: '' } | { ok: false, error: string }}
  */
 export function parseOriginFlag(raw, label) {
-  if (raw == null || String(raw).trim() === '') {
+  // Empty means "not set". Whitespace-only must fail via validateOriginEntry (AC-10).
+  if (raw == null || String(raw) === '') {
     return { ok: true, value: '' };
   }
   const check = validateOriginEntry(String(raw));
@@ -182,14 +186,10 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   /** @type {boolean} */
   let productionSkipped = false;
 
-  const siteFlag =
-    options.site != null && String(options.site).trim() !== ''
-      ? String(options.site).trim()
-      : '';
+  // Pass raw flag values (no trim): whitespace/controls must abort before write/network.
+  const siteFlag = options.site != null && String(options.site) !== '' ? String(options.site) : '';
   const stagingFlag =
-    options.staging != null && String(options.staging).trim() !== ''
-      ? String(options.staging).trim()
-      : '';
+    options.staging != null && String(options.staging) !== '' ? String(options.staging) : '';
 
   if (siteFlag) {
     const check = normalizeSiteUrl(siteFlag);
@@ -207,7 +207,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
     }
     origin = check.value;
   }
-  if (options.production != null && String(options.production).trim() !== '') {
+  if (options.production != null && String(options.production) !== '') {
     const check = parseOriginFlag(String(options.production), 'production');
     if (!check.ok) return check;
     production = check.value;
@@ -449,19 +449,39 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
 }
 
 /**
+ * True when `p` exists (lstat; does not follow the final symlink).
+ * @param {{ lstat: (p: string) => Promise<unknown> }} fse
+ * @param {string} p
+ */
+async function pathExistsLstat(fse, p) {
+  try {
+    await fse.lstat(p);
+    return true;
+  } catch (err) {
+    if (err && /** @type {{ code?: string }} */ (err).code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+/**
  * After `npm install`, align tsconfig/jsconfig types with the installed
  * @stagepass/modules (per-module entries only when it ships them).
+ * Only rewrites configs this run created (INV-4: never mutate pre-existing files).
  *
  * @param {string} targetDir
  * @param {{ siteModules: string[], perModuleTypes?: boolean }} config
  * @param {typeof fs} fse
  * @param {(msg?: string) => void} log
+ * @param {string[]} [createdPaths] absolute paths this run may rewrite
  */
-async function reconcileInstalledTypes(targetDir, config, fse, log) {
+async function reconcileInstalledTypes(targetDir, config, fse, log, createdPaths) {
   const installed = await installedHasPerModuleTypes(targetDir, fse);
   if (installed === null || installed === (config.perModuleTypes !== false)) return;
+  const created =
+    createdPaths == null ? null : new Set(createdPaths.map((p) => path.resolve(p)));
   for (const name of ['tsconfig.json', 'jsconfig.json']) {
-    const file = path.join(targetDir, name);
+    const file = path.resolve(targetDir, name);
+    if (created && !created.has(file)) continue;
     if (!(await fse.pathExists(file))) continue;
     const raw = await fse.readFile(file, 'utf8');
     const result = updateConfigTypes(raw, config.siteModules, {
@@ -577,11 +597,24 @@ async function maybeLinkProject(config, targetDir, deps = {}) {
     }
   }
 
-  if (!shouldLink) return;
+  if (!shouldLink) return 0;
 
   const linkFn = deps.link || defaultLink;
   log(chalk.dim(`Linking ${config.name}.sp…`));
-  await linkFn(config.name, { verbose: deps.verbose === true }, { cwd: targetDir, log });
+  const linkCode = await linkFn(
+    config.name,
+    { verbose: deps.verbose === true },
+    { cwd: targetDir, log }
+  );
+  if (typeof linkCode === 'number' && linkCode !== 0) {
+    log(
+      chalk.red(
+        `stagepass link failed (exit ${linkCode}). Project files were kept; fix the error and run \`stagepass link\` again.`
+      )
+    );
+    return linkCode;
+  }
+  return 0;
 }
 
 /**
@@ -601,16 +634,6 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const cwd = deps.cwd || process.cwd();
   const templatesRoot = deps.templatesRoot || defaultTemplatesRoot();
 
-  const preflightDeps = {
-    ...deps,
-    yes: options.yes === true,
-    verbose: options.verbose === true,
-    log,
-    error,
-  };
-  const preflightCode = await maybeDoctorPreflight(preflightDeps);
-  if (preflightCode !== 0) return preflightCode;
-
   const resolved = await resolveNewOptions(nameArg, options, deps);
   if (!resolved.ok) {
     error(chalk.red(resolved.error));
@@ -618,6 +641,19 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   }
 
   const config = resolved.config;
+
+  // Doctor/setup only after validation, never for --dry-run (no side effects).
+  if (config.dryRun !== true) {
+    const preflightDeps = {
+      ...deps,
+      yes: options.yes === true,
+      verbose: options.verbose === true,
+      log,
+      error,
+    };
+    const preflightCode = await maybeDoctorPreflight(preflightDeps);
+    if (preflightCode !== 0) return preflightCode;
+  }
   const targetDir = path.isAbsolute(config.dir)
     ? config.dir
     : path.resolve(cwd, config.dir);
@@ -691,6 +727,12 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     }
   }
 
+  const parentCheck = await assertScaffoldParentPath(targetDir, fse);
+  if (!parentCheck.ok) {
+    error(chalk.red(parentCheck.error));
+    return 1;
+  }
+
   const conflicts = await findConflicts(targetDir, files, fse);
   if (conflicts.length > 0) {
     error(chalk.red('Refusing to overwrite existing files:'));
@@ -713,24 +755,21 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     return 0;
   }
 
-  await fse.ensureDir(targetDir);
-
-  for (const file of files) {
-    const abs = path.resolve(targetDir, file.relativePath);
-    const relToTarget = path.relative(targetDir, abs);
-    if (
-      relToTarget.startsWith('..') ||
-      path.isAbsolute(relToTarget) ||
-      relToTarget.split(path.sep).includes('..')
-    ) {
-      error(chalk.red(`Refusing to write outside project directory: ${file.relativePath}`));
-      return 1;
+  const written = await writeScaffoldFiles(targetDir, files, fse);
+  if (!written.ok) {
+    error(chalk.red(written.error));
+    if (options.verbose === true && written.errorObj instanceof Error && written.errorObj.stack) {
+      error(written.errorObj.stack);
     }
-    await fse.ensureDir(path.dirname(abs));
-    await fse.writeFile(abs, file.contents, 'utf8');
+    return 1;
   }
 
+  /** Roll back every file this run created (INV-4). */
+  const undo = async () => rollbackScaffold(written.created, written.createdTargetDir, fse);
+
   if (config.git) {
+    const gitDir = path.join(targetDir, '.git');
+    const gitExisted = await pathExistsLstat(fse, gitDir);
     try {
       await exec('git', ['init'], { cwd: targetDir });
       if (config.remote) {
@@ -738,17 +777,29 @@ export async function createNew(nameArg, options = {}, deps = {}) {
           cwd: targetDir,
         });
       }
+      if (!gitExisted) written.created.push(gitDir);
     } catch (err) {
+      if (!gitExisted) written.created.push(gitDir);
+      await undo();
       error(
         chalk.red(
           `Git setup failed: ${err instanceof Error ? err.message : String(err)}`
         )
       );
+      if (options.verbose === true && err instanceof Error && err.stack) error(err.stack);
       return 1;
     }
   }
 
   if (config.install) {
+    const nodeModulesDir = path.join(targetDir, 'node_modules');
+    const lockfile = path.join(targetDir, 'package-lock.json');
+    const nodeModulesExisted = await pathExistsLstat(fse, nodeModulesDir);
+    const lockfileExisted = await pathExistsLstat(fse, lockfile);
+    const trackInstallArtifacts = () => {
+      if (!nodeModulesExisted) written.created.push(nodeModulesDir);
+      if (!lockfileExisted) written.created.push(lockfile);
+    };
     try {
       const result = await spawn('npm', ['install'], {
         cwd: targetDir,
@@ -756,19 +807,24 @@ export async function createNew(nameArg, options = {}, deps = {}) {
         shell: false,
         env: process.env,
       });
+      trackInstallArtifacts();
       if (result.code !== 0) {
+        await undo();
         error(chalk.red(`npm install exited with code ${result.code}`));
-        return typeof result.code === 'number' ? result.code : 1;
+        return 1;
       }
       if (singleModuleTypes) {
-        await reconcileInstalledTypes(targetDir, config, fse, log);
+        await reconcileInstalledTypes(targetDir, config, fse, log, written.created);
       }
     } catch (err) {
+      trackInstallArtifacts();
+      await undo();
       error(
         chalk.red(
           `npm install failed: ${err instanceof Error ? err.message : String(err)}`
         )
       );
+      if (options.verbose === true && err instanceof Error && err.stack) error(err.stack);
       return 1;
     }
   }
@@ -796,12 +852,13 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   });
   printWebflowSnippets(snippets, log);
 
-  await maybeLinkProject(config, targetDir, {
+  const linkCode = await maybeLinkProject(config, targetDir, {
     ...deps,
     yes: options.yes === true,
     verbose: options.verbose === true,
     log,
   });
+  if (typeof linkCode === 'number' && linkCode !== 0) return linkCode;
 
   return 0;
 }

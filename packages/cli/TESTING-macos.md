@@ -49,16 +49,29 @@ stagepass start
 - [ ] Non-interactive `start` prints findings + hint and does not repair
 - [ ] Port 443 conflict shows **process name and PID** and requires confirmation before any signal
 - [ ] Confirmed conflict uses SIGTERM first; SIGKILL only after a second confirmation (or process already gone)
-- [ ] `start` does not call `sudo -v` unless a confirmed kill (or similar) needs it
+- [ ] Own-user listeners are signalled without sudo first; `sudo kill` only after unprivileged failure (EPERM / other uid)
+- [ ] nginx conflicts try `valet stop` (then `brew services stop nginx`) before any sudo
+- [ ] `start` never calls standby `sudo -v`
 - [ ] With autostart enabled, `start` uses `launchctl kickstart` and prints that fact
 - [ ] With autostart enabled, `stop` uses `launchctl bootout` and says services return at next login; `autostart off` removes permanently
+
+## Permissions (do not conflate)
+
+- [ ] **CA trust** checked via `certs check` / `certs trust` (System keychain); separate from TCC
+- [ ] **Browser Local Network Access** granted in the browser if the live site loads `*.sp`; separate from Node
+- [ ] If macOS prompts **Node** for **Desktop** (or another folder) access because the project/test pack lives there, grant that folder only, not Full Disk Access
+- [ ] Prefer a stable `npm install -g @stagepass/cli` path for acceptance; temporary Desktop test packs are fine for a one-off check but refresh autostart before deleting them
 
 ## autostart / daemon
 
 - [ ] `stagepass autostart status` shows label `io.github.arobertherz.stagepass`
-- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths
+- [ ] `stagepass autostart on` writes `~/Library/LaunchAgents/io.github.arobertherz.stagepass.plist` with absolute node + CLI paths and an `EnvironmentVariables` `PATH` that includes Homebrew `bin`/`sbin` from `brew --prefix` (Cellar symlink for `caddy` is OK)
+- [ ] With a sparse launchd-like PATH, `daemon` still finds `caddy` via the plist PATH
 - [ ] Plist has `RunAtLoad` and `KeepAlive` / `SuccessfulExit` false
 - [ ] Logs appear under `~/.stagepass/logs/`
+- [ ] `stagepass start` does **not** prompt for sudo when port 443 is free / only caddy listens; with a foreign listener it asks before SIGTERM and again before SIGKILL
+- [ ] With autostart on: bootstrap if needed, kickstart via `start`; `stop` bootouts (until next login) then stops Caddy/PHP; `autostart off` / `on` retained
+- [ ] After moving Node/CLI or leaving a Desktop test path, `autostart off` then `on` with the stable CLI (upgrade alone does not migrate ProgramArguments)
 - [ ] After logout/login (or `launchctl bootstrap`), daemon starts Caddy via `caddy run`
 - [ ] Daemon ensures PHP-FPM without sudo
 - [ ] Daemon shows a macOS notification on cert trust failure / PHP-FPM failure / permanent bind failure (notification must not block or crash the daemon)

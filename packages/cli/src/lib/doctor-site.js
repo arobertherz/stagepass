@@ -115,10 +115,21 @@ export async function runProjectSiteChecks(opts = {}) {
     });
     return checks;
   }
+  let siteMsg =
+    det.loader.cdn === 'self'
+      ? `Live site ${found.origin} loads a self-hosted @stagepass/loader`
+      : `Live site ${found.origin} loads @stagepass/loader@${det.loader.version}`;
+  if (
+    det.loader.cdn === 'self' &&
+    det.loader.version &&
+    det.loader.version !== 'latest'
+  ) {
+    siteMsg += ` (version ${det.loader.version})`;
+  }
   checks.push({
     id: 'project.site',
     status: 'ok',
-    message: `Live site ${found.origin} loads @stagepass/loader@${det.loader.version}`,
+    message: siteMsg,
     detail: describeDetection(det),
   });
   if (declared && !sameModules(declared, det.list)) {

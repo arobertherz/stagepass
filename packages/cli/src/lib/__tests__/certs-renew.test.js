@@ -115,6 +115,7 @@ describe('renewSiteCertificates', () => {
       linkedDomains: ['demo.sp'],
       certificatesLocalDir: '/tmp/sp-certs-local',
       caddyfilePath: '/tmp/Caddyfile',
+      caddyServing443: true,
       pathExists: async () => true,
       lstat: async () => ({
         isSymbolicLink: () => false,
@@ -132,6 +133,36 @@ describe('renewSiteCertificates', () => {
       '/tmp/Caddyfile',
     ]);
     expect(result.reloaded).toBe(true);
+    expect(result.reloadDeferred).toBe(false);
+  });
+
+  it('[M-1] defers reload when Caddy is not serving :443', async () => {
+    const removed = [];
+    const exec = vi.fn(async () => ({ stdout: '', stderr: '', code: 0 }));
+    const result = await renewSiteCertificates({
+      domains: ['demo.sp'],
+      linkedDomains: ['demo.sp'],
+      certificatesLocalDir: '/tmp/sp-certs-local',
+      caddyfilePath: '/tmp/Caddyfile',
+      caddyServing443: false,
+      pathExists: async () => true,
+      lstat: async () => ({
+        isSymbolicLink: () => false,
+        isDirectory: () => true,
+      }),
+      remove: async (p) => {
+        removed.push(p);
+      },
+      exec,
+    });
+    expect(removed).toEqual([path.join('/tmp/sp-certs-local', 'demo.sp')]);
+    expect(exec).not.toHaveBeenCalledWith(
+      'caddy',
+      expect.arrayContaining(['reload'])
+    );
+    expect(result.reloaded).toBe(false);
+    expect(result.reloadDeferred).toBe(true);
+    expect(result.reloadError).toBeNull();
   });
 });
 
@@ -155,6 +186,25 @@ describe('moveLocalCaAuthorityToBackup', () => {
     expect(moves[0].src).toBe('/tmp/caddy/pki/authorities/local');
     expect(moves[0].dest).toMatch(/local\.backup\.2026-01-02T03-04-05-678Z$/);
     expect(fs.existsSync).toBeTypeOf('function');
+  });
+
+  // Mutant: `return { ok: false, error: '…not a directory.' }` -> `return undefined`
+  it('returns ok:false (not undefined) when the CA path is a file', async () => {
+    const move = vi.fn();
+    const result = await moveLocalCaAuthorityToBackup({
+      authorityDir: '/tmp/caddy/pki/authorities/local',
+      pathExists: async () => true,
+      lstat: async () => ({
+        isSymbolicLink: () => false,
+        isDirectory: () => false,
+      }),
+      move,
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: 'CA authority path is not a directory.',
+    });
+    expect(move).not.toHaveBeenCalled();
   });
 });
 
@@ -180,6 +230,19 @@ describe('domainsNeedingSiteCertRenewal', () => {
     expect(
       domainsNeedingSiteCertRenewal([
         { status: 'ok', servername: 'a.sp' },
+        { status: 'fail', servername: 'b.sp', reason: 'expired' },
+      ])
+    ).toEqual(['b.sp']);
+  });
+
+  it('[M-1] ignores skip handshake results', () => {
+    expect(
+      domainsNeedingSiteCertRenewal([
+        {
+          status: 'skip',
+          servername: 'a.sp',
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        },
         { status: 'fail', servername: 'b.sp', reason: 'expired' },
       ])
     ).toEqual(['b.sp']);

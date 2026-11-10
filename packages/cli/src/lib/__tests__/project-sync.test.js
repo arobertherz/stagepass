@@ -41,6 +41,12 @@ describe('updateConfigTypes', () => {
     expect(r.status).toBe('skipped');
     expect(r.reason).toMatch(/no compilerOptions.types/);
   });
+
+  // F-11: `!json || typeof json !== 'object' || Array.isArray(json)` — null and JSON strings are not objects.
+  it.each([['null'], ['"hello"']])('[F-11] skips non-object JSON %s', (raw) => {
+    const r = updateConfigTypes(raw, [], { modulesDependency: true });
+    expect(r).toMatchObject({ status: 'skipped', reason: 'is not a JSON object' });
+  });
 });
 
 describe('declaredModules', () => {
@@ -90,6 +96,53 @@ describe('planProjectSync / applyProjectSync', () => {
   it('refuses writes outside the project', async () => {
     await expect(applyProjectSync(dir, [{ file: '../evil', content: '' }])).rejects.toThrow(/outside/);
   });
+
+  it('[P-2][INV-3] skips symlinked targets with a note', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-sync-out-'));
+    try {
+      const agentsOutside = path.join(outside, 'AGENTS.md');
+      const tsOutside = path.join(outside, 'tsconfig.json');
+      const cursorOutside = path.join(outside, 'cursor-target');
+      await fs.writeFile(agentsOutside, '# secret outside\n');
+      await fs.writeFile(
+        tsOutside,
+        JSON.stringify({ compilerOptions: { types: ['@stagepass/loader'] } }, null, 2) + '\n'
+      );
+      await fs.mkdir(cursorOutside);
+      await fs.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
+      await fs.symlink(tsOutside, path.join(dir, 'tsconfig.json'));
+      await fs.symlink(cursorOutside, path.join(dir, '.cursor'));
+
+      const agentsBefore = await fs.readFile(agentsOutside, 'utf8');
+      const tsBefore = await fs.readFile(tsOutside, 'utf8');
+      const cursorListing = await fs.readdir(cursorOutside);
+
+      const plan = await planProjectSync({
+        cwd: dir,
+        modules: ['cookies'],
+        pkg: { name: 'demo', devDependencies: { '@stagepass/modules': '^2.2.0' } },
+      });
+      expect(plan.notes.some((n) => n === 'AGENTS.md is a symlink; left unchanged')).toBe(true);
+      expect(plan.notes.some((n) => n === 'tsconfig.json is a symlink; left unchanged')).toBe(true);
+      expect(plan.notes.some((n) => n.includes('.cursor/rules/stagepass.mdc') && n.includes('symlink'))).toBe(
+        true
+      );
+      expect(plan.writes.map((w) => w.file)).not.toContain('AGENTS.md');
+      expect(plan.writes.map((w) => w.file)).not.toContain('tsconfig.json');
+      expect(plan.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
+
+      await applyProjectSync(dir, plan.writes);
+      expect(await fs.readFile(agentsOutside, 'utf8')).toBe(agentsBefore);
+      expect(await fs.readFile(tsOutside, 'utf8')).toBe(tsBefore);
+      expect(await fs.readdir(cursorOutside)).toEqual(cursorListing);
+
+      await expect(
+        applyProjectSync(dir, [{ file: 'AGENTS.md', content: 'hijack\n' }])
+      ).rejects.toThrow(/symlink/);
+    } finally {
+      await fs.remove(outside);
+    }
+  });
 });
 
 describe('originsFromStagepassConfig / phpFromStagepassConfig', () => {
@@ -137,6 +190,63 @@ describe('resolveProjectOrigin', () => {
     });
     expect(await resolveProjectOrigin('/other', {}, { loadProjects, realpath: async (x) => x })).toBeNull();
   });
+
+  it('[R5 F-05] null stagepass.json data does not throw; falls back to link origin or null', async () => {
+    const loadProjects = async () => ({
+      projects: {
+        p: { root: '/proj', origins: ['linked.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/proj', null, {
+        loadProjects,
+        realpath: async (x) => x,
+      })
+    ).resolves.toEqual({ origin: 'linked.webflow.io', source: 'stagepass link' });
+    await expect(
+      resolveProjectOrigin('/other', null, {
+        loadProjects,
+        realpath: async (x) => x,
+      })
+    ).resolves.toBeNull();
+  });
+
+  it('[R5 F-05] realpath maps cwd to linked root; throw keeps resolved cwd', async () => {
+    const loadProjects = async () => ({
+      projects: {
+        p: { root: '/real/proj', origins: ['via-realpath.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/alias/proj', {}, {
+        loadProjects,
+        realpath: async (p) =>
+          p === '/alias/proj' || p.endsWith('/alias/proj')
+            ? '/real/proj'
+            : p,
+      })
+    ).resolves.toEqual({
+      origin: 'via-realpath.webflow.io',
+      source: 'stagepass link',
+    });
+
+    const loadSame = async () => ({
+      projects: {
+        p: { root: '/same', origins: ['fallback.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/same', {}, {
+        loadProjects: loadSame,
+        realpath: async () => {
+          throw new Error('ENOENT');
+        },
+      })
+    ).resolves.toEqual({
+      origin: 'fallback.webflow.io',
+      source: 'stagepass link',
+    });
+  });
 });
 
 describe('resolveUpgradeModules precedence', () => {
@@ -178,7 +288,8 @@ describe('resolveUpgradeModules precedence', () => {
       { cwd: '/p', data: { origin: 's.io' }, pkg: {}, options: {} },
       base({ interactive: true, confirm: async () => true, ask: vi.fn() })
     );
-    expect(r.modules).toEqual(['cookies']);
+    // F-11: confirm yes must return `{ ok: true, ... }` (not ok: false).
+    expect(r).toMatchObject({ ok: true, modules: ['cookies'], source: 'live site s.io' });
     const ask = vi.fn().mockResolvedValueOnce('bogus').mockResolvedValueOnce('maintenance');
     r = await resolveUpgradeModules(
       { cwd: '/p', data: { origin: 's.io' }, pkg: {}, options: {} },

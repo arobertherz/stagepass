@@ -263,19 +263,231 @@ export async function planScaffoldFiles(options, deps = {}) {
 }
 
 /**
- * List relative paths that already exist and would be overwritten.
+ * List relative paths that block scaffolding: existing files, non-directory
+ * intermediate segments, or any symlink on the path within the target dir.
+ * Uses lstat so symlinks are never followed.
+ *
  * @param {string} targetDir
  * @param {{ relativePath: string }[]} files
- * @param {{ pathExists: (p: string) => Promise<boolean> }} fs
+ * @param {{ lstat: (p: string) => Promise<import('node:fs').Stats> }} fs
  */
 export async function findConflicts(targetDir, files, fs) {
   /** @type {string[]} */
   const conflicts = [];
+  const seen = new Set();
   for (const file of files) {
-    const abs = path.join(targetDir, file.relativePath);
-    if (await fs.pathExists(abs)) {
-      conflicts.push(file.relativePath);
+    const parts = String(file.relativePath || '')
+      .split(/[\\/]/)
+      .filter(Boolean);
+    let cur = targetDir;
+    for (let i = 0; i < parts.length; i++) {
+      cur = path.join(cur, parts[i]);
+      const rel = parts.slice(0, i + 1).join('/');
+      if (seen.has(rel)) {
+        if (conflicts.includes(rel)) break;
+        continue;
+      }
+      let st;
+      try {
+        st = await fs.lstat(cur);
+      } catch (err) {
+        if (err && /** @type {{ code?: string }} */ (err).code === 'ENOENT') break;
+        throw err;
+      }
+      const isLast = i === parts.length - 1;
+      if (st.isSymbolicLink()) {
+        conflicts.push(rel);
+        seen.add(rel);
+        break;
+      }
+      if (isLast) {
+        conflicts.push(rel);
+        seen.add(rel);
+        break;
+      }
+      if (!st.isDirectory()) {
+        conflicts.push(rel);
+        seen.add(rel);
+        break;
+      }
+      seen.add(rel);
     }
   }
   return conflicts;
+}
+
+/**
+ * Ensure targetDir and its ancestors are not files (and target is not a symlink).
+ * @param {string} targetDir
+ * @param {{ lstat: (p: string) => Promise<import('node:fs').Stats> }} fs
+ * @returns {Promise<{ ok: true } | { ok: false, error: string }>}
+ */
+export async function assertScaffoldParentPath(targetDir, fs) {
+  const resolved = path.resolve(targetDir);
+  let cur = resolved;
+  for (;;) {
+    let st;
+    try {
+      st = await fs.lstat(cur);
+    } catch (err) {
+      const code = err && /** @type {{ code?: string }} */ (err).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        // Missing path, or an ancestor is a file (ENOTDIR when walking through it).
+        if (code === 'ENOTDIR') {
+          const parent = path.dirname(cur);
+          return {
+            ok: false,
+            error: `Parent path is a file, not a directory: ${parent === cur ? cur : parent}`,
+          };
+        }
+        const next = path.dirname(cur);
+        if (next === cur) break;
+        cur = next;
+        continue;
+      }
+      throw err;
+    }
+    if (cur === resolved) {
+      if (st.isSymbolicLink()) {
+        return { ok: false, error: `Target path is a symlink: ${cur}` };
+      }
+      if (st.isFile()) {
+        return { ok: false, error: `Target path is a file, not a directory: ${cur}` };
+      }
+      if (!st.isDirectory()) {
+        return { ok: false, error: `Target path is not a directory: ${cur}` };
+      }
+    } else if (st.isFile()) {
+      return { ok: false, error: `Parent path is a file, not a directory: ${cur}` };
+    } else if (!st.isDirectory() && !st.isSymbolicLink()) {
+      return { ok: false, error: `Parent path is not a directory: ${cur}` };
+    }
+    const next = path.dirname(cur);
+    if (next === cur) break;
+    cur = next;
+  }
+  return { ok: true };
+}
+
+/**
+ * Remove paths created by this scaffold run (reverse order). Never touches
+ * pre-existing files. When the target dir itself was created, remove it entirely.
+ *
+ * @param {string[]} created
+ * @param {string | null} createdTargetDir
+ * @param {{ remove: (p: string) => Promise<void> }} fs
+ */
+export async function rollbackScaffold(created, createdTargetDir, fs) {
+  if (createdTargetDir) {
+    try {
+      await fs.remove(createdTargetDir);
+    } catch {
+      /* best effort */
+    }
+    return;
+  }
+  for (const p of [...created].reverse()) {
+    try {
+      await fs.remove(p);
+    } catch {
+      /* best effort */
+    }
+  }
+}
+
+/**
+ * Create missing directories under targetRoot and record them for rollback.
+ * @param {string} dir
+ * @param {string} targetRoot
+ * @param {string[]} created
+ * @param {object} fs
+ */
+async function ensureDirTracked(dir, targetRoot, created, fs) {
+  const resolved = path.resolve(dir);
+  /** @type {string[]} */
+  const missing = [];
+  let cur = resolved;
+  while (cur.startsWith(targetRoot + path.sep)) {
+    try {
+      await fs.lstat(cur);
+      break;
+    } catch (err) {
+      if (!(err && /** @type {{ code?: string }} */ (err).code === 'ENOENT')) throw err;
+      missing.push(cur);
+    }
+    const next = path.dirname(cur);
+    if (next === cur) break;
+    cur = next;
+  }
+  for (const p of missing.reverse()) {
+    await fs.mkdir(p);
+    created.push(p);
+  }
+}
+
+/**
+ * Write scaffold files with containment checks and rollback on failure.
+ *
+ * @param {string} targetDir
+ * @param {{ relativePath: string, contents: string }[]} files
+ * @param {object} fs fs-extra-like
+ * @returns {Promise<{ ok: true, created: string[], createdTargetDir: string | null } | { ok: false, error: string, errorObj?: unknown }>}
+ */
+export async function writeScaffoldFiles(targetDir, files, fs) {
+  const resolvedTarget = path.resolve(targetDir);
+  /** @type {string[]} */
+  const created = [];
+  let createdTargetDir = /** @type {string | null} */ (null);
+  let targetExisted = false;
+  try {
+    await fs.lstat(resolvedTarget);
+    targetExisted = true;
+  } catch (err) {
+    if (!(err && /** @type {{ code?: string }} */ (err).code === 'ENOENT')) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), errorObj: err };
+    }
+  }
+
+  const fail = async (error, errorObj) => {
+    await rollbackScaffold(created, createdTargetDir, fs);
+    return { ok: false, error, errorObj };
+  };
+
+  try {
+    if (!targetExisted) {
+      await fs.ensureDir(resolvedTarget);
+      createdTargetDir = resolvedTarget;
+      created.push(resolvedTarget);
+    }
+
+    const realTarget = await fs.realpath(resolvedTarget);
+
+    for (const file of files) {
+      const abs = path.resolve(resolvedTarget, file.relativePath);
+      const relToTarget = path.relative(resolvedTarget, abs);
+      if (
+        relToTarget.startsWith('..') ||
+        path.isAbsolute(relToTarget) ||
+        relToTarget.split(path.sep).includes('..')
+      ) {
+        return fail(`Refusing to write outside project directory: ${file.relativePath}`);
+      }
+
+      await ensureDirTracked(path.dirname(abs), resolvedTarget, created, fs);
+
+      const realParent = await fs.realpath(path.dirname(abs));
+      const realAbs = path.join(realParent, path.basename(abs));
+      const relReal = path.relative(realTarget, realAbs);
+      if (relReal.startsWith('..') || path.isAbsolute(relReal)) {
+        return fail(`Refusing to write outside project directory: ${file.relativePath}`);
+      }
+
+      await fs.writeFile(abs, file.contents, 'utf8');
+      created.push(abs);
+    }
+
+    return { ok: true, created, createdTargetDir };
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err), err);
+  }
 }

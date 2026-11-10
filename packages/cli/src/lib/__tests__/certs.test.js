@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +13,23 @@ import {
   assertNoDestructiveCertOps,
   DESTRUCTIVE_CERT_OPS,
   runCertsCheck,
+  handshakeLocalDomain,
+  isCaddyServing443,
+  domainsNeedingSiteCertRenewal,
 } from '../certs.js';
+
+/** @param {import('node:crypto').X509Certificate} peer */
+function mockTlsConnect(peer) {
+  return (_opts, onSecure) => {
+    const socket = {
+      getPeerX509Certificate: () => peer,
+      destroy() {},
+      on() {},
+    };
+    process.nextTick(() => onSecure());
+    return socket;
+  };
+}
 
 const fixturesDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -194,5 +210,224 @@ describe('certificate helpers', () => {
     ).toBe(true);
     expect(withSecondary.orphans).toHaveLength(0);
     expect(withSecondary.trust.orphans).toHaveLength(0);
+  });
+
+  // Mutant `(list && []).filter` always yields [] for array inputs and would
+  // drop unrelated orphans; `(list || [])` keeps non-matching entries.
+  it('keeps orphans that are not the secondary brew root fingerprint', async () => {
+    const rootPath = path.join(fixturesDir, 'test-ca.crt');
+    const secondaryPem = path.join(fixturesDir, 'test-ca-short.crt');
+    const brewPrefix = '/opt/homebrew';
+    const secondaryPath = path.join(
+      brewPrefix,
+      'var',
+      'lib',
+      'caddy',
+      'pki',
+      'authorities',
+      'local',
+      'root.crt'
+    );
+    const rootCert = loadCertificate(fs.readFileSync(rootPath));
+    const secondaryCert = loadCertificate(fs.readFileSync(secondaryPem));
+    const rootFp = normalizeFingerprint(rootCert.fingerprint256);
+    const secondaryFp = normalizeFingerprint(secondaryCert.fingerprint256);
+    const otherFp = 'AA'.repeat(32);
+    const now = new Date(
+      new Date(rootCert.validFrom).getTime() + 24 * 60 * 60 * 1000
+    );
+    const report = await runCertsCheck({
+      rootPath,
+      brewPrefix,
+      skipHandshake: true,
+      now,
+      pathExists: async (p) => p === rootPath || p === secondaryPath,
+      readFile: async (p, enc) => {
+        if (p === rootPath) return fs.readFileSync(rootPath, enc);
+        if (p === secondaryPath) return fs.readFileSync(secondaryPem, enc);
+        throw new Error(`unexpected read: ${p}`);
+      },
+      exec: async () => ({
+        stdout: [
+          `SHA-256 hash: ${rootFp}`,
+          'SHA-1 hash: 1111111111111111111111111111111111111111',
+          '',
+          `SHA-256 hash: ${otherFp}`,
+          'SHA-1 hash: 2222222222222222222222222222222222222222',
+          '',
+          `SHA-256 hash: ${secondaryFp}`,
+          'SHA-1 hash: 3333333333333333333333333333333333333333',
+        ].join('\n'),
+        stderr: '',
+        code: 0,
+      }),
+    });
+    expect(report.secondaryRoots[0]?.fingerprint256).toBe(secondaryFp);
+    expect(report.orphans.map((o) => o.sha256)).toContain(otherFp);
+    expect(report.orphans.map((o) => o.sha256)).not.toContain(secondaryFp);
+  });
+});
+
+describe('[M-1] TLS only when Caddy serves :443', () => {
+  const rootPath = path.join(fixturesDir, 'test-ca.crt');
+  const sitePem = fs.readFileSync(path.join(fixturesDir, 'test-site.crt'));
+  const siteCert = loadCertificate(sitePem);
+  const rootCert = loadCertificate(fs.readFileSync(rootPath));
+  const midLife = new Date(
+    new Date(rootCert.validFrom).getTime() + 24 * 60 * 60 * 1000
+  );
+  const securityOut = fs.readFileSync(
+    path.join(fixturesDir, 'security-find-certificate.txt'),
+    'utf8'
+  );
+
+  it('[M-1] isCaddyServing443 detects caddy vs foreign vs empty', async () => {
+    expect(
+      await isCaddyServing443({
+        exec: async () => ({
+          stdout: 'COMMAND PID\ncaddy 1\n',
+          stderr: '',
+          code: 0,
+        }),
+      })
+    ).toBe(true);
+    expect(
+      await isCaddyServing443({
+        exec: async () => ({
+          stdout: 'COMMAND PID\nPython 9\n',
+          stderr: '',
+          code: 0,
+        }),
+      })
+    ).toBe(false);
+    expect(
+      await isCaddyServing443({
+        exec: async () => {
+          const err = new Error('no listener');
+          /** @type {any} */ (err).code = 1;
+          throw err;
+        },
+      })
+    ).toBe(false);
+  });
+
+  it('[M-1] skips handshakes when :443 is not caddy (no TLS fail / renew)', async () => {
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: midLife,
+      domains: ['my-project.sp', 'other.sp'],
+      caddyServing443: false,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(report.handshakes).toEqual([
+      {
+        status: 'skip',
+        servername: 'my-project.sp',
+        reason: 'Caddy is not serving :443; TLS not checkable.',
+      },
+      {
+        status: 'skip',
+        servername: 'other.sp',
+        reason: 'Caddy is not serving :443; TLS not checkable.',
+      },
+    ]);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([]);
+  });
+
+  it('[M-1] reports fail + renew for bad leaf while Caddy serves :443', async () => {
+    const expiredNow = new Date(
+      new Date(siteCert.validTo).getTime() + 24 * 60 * 60 * 1000
+    );
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: expiredNow,
+      domains: ['my-project.sp'],
+      caddyServing443: true,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(connect).toHaveBeenCalled();
+    expect(report.handshakes[0]?.status).toBe('fail');
+    expect(report.handshakes[0]?.reason).toMatch(/expired/i);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([
+      'my-project.sp',
+    ]);
+  });
+
+  it('[M-1] SAN mismatch while Caddy serves :443 is fail for renew', async () => {
+    const connect = vi.fn(mockTlsConnect(siteCert));
+    const report = await runCertsCheck({
+      rootPath,
+      now: midLife,
+      domains: ['wrong.sp'],
+      caddyServing443: true,
+      connect,
+      exec: async () => ({ stdout: securityOut, stderr: '', code: 0 }),
+    });
+    expect(report.handshakes[0]?.status).toBe('fail');
+    expect(report.handshakes[0]?.reason).toMatch(/SAN|CN/i);
+    expect(domainsNeedingSiteCertRenewal(report.handshakes)).toEqual([
+      'wrong.sp',
+    ]);
+  });
+});
+describe('[M-2] no 90-day warning for short-lived leaves', () => {
+  it('[M-2] 12h leaf remaining is ok with warnDays 0', () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 12 * 60 * 60 * 1000);
+    expect(assessCertificateValidity(cert, { now, warnDays: 0 }).status).toBe(
+      'ok'
+    );
+    expect(assessCertificateValidity(cert, { now, warnDays: 90 }).status).toBe(
+      'warn'
+    );
+  });
+
+  it('[M-2] handshake treats 12h leaf as ok (not warn)', async () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 12 * 60 * 60 * 1000);
+    const result = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now,
+      connect: mockTlsConnect(cert),
+    });
+    expect(result.status).toBe('ok');
+  });
+
+  it('[M-2] expired leaf fails; not-yet-valid leaf fails', async () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const expired = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now: new Date(new Date(cert.validTo).getTime() + 60_000),
+      connect: mockTlsConnect(cert),
+    });
+    expect(expired.status).toBe('fail');
+    expect(expired.reason).toMatch(/expired/i);
+
+    const early = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now: new Date(new Date(cert.validFrom).getTime() - 60_000),
+      connect: mockTlsConnect(cert),
+    });
+    expect(early.status).toBe('fail');
+    expect(early.reason).toMatch(/not valid yet/i);
+  });
+
+  it('[M-2] root with <90 days still warns', () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-ca-short.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 10 * 24 * 60 * 60 * 1000);
+    expect(assessCertificateValidity(cert, { now }).status).toBe('warn');
   });
 });

@@ -21,7 +21,7 @@ npx @stagepass/cli@2 setup
 ## Requirements
 
 - **macOS** (system commands refuse other platforms with exit code 1; this is not a breaking change because those commands never worked off macOS)
-- Node.js 18+ at runtime (`engines.node`); use Node 22 or 24 for local development and CI
+- Published CLI 2.2.7: Node.js 18+ (`engines.node` `>=18.0.0`). CLI 2.3.0 (unreleased): Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
 - Homebrew
 
 `stagepass --version` and `stagepass --help` work on any platform. For tests/CI only, set `STAGEPASS_SKIP_PLATFORM_CHECK=1` to bypass the macOS guard (not for production use).
@@ -49,15 +49,15 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
-| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). Uses `launchctl kickstart` when autostart is on. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL; sudo only if unprivileged kill fails). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). Migrates legacy Caddyfile blocks if needed. |
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
-| `stagepass stop` | Stop services. With autostart on: `launchctl bootout` until next login (`autostart off` removes permanently). |
+| `stagepass stop` | Stop Caddy & PHP. If autostart is installed/loaded, `launchctl bootout` first (until next login); use `autostart off` to disable permanently. |
 | `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files: **(unreleased, CLI 2.3.0)**. Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
-| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
+| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm, or `--yes --i-understand-root-renewal`); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
 | `stagepass autostart on\|off\|status` | Manage a user LaunchAgent (`io.github.arobertherz.stagepass`) that runs `stagepass daemon` at login. |
 | `stagepass daemon` | Non-interactive LaunchAgent helper (PHP-FPM ensure, certs log-only, `caddy run`, macOS notifications). Never uses sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
@@ -73,12 +73,31 @@ All commands support `-v, --verbose` where applicable.
 Features marked **(unreleased, CLI 2.3.0)** are not in published npm `latest` (`2.2.7`).
 
 - `doctor` and `certs check` are read-only. They never delete keychain items or certificate files.
-- Prefer CDN major pin `@2` in Webflow custom code. Doctor unpinned-CDN warnings (`@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md` / `stagepass.json` / snippet HTML files): **(unreleased, CLI 2.3.0)**.
-- `certs renew` **(unreleased, CLI 2.3.0)** is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes). Orphans are removed only by SHA-1 via `renew --remove-orphans`.
+- Prefer CDN major pin `@2` in Webflow custom code. Doctor unpinned-CDN warnings (`@latest`, bare `@1`, or unversioned `@stagepass/loader` / `@stagepass/modules` in recommended snippets and in the current project's `README.md`, `stagepass.json`, and `*.html` files directly in the project root and in `snippets/` — non-recursive, regular files ≤ 1 MB, symlinks skipped): **(unreleased, CLI 2.3.0)**.
+- `certs renew` **(unreleased, CLI 2.3.0)** is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes; needs two interactive confirmations without `--yes`, or `--yes --i-understand-root-renewal`). `--yes` alone always aborts for `--root` (TTY or not). Do not combine `--root` with `--remove-orphans`; run them as separate commands. Orphans are removed only by SHA-1 via `renew --remove-orphans`.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
-- Autostart runs as your user. `start` / `stop` are autostart-aware (`kickstart` / `bootout`). If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Use interactive `stagepass start` to resolve conflicts (name + PID confirmation; SIGTERM then optional SIGKILL).
+- Autostart runs as your user (same privilege model as interactive `caddy start`). `start` kickstarts the agent when present; `stop` bootouts until the next login. If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Interactive `start` confirms before signalling any non-caddy listener (name + PID; SIGTERM then optional SIGKILL). Own processes are signalled without elevated rights first; `sudo` only when needed after confirmation. There is no standby `sudo -v`.
+- `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist.
 - Published CLI requires Node `>=18.0.0`. CLI 2.3.0 (unreleased) raises it to `>=20.17.0`.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
+
+#### macOS permissions (keep these separate)
+
+These are different prompts. Grant only the narrow dialog macOS shows. Stagepass never asks for Full Disk Access or any security bypass.
+
+| Concern | What it is | Typical fix |
+| :--- | :--- | :--- |
+| **System CA trust** | Trusting Caddy's local CA in the System keychain (`stagepass certs trust` / `caddy trust`) so browsers accept `https://*.sp`. | Run `stagepass certs check`, then `certs trust` if needed. Unrelated to TCC file access. |
+| **Browser Local Network Access** | Chrome (and similar) gating public HTTPS pages that fetch `https://*.sp` / loopback. | Allow Local Network for the **browser** when it prompts. Not a Node Desktop-files grant. |
+| **Node files access (TCC)** | macOS may ask the **Node** binary for access to a folder (commonly **Desktop**) when the CLI or LaunchAgent reads a project / test package living there. | Grant that folder to Node if you intentionally keep projects on Desktop. Prefer installing the CLI in a stable location (below) so everyday use does not depend on Desktop TCC. |
+
+#### Install location and LaunchAgent paths
+
+- Prefer a **stable** global install (`npm install -g @stagepass/cli` into the normal npm prefix, or another fixed absolute path). Avoid pointing autostart at a temporary Desktop unpack / ad-hoc test tarball when you can use the published package instead.
+- `autostart on` records **absolute** Node and CLI paths (often Homebrew Cellar Node + the realpathed `stagepass` entry) plus the validated Homebrew `PATH`. It does not follow later `brew` upgrades automatically.
+- After a Homebrew Node upgrade/cleanup, moving the CLI, or changing the npm prefix, run `stagepass autostart on` again so ProgramArguments stay valid. A brief local outage while the agent reloads is expected.
+- Upgrading the global CLI package does **not** rewrite an existing LaunchAgent that still points at an older test path. Switch deliberately: `stagepass autostart off` then `autostart on` with the stable CLI you want. Do **not** delete a test directory while a loaded agent still references it; disable/refresh the agent first.
+- Development checkouts (`packages/cli`, Desktop test packs) and the published global install are different binaries; compare behaviour with one style at a time.
 
 ### `new` options
 
@@ -256,6 +275,17 @@ stagepass link --no-allow-all-origins
 ```
 
 Hand-written content outside `# START:` / `# END:` markers is left untouched. Unparsable legacy blocks are left unchanged with a warning. Migration is idempotent (second run does nothing and creates no new backup).
+
+## Troubleshooting (CLI)
+
+| Symptom | What to check |
+| :--- | :--- |
+| Autostart runs at login but `caddy: command not found` / daemon exits | Re-run `stagepass autostart on` so the plist embeds Homebrew `PATH`. Confirm `brew --prefix` and that `which caddy` points at `$prefix/bin/caddy` (Cellar symlink OK). |
+| macOS asks Node for Desktop access | Normal TCC when the CLI/agent reads a project under Desktop. Grant the folder or move the project / use a stable global CLI install. Not the same as browser Local Network or CA trust. |
+| Autostart still runs an old Desktop test binary after `npm i -g` | Global upgrade does not migrate LaunchAgent ProgramArguments. `autostart off` then `on` with the stable CLI; do not remove the old path while the agent still references it. |
+| `stagepass start` spinner floods the terminal (weird ANSI) | Upgrade to a build with the spinner geometry guard. Rare with TTY width `0`. |
+| `start` asks for a password at every boot | There is no unconditional `sudo -v`. Only confirmed conflict resolution may use `sudo kill` / `apachectl`. |
+| Port 443 bind failure under LaunchAgent | Expected when something else owns 443; daemon exits `0` (no restart loop). Free the port or use interactive `stagepass start`. |
 
 ## Related Packages
 

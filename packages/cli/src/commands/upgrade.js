@@ -19,7 +19,7 @@ import {
   resolveSnippetLoaderVersion,
   satisfiesSimple,
 } from '../lib/registry.js';
-import { detectSite } from '../lib/site-detect.js';
+import { detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
   applyProjectSync,
   planProjectSync,
@@ -203,6 +203,15 @@ export async function upgrade(options = {}, deps = {}) {
     return 1;
   }
 
+  // Validate --site before any registry / network access (no partial side effects).
+  if (options.site) {
+    const siteCheck = normalizeSiteUrl(options.site);
+    if (!siteCheck.ok) {
+      log(chalk.red(siteCheck.error));
+      return 1;
+    }
+  }
+
   const names = findStagepassDeps(pkg).map((d) => d.name);
   let resolvedTargets;
   try {
@@ -345,14 +354,34 @@ export async function upgrade(options = {}, deps = {}) {
   if (options.dryRun) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
-    if (changes.length > 0) {
-      const trailingNewline = raw.endsWith('\n');
-      const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
-      await fse.writeFile(pkgPath, pkgBody, 'utf8');
-      log(chalk.green('\nUpdated package.json.'));
+    try {
+      if (changes.length > 0) {
+        try {
+          if ((await fse.lstat(pkgPath)).isSymbolicLink()) {
+            log(chalk.red('package.json is a symlink; refusing to write.'));
+            return 1;
+          }
+        } catch {
+          /* missing / unreadable: writeFile will surface the error */
+        }
+        const trailingNewline = raw.endsWith('\n');
+        const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
+        await fse.writeFile(pkgPath, pkgBody, 'utf8');
+        log(chalk.green('\nUpdated package.json.'));
+      }
+      await applyProjectSync(cwd, plan.writes, fse);
+      if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
+    } catch (err) {
+      // Restore package.json if project-sync failed after the pkg write.
+      try {
+        if (changes.length > 0) await fse.writeFile(pkgPath, raw, 'utf8');
+      } catch {
+        /* best effort */
+      }
+      log(chalk.red(err instanceof Error ? err.message : String(err)));
+      if (options.verbose === true && err instanceof Error && err.stack) log(err.stack);
+      return 1;
     }
-    await applyProjectSync(cwd, plan.writes, fse);
-    if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
   if (!snippetVersion) {

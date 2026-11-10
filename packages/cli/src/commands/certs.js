@@ -169,7 +169,9 @@ export async function certsCheck(options = {}) {
           ? chalk.green('ok')
           : hs.status === 'warn'
             ? chalk.yellow('warn')
-            : chalk.red('fail');
+            : hs.status === 'skip'
+              ? chalk.dim('not checkable')
+              : chalk.red('fail');
       console.log(`[${tag}] TLS ${hs.servername}: ${hs.reason}`);
     }
   }
@@ -267,6 +269,15 @@ export async function certsRenew(options = {}) {
 
   // --- root renewal (move CA folder) ---
   if (options.root === true) {
+    if (options.removeOrphans === true) {
+      console.log(
+        chalk.red(
+          'certs renew --root cannot be combined with --remove-orphans. Run them as separate commands.'
+        )
+      );
+      return 1;
+    }
+
     assertDestructiveCertOpAllowed('renewRootMoveBackup');
 
     let confirmed = false;
@@ -275,6 +286,14 @@ export async function certsRenew(options = {}) {
       options.iUnderstandRootRenewal === true
     ) {
       confirmed = true;
+    } else if (options.yes === true) {
+      // AC-15: --yes alone always aborts (TTY or not); need the explicit flag too.
+      console.log(
+        chalk.red(
+          'certs renew --root with --yes also requires --i-understand-root-renewal. Or omit --yes for two interactive confirmations.'
+        )
+      );
+      return 1;
     } else if (!canPrompt) {
       console.log(
         chalk.red(
@@ -507,6 +526,10 @@ export async function certsRenew(options = {}) {
   if (result.deleted.length > 0) {
     if (result.reloaded) {
       console.log(chalk.green('caddy reload completed.'));
+    } else if (result.reloadDeferred) {
+      console.log(
+        chalk.yellow('Caddy is not running; certs issue on next `stagepass start`.')
+      );
     } else {
       console.log(
         chalk.red(`caddy reload failed: ${result.reloadError || 'unknown error'}`)

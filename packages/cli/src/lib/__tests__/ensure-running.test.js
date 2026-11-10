@@ -44,7 +44,7 @@ describe('ensureStagepassReady', () => {
     log: vi.fn(),
     cwd: '/proj',
     projectsPath: '/tmp/projects.json',
-    start: vi.fn(async () => {}),
+    start: vi.fn(async () => 0),
     confirm: vi.fn(async () => false),
     isStagepassRunning: vi.fn(async () => true),
     findProjectByRoot: vi.fn(async () => ({ domain: 'proj.sp' })),
@@ -69,8 +69,12 @@ describe('ensureStagepassReady', () => {
       ci: false,
       stdin: { isTTY: true },
       stdout: { isTTY: true },
-      isStagepassRunning: vi.fn(async () => false),
+      isStagepassRunning: vi
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
       confirm: vi.fn(async () => true),
+      start: vi.fn(async () => 0),
     });
     const result = await ensureStagepassReady({ verbose: true }, deps);
     expect(result.started).toBe(true);
@@ -110,7 +114,11 @@ describe('ensureStagepassReady', () => {
 
   it('not running + --yes: auto-starts without prompt', async () => {
     const deps = baseDeps({
-      isStagepassRunning: vi.fn(async () => false),
+      isStagepassRunning: vi
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+      start: vi.fn(async () => 0),
     });
     const result = await ensureStagepassReady({ yes: true }, deps);
     expect(result.started).toBe(true);
@@ -118,6 +126,27 @@ describe('ensureStagepassReady', () => {
     expect(deps.start).toHaveBeenCalledWith(
       expect.objectContaining({ interactive: false })
     );
+  });
+
+  it('start returns undefined: does not count as started/running', async () => {
+    const deps = baseDeps({
+      isStagepassRunning: vi.fn(async () => false),
+      start: vi.fn(async () => undefined),
+    });
+    const result = await ensureStagepassReady({ yes: true }, deps);
+    expect(result.started).toBe(false);
+    expect(result.running).toBe(false);
+    expect(String(deps.log.mock.calls[0][0])).toMatch(/Could not start Stagepass/);
+  });
+
+  it('start returns 0 but Stagepass still down: started=false', async () => {
+    const deps = baseDeps({
+      isStagepassRunning: vi.fn(async () => false),
+      start: vi.fn(async () => 0),
+    });
+    const result = await ensureStagepassReady({ yes: true }, deps);
+    expect(result.started).toBe(false);
+    expect(result.running).toBe(false);
   });
 
   it('not linked (warn): prints stagepass link hint and continues', async () => {

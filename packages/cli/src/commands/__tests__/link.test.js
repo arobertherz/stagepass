@@ -32,10 +32,17 @@ describe('link command', () => {
     fs.pathExists.mockResolvedValue(false);
     fs.ensureDir.mockResolvedValue();
     fs.writeFile.mockResolvedValue();
+    fs.rename.mockResolvedValue();
     fs.readFile.mockResolvedValue('');
     fs.copy.mockResolvedValue();
     execa.mockResolvedValue({});
   });
+
+  /** Atomic saveProjects writes `${projects}.pid.tmp` then rename. */
+  const projectWriteCalls = () =>
+    fs.writeFile.mock.calls.filter(
+      (c) => c[0] === mockProjects || String(c[0]).startsWith(`${mockProjects}.`)
+    );
 
   afterEach(() => {
     process.cwd = originalCwd;
@@ -130,7 +137,7 @@ test.sp {
       allowAllOrigins: true,
     });
 
-    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const projectWrites = projectWriteCalls();
     expect(projectWrites.length).toBeGreaterThan(0);
     const doc = JSON.parse(projectWrites.at(-1)[1]);
     expect(doc.projects['cors-app.sp'].origins).toEqual([
@@ -181,7 +188,7 @@ cors-app.sp {
 
     await link('cors-app', { removeOrigin: ['drop.example.com'] });
 
-    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const projectWrites = projectWriteCalls();
     const doc = JSON.parse(projectWrites.at(-1)[1]);
     expect(doc.projects['cors-app.sp'].origins).toEqual(['keep.example.com']);
 
@@ -214,7 +221,7 @@ kept.sp {
 
     await link('kept', {});
 
-    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const projectWrites = projectWriteCalls();
     const doc = JSON.parse(projectWrites.at(-1)[1]);
     expect(doc.projects['kept.sp'].allowAllOrigins).toBe(true);
     expect(doc.projects['kept.sp'].origins).toEqual(['live.example.com']);
@@ -242,7 +249,7 @@ kept.sp {
 
     await link('project', {});
 
-    const projectWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockProjects);
+    const projectWrites = projectWriteCalls();
     const doc = JSON.parse(projectWrites.at(-1)[1]);
     expect(doc.projects['project.sp'].origins).toEqual([
       'project.webflow.io',

@@ -15,7 +15,7 @@ export async function unlink(domain, options = {}) {
   const resolved = resolveLinkDomain(domain, folderName);
   if (!resolved.ok) {
     console.log(chalk.red(`❌ ${resolved.error}`));
-    return;
+    return 1;
   }
 
   const targetDomain = resolved.domain;
@@ -27,7 +27,7 @@ export async function unlink(domain, options = {}) {
   try {
     if (!(await fs.pathExists(caddyFilePath))) {
       spinner.warn('No Caddyfile found. Nothing to unlink.');
-      return;
+      return 0;
     }
 
     let content = await fs.readFile(caddyFilePath, 'utf-8');
@@ -35,7 +35,7 @@ export async function unlink(domain, options = {}) {
 
     if (!result.removed) {
       spinner.warn(`Domain ${chalk.bold(targetDomain)} is not linked.`);
-      return;
+      return 0;
     }
 
     await fs.writeFile(caddyFilePath, result.content ? `${result.content}\n` : '', 'utf-8');
@@ -43,16 +43,18 @@ export async function unlink(domain, options = {}) {
   } catch (e) {
     spinner.fail('Failed to update config.');
     if (options.verbose) console.error(e);
-    return;
+    return 1;
   }
 
   try {
     const stdioMode = options.verbose ? 'inherit' : 'ignore';
     await execa('caddy', ['reload', '--config', caddyFilePath], { stdio: stdioMode });
     spinner.succeed(`Unlinked: ${targetDomain}`);
+    return 0;
   } catch (error) {
     spinner.warn('Config updated, but Caddy reload failed.');
     console.log(chalk.dim('   Is Stagepass running? Try: stagepass start'));
     if (options.verbose) console.error(error);
+    return 0;
   }
 }

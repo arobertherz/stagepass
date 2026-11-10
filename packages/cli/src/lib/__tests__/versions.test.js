@@ -44,6 +44,43 @@ describe('package versions (generated)', () => {
     expect(fs.readFileSync(generatedPath, 'utf8')).toBe(before);
   });
 
+  it('sync-cli-versions.mjs --check exits 0 when in sync and writes nothing', () => {
+    const before = fs.readFileSync(generatedPath, 'utf8');
+    execFileSync(process.execPath, [syncScript, '--check'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(fs.readFileSync(generatedPath, 'utf8')).toBe(before);
+  });
+
+  it('sync-cli-versions.mjs --check exits 1 when drifted and writes nothing', () => {
+    const before = fs.readFileSync(generatedPath, 'utf8');
+    const broken = before.replace(
+      /export const LOADER_VERSION = "[^"]*";/,
+      'export const LOADER_VERSION = "0.0.0-drift";'
+    );
+    expect(broken).not.toBe(before);
+    fs.writeFileSync(generatedPath, broken, 'utf8');
+    try {
+      let threw = false;
+      try {
+        execFileSync(process.execPath, [syncScript, '--check'], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch (err) {
+        threw = true;
+        expect(err.status).toBe(1);
+      }
+      expect(threw).toBe(true);
+      expect(fs.readFileSync(generatedPath, 'utf8')).toBe(broken);
+    } finally {
+      fs.writeFileSync(generatedPath, before, 'utf8');
+    }
+  });
+
   it('STAGEPASS_PACKAGES_VERSION is a deprecated alias of LOADER_VERSION', () => {
     expect(STAGEPASS_PACKAGES_VERSION).toBe(LOADER_VERSION);
   });

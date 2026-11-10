@@ -160,7 +160,8 @@ export function createProgram(deps = {}) {
       'Disable allow-all CORS and use the origin allowlist'
     )
     .action(async (domain, options) => {
-      await link(domain, options);
+      const code = await link(domain, options);
+      if (typeof code === 'number') process.exitCode = code;
     });
 
   program
@@ -169,7 +170,8 @@ export function createProgram(deps = {}) {
     .argument('[domain]', 'Domain name (optional, defaults to current folder name)')
     .option('-v, --verbose', 'Show Caddy reload output')
     .action(async (domain, options) => {
-      await unlink(domain, options);
+      const code = await unlink(domain, options);
+      if (typeof code === 'number') process.exitCode = code;
     });
 
   program
@@ -187,7 +189,8 @@ export function createProgram(deps = {}) {
     )
     .option('-v, --verbose', 'Show detailed Caddy server logs')
     .action(async (options) => {
-      await start(options);
+      const code = await start(options);
+      if (typeof code === 'number') process.exitCode = code;
     });
 
   program

@@ -31,6 +31,16 @@ import { certsTrust, certsRenew } from './certs.js';
 const PORT_IGNORE = ['Google Chrome', 'Chrome Helper', 'OneDrive', 'Music', 'Safari', 'caddy'];
 
 /**
+ * @param {unknown} pid
+ * @returns {boolean}
+ */
+export function isSafePid(pid) {
+  return typeof pid === 'string'
+    ? /^[1-9][0-9]*$/.test(pid)
+    : typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
+}
+
+/**
  * Inspect TCP 443 without sudo (same approach as doctor).
  * @param {object} [opts]
  * @param {import('../lib/exec.js').ExecFn} [opts.exec]
@@ -59,24 +69,53 @@ export async function findPort443Conflict(opts = {}) {
   }
 }
 
+/** process.kill; sudo kill only on EPERM. ESRCH=ok; else ok:false (no throw). */
+async function signalProcess(pid, signal, exec, kill = process.kill) {
+  try {
+    kill(Number(pid), /** @type {NodeJS.Signals} */ (`SIG${signal}`));
+    return { ok: true };
+  } catch (e) {
+    const code = /** @type {{ code?: string }} */ (e)?.code;
+    if (code === 'ESRCH') return { ok: true };
+    if (code !== 'EPERM') {
+      return { ok: false, detail: `Failed to signal PID ${pid}: ${e?.message ?? e}` };
+    }
+  }
+  try {
+    await exec('sudo', ['kill', signal === 'KILL' ? '-KILL' : '-TERM', pid], {
+      stdio: 'inherit',
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: `sudo kill failed for PID ${pid}: ${e?.message ?? e}` };
+  }
+}
+
 /**
+ * Resolve a confirmed port conflict: TERM first, KILL only after a second confirm
+ * if the listener is still present. Never signals without confirmation.
+ * Privilege-scoped: own processes without sudo; sudo only after unprivileged failure.
+ *
  * @param {{ pid: string, name: string }} proc
  * @param {object} opts
- * @param {import('../lib/exec.js').ExecFn} opts.exec
- * @param {(message: string, o?: object) => Promise<boolean>} opts.confirm
+ * @param {import('../lib/exec.js').ExecFn} [opts.exec]
+ * @param {typeof process.kill} [opts.kill]
+ * @param {(message: string, o?: object) => Promise<boolean>} [opts.confirm]
+ * @param {boolean} [opts.interactive]
  * @param {(ms: number) => Promise<void>} [opts.sleep]
  * @param {() => Promise<{ pid: string, name: string }|null>} [opts.recheck]
  * @returns {Promise<{ ok: boolean, cancelled?: boolean, detail?: string }>}
  */
-export async function resolvePort443Conflict(proc, opts) {
-  const exec = opts.exec;
-  const confirm = opts.confirm;
+export async function resolvePort443Conflict(proc, opts = {}) {
+  const exec = opts.exec || defaultExec;
+  const kill = opts.kill || process.kill;
+  const confirm = opts.confirm || defaultConfirm;
   const sleep =
     opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const recheck = opts.recheck || (() => findPort443Conflict({ exec }));
   const pid = String(proc?.pid ?? '');
 
-  if (!/^[1-9][0-9]*$/.test(pid)) {
+  if (!isSafePid(pid)) {
     return {
       ok: false,
       detail: `Refusing to signal process: invalid PID "${proc?.pid}".`,
@@ -89,75 +128,66 @@ export async function resolvePort443Conflict(proc, opts) {
     )
   );
 
-  const shouldStop = await confirm(
+  const shouldTerm = await confirm(
     `Send SIGTERM to ${proc.name} (PID ${pid}) to free port 443?`,
     { default: false }
   );
-  if (!shouldStop) {
+  if (!shouldTerm) {
     return { ok: false, cancelled: true };
   }
 
-  try {
-    await exec('sudo', ['-v'], { stdio: 'inherit' });
-  } catch {
-    return { ok: false, detail: 'sudo required to signal the conflicting process.' };
-  }
-
-  // Prefer graceful service stops for known local stacks, still only after confirm.
-  if (proc.name.includes('nginx')) {
+  let signaled;
+  // Prefer right-free service stops before any sudo (nginx: valet, then brew).
+  if (String(proc.name).includes('nginx')) {
     try {
       await exec('valet', ['stop']);
-      return { ok: true, detail: 'valet stop' };
     } catch {
       try {
         await exec('brew', ['services', 'stop', 'nginx']);
-        return { ok: true, detail: 'brew services stop nginx' };
       } catch {
-        // fall through to signals
+        signaled = await signalProcess(pid, 'TERM', exec, kill);
       }
     }
-  }
-  if (proc.name.includes('httpd')) {
+  } else if (String(proc.name).includes('httpd')) {
     try {
-      await exec('sudo', ['apachectl', 'stop']);
-      return { ok: true, detail: 'apachectl stop' };
+      await exec('sudo', ['apachectl', 'stop'], { stdio: 'inherit' });
     } catch {
-      // fall through
+      signaled = await signalProcess(pid, 'TERM', exec, kill);
     }
+  } else {
+    signaled = await signalProcess(pid, 'TERM', exec, kill);
   }
+  if (signaled?.ok === false) return signaled;
 
-  try {
-    await exec('sudo', ['kill', '-TERM', pid]);
-  } catch (error) {
-    return {
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-    };
-  }
-
-  await sleep(2000);
-  const still = await recheck();
+  await sleep(400);
+  let still = await recheck();
   if (!still || String(still.pid) !== pid) {
     return { ok: true, detail: 'SIGTERM' };
   }
 
-  const escalate = await confirm(
+  const shouldKill = await confirm(
     `${proc.name} (PID ${pid}) is still listening. Send SIGKILL?`,
     { default: false }
   );
-  if (!escalate) {
-    return { ok: false, cancelled: true, detail: 'SIGTERM sent; process still alive.' };
-  }
-
-  try {
-    await exec('sudo', ['kill', '-KILL', pid]);
-    return { ok: true, detail: 'SIGKILL' };
-  } catch (error) {
+  if (!shouldKill) {
     return {
       ok: false,
-      detail: error instanceof Error ? error.message : String(error),
+      cancelled: true,
+      detail: 'Still listening after SIGTERM; SIGKILL not confirmed.',
     };
   }
+
+  const killed = await signalProcess(pid, 'KILL', exec, kill);
+  if (!killed.ok) return killed;
+  await sleep(200);
+  still = await recheck();
+  if (still && String(still.pid) === pid) {
+    return {
+      ok: false,
+      detail: `PID ${pid} still listening after SIGKILL.`,
+    };
+  }
+  return { ok: true, detail: 'SIGKILL' };
 }
 
 /**
@@ -265,24 +295,30 @@ export async function start(options = {}) {
     );
   }
 
-  // 2. Port conflict (no sudo until the user confirms a kill)
+  // 2. Port conflict (no sudo until a confirmed signal needs it; never sudo -v)
   const conflict =
     (await (options.findPort443Conflict || findPort443Conflict)({ exec })) ||
     null;
   if (conflict) {
-    if (!interactive) {
+    if (!interactive && typeof options.confirm !== 'function') {
       console.log(
         chalk.red(
-          `Port 443 is blocked by ${conflict.name} (PID ${conflict.pid}). Refusing to kill without confirmation.`
+          `Port 443 is blocked by ${conflict.name} (PID ${conflict.pid}). Refusing to signal without confirmation.`
         )
       );
-      return;
+      return 1;
     }
     const resolved = await (options.resolvePort443Conflict ||
-      resolvePort443Conflict)(conflict, { exec, confirm, sleep: options.sleep });
+      resolvePort443Conflict)(conflict, {
+      exec,
+      kill: options.kill,
+      confirm,
+      interactive,
+      sleep: options.sleep,
+    });
     if (!resolved.ok) {
       if (resolved.detail) console.log(chalk.red(resolved.detail));
-      return;
+      return 1;
     }
     console.log(chalk.green(`Port freed (${resolved.detail}).`));
   }
@@ -317,6 +353,8 @@ export async function start(options = {}) {
   }
 
   try {
+    // 2.3: ensurePhpFpm prefers `brew services start php`, then `restart`
+    // (2.2.7 always used `restart`). Keep start-first; both stay non-sudo.
     const php = await ensurePhpFpm({
       exec,
       stdio: stdioMode === 'inherit' ? 'inherit' : 'ignore',
@@ -347,7 +385,7 @@ export async function start(options = {}) {
           console.log(
             chalk.red(error instanceof Error ? error.message : String(error))
           );
-          return;
+          return 1;
         }
       }
       try {
@@ -364,7 +402,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
-        return;
+        return 0;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
         console.log(
@@ -392,6 +430,7 @@ export async function start(options = {}) {
     } else {
       console.log(chalk.green('✔ Stagepass is active.'));
     }
+    return 0;
   } catch (error) {
     if (!options.verbose) spinner.fail('Failed to start.');
     else console.log(chalk.red('Failed to start.'));
@@ -401,6 +440,7 @@ export async function start(options = {}) {
     } else if (error instanceof Error) {
       console.log(chalk.red(error.message));
     }
+    return 1;
   } finally {
     if (logFd != null) {
       try {

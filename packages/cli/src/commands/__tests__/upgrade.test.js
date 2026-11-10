@@ -267,6 +267,52 @@ describe('upgrade command', () => {
     expect(await upgrade({ site: 'http://app.webflow.io' }, baseDeps([]))).toBe(1);
     expect(await upgrade({ site: 'https://u:p@app.webflow.io' }, baseDeps([]))).toBe(1);
   });
+
+  it('[P-2][INV-3] leaves symlinked AGENTS.md byte-identical and exits 0 with note', async () => {
+    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-agents-out-'));
+    try {
+      const agentsOutside = path.join(outside, 'AGENTS.md');
+      await fsx.writeFile(agentsOutside, '# outside agents\n');
+      await oldStyleProject({ agents: null, modulesDep: true });
+      await fsx.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
+      const before = await fsx.readFile(agentsOutside, 'utf8');
+      const logs = [];
+      const code = await upgrade(
+        { skipSite: true, yes: true, siteModules: 'cookies' },
+        baseDeps(logs)
+      );
+      expect(code).toBe(0);
+      expect(logs.join('\n')).toMatch(/AGENTS\.md is a symlink; left unchanged/);
+      expect(await fsx.readFile(agentsOutside, 'utf8')).toBe(before);
+    } finally {
+      await fsx.remove(outside);
+    }
+  });
+
+  it('[P-2][INV-3] refuses symlinked package.json with exit 1 and leaves target unchanged', async () => {
+    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-pkg-out-'));
+    try {
+      const pkgOutside = path.join(outside, 'package.json');
+      const pkg = {
+        name: 'app',
+        devDependencies: { '@stagepass/loader': '^2.0.0' },
+      };
+      await fsx.writeFile(pkgOutside, JSON.stringify(pkg, null, 2) + '\n');
+      await fsx.writeFile(
+        path.join(dir, 'stagepass.json'),
+        JSON.stringify({ name: 'app', modules: [], version: 1 }, null, 2) + '\n'
+      );
+      await fsx.symlink(pkgOutside, path.join(dir, 'package.json'));
+      const before = await fsx.readFile(pkgOutside, 'utf8');
+      const logs = [];
+      const code = await upgrade({ skipSite: true, yes: true }, baseDeps(logs));
+      expect(code).toBe(1);
+      expect(logs.join('\n')).toMatch(/package\.json is a symlink/);
+      expect(await fsx.readFile(pkgOutside, 'utf8')).toBe(before);
+    } finally {
+      await fsx.remove(outside);
+    }
+  });
 });
 
 async function snapshot(root) {
@@ -337,6 +383,74 @@ describe('upgrade: published versions only', () => {
     const code = await upgrade({ version: '2.2.0' }, deps(logs, async () => ({ distTags: { latest: '2.0.0' }, versions: ['2.0.0'] })));
     expect(code).toBe(1);
     expect(logs.join('\n')).toMatch(/No published @stagepass\/loader matches 2.2.0/);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+});
+
+describe('upgrade: --site before registry', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-site-'));
+    await fsx.writeJson(
+      path.join(dir, 'package.json'),
+      { name: 'app', devDependencies: { '@stagepass/loader': '^2.0.0' } },
+      { spaces: 2 }
+    );
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  it('rejects an invalid --site before any registry lookup and writes nothing', async () => {
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const logs = [];
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.2.0'] }));
+    const code = await upgrade(
+      { site: 'demo.webflow.io:443' },
+      {
+        cwd: dir,
+        fetchPublished,
+        log: (m) => logs.push(String(m ?? '')),
+        isTTY: false,
+        loadProjects: async () => ({ projects: {} }),
+        detectSite: vi.fn(),
+      }
+    );
+    expect(code).toBe(1);
+    expect(fetchPublished).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toMatch(/must not contain a port/i);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+
+  it.each([
+    [' example.com'],
+    ['example.com '],
+    ['example.com\n'],
+    ['example.com\t'],
+    ['exa\tmple.com'],
+    ['exa\nmple.com'],
+    ['\u0000example.com'],
+  ])('rejects whitespace/controls in --site %j before registry (AC-10)', async (site) => {
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const logs = [];
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.2.0'] }));
+    const detectSite = vi.fn();
+    const code = await upgrade(
+      { site },
+      {
+        cwd: dir,
+        fetchPublished,
+        log: (m) => logs.push(String(m ?? '')),
+        isTTY: false,
+        loadProjects: async () => ({ projects: {} }),
+        detectSite,
+      }
+    );
+    expect(code).toBe(1);
+    expect(fetchPublished).not.toHaveBeenCalled();
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toMatch(/whitespace|control/i);
     expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
   });
 });

@@ -39,8 +39,8 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 * `stagepass certs check` then `stagepass certs trust` if the local CA is not trusted.
 * `stagepass certs renew` **(unreleased, CLI 2.3.0)** repairs failing site certificates. Use `--root` only when you intend to move the local CA folder to a timestamped backup (double confirmation, or `--yes --i-understand-root-renewal`). `--remove-orphans` deletes orphaned keychain roots by SHA-1 after confirmation.
-* Port 443 conflicts: `stagepass start` can identify the process (name and PID) and offer to stop it (SIGTERM first; SIGKILL only after a second confirmation).
-* When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently).
+* Port 443 conflicts: `stagepass start` can identify the process (name and PID) and offer to stop it (SIGTERM first; SIGKILL only after a second confirmation). Own processes are signalled without elevated rights first; `sudo` only when needed. There is no standby `sudo -v`. For nginx, `valet stop` is tried before any sudo.
+* When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently). Autostart plists embed a validated Homebrew `PATH` so login/`daemon` can resolve `caddy`.
 
 ## PHP
 

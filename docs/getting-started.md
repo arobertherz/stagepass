@@ -50,7 +50,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
 * **Security First:** Strict origin whitelisting ensures only *your* local machine can inject code.
-* **Live reload:** `stagepass dev` (unreleased, CLI 2.3.0; preview or repository CLI) watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain (see [dev.md](./dev.md)).
+* **Live reload:** `stagepass dev` (unreleased, CLI 2.3.0; preview or repository CLI) watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain; it checks whether Stagepass is running first (see [dev.md](./dev.md)).
 * **Zero-cost production mode:** Opt-in `data-stagepass-live-src` so visitors load normal `src` / `href` without depending on the loader (see [loader.md](./loader.md#zero-cost-production-mode)).
 
 ## Installation

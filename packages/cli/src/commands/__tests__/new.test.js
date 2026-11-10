@@ -315,6 +315,227 @@ describe('createNew', () => {
   });
 });
 
+describe('createNew INV-4 rollback', () => {
+  /** @type {string} */
+  let tmp;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-new-inv4-'));
+  });
+  afterEach(async () => {
+    await fs.remove(tmp);
+  });
+
+  const baseDeps = (extra = {}) => ({
+    isTTY: false,
+    argv: ['--yes', '--no-git'],
+    templatesRoot: defaultTemplatesRoot(),
+    cwd: tmp,
+    log: () => {},
+    error: () => {},
+    exec: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+    spawn: vi.fn(),
+    fetchPublished: vi.fn(async () => ({ distTags: { latest: '2.4.0' }, versions: ['2.4.0'] })),
+    ...extra,
+  });
+
+  it('refuses when src is a file and leaves the tree unchanged', async () => {
+    const target = path.join(tmp, 'conflict');
+    await fs.ensureDir(target);
+    await fs.writeFile(path.join(target, 'src'), 'KEEP');
+    const before = await fs.readFile(path.join(target, 'src'), 'utf8');
+    const listing = await fs.readdir(target);
+    const errors = [];
+    const code = await createNew(
+      'conflict',
+      { yes: true, dir: target, git: false, siteModules: 'none' },
+      baseDeps({ error: (m) => errors.push(String(m ?? '')) })
+    );
+    expect(code).toBe(1);
+    expect(errors.join('\n')).toMatch(/Refusing to overwrite|src/i);
+    expect(await fs.readFile(path.join(target, 'src'), 'utf8')).toBe(before);
+    expect(await fs.readdir(target)).toEqual(listing);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('refuses when parent path is a file', async () => {
+    const parent = path.join(tmp, 'afile');
+    await fs.writeFile(parent, 'x');
+    const errors = [];
+    const code = await createNew(
+      'child',
+      { yes: true, dir: path.join(parent, 'child'), git: false, siteModules: 'none' },
+      baseDeps({ error: (m) => errors.push(String(m ?? '')) })
+    );
+    expect(code).toBe(1);
+    expect(errors.join('\n')).toMatch(/Parent path is a file/i);
+    expect(await fs.pathExists(path.join(parent, 'child'))).toBe(false);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('rolls back on mid-loop write failure without a stacktrace', async () => {
+    const target = path.join(tmp, 'partial');
+    const errors = [];
+    let writes = 0;
+    const fse = {
+      ...fs,
+      writeFile: async (p, data, enc) => {
+        writes += 1;
+        if (writes === 3) {
+          const err = new Error('ENOSPC');
+          err.stack = 'Error: ENOSPC\n    at fake (test.js:1:1)';
+          throw err;
+        }
+        return fs.writeFile(p, data, enc);
+      },
+    };
+    const code = await createNew(
+      'partial',
+      { yes: true, dir: target, git: false, siteModules: 'none' },
+      baseDeps({
+        fs: fse,
+        error: (m) => errors.push(String(m ?? '')),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/ENOSPC/);
+    expect(errors.join('\n')).not.toMatch(/at fake/);
+  });
+
+  it('rolls back after git init failure', async () => {
+    const target = path.join(tmp, 'gitfail');
+    const errors = [];
+    const code = await createNew(
+      'gitfail',
+      { yes: true, dir: target, git: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args) => {
+          if (cmd === 'git' && args?.[0] === 'init') throw new Error('git init denied');
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/Git setup failed/i);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('rolls back after npm install failure', async () => {
+    const target = path.join(tmp, 'npmfail');
+    const errors = [];
+    const code = await createNew(
+      'npmfail',
+      { yes: true, dir: target, git: false, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--no-git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        spawn: vi.fn(async () => ({ code: 17 })),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 17/i);
+  });
+
+  it('rolls back .git from an existing empty target after git init failure', async () => {
+    const target = path.join(tmp, 'preexist-git');
+    await fs.ensureDir(target);
+    expect(await fs.readdir(target)).toEqual([]);
+    const errors = [];
+    const code = await createNew(
+      'preexist-git',
+      { yes: true, dir: target, git: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'git' && args?.[0] === 'init') {
+            await fs.ensureDir(path.join(opts.cwd, '.git'));
+            throw new Error('git init denied');
+          }
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(true);
+    expect(await fs.readdir(target)).toEqual([]);
+    expect(errors.join('\n')).toMatch(/Git setup failed/i);
+  });
+
+  it('rolls back npm install artifacts from an existing target', async () => {
+    const target = path.join(tmp, 'preexist-npm');
+    await fs.ensureDir(target);
+    await fs.writeFile(path.join(target, 'KEEP'), 'stay');
+    const errors = [];
+    const code = await createNew(
+      'preexist-npm',
+      { yes: true, dir: target, git: false, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--no-git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        spawn: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'npm' && args?.[0] === 'install') {
+            await fs.ensureDir(path.join(opts.cwd, 'node_modules'));
+            await fs.writeFile(path.join(opts.cwd, 'package-lock.json'), '{}');
+            return { code: 1 };
+          }
+          return { code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.readdir(target)).toEqual(['KEEP']);
+    expect(await fs.readFile(path.join(target, 'KEEP'), 'utf8')).toBe('stay');
+    expect(await fs.pathExists(path.join(target, 'node_modules'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, 'package-lock.json'))).toBe(false);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 1/i);
+  });
+
+  it('leaves a pre-existing .git untouched on rollback', async () => {
+    const target = path.join(tmp, 'keep-git');
+    await fs.ensureDir(target);
+    const gitDir = path.join(target, '.git');
+    await fs.ensureDir(gitDir);
+    await fs.writeFile(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+    const errors = [];
+    const code = await createNew(
+      'keep-git',
+      { yes: true, dir: target, git: true, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args) => {
+          if (cmd === 'git' && args?.[0] === 'init') {
+            return { stdout: '', stderr: '', code: 0 };
+          }
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+        spawn: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'npm' && args?.[0] === 'install') {
+            await fs.ensureDir(path.join(opts.cwd, 'node_modules'));
+            await fs.writeFile(path.join(opts.cwd, 'package-lock.json'), '{}');
+            return { code: 9 };
+          }
+          return { code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(gitDir)).toBe(true);
+    expect(await fs.readFile(path.join(gitDir, 'HEAD'), 'utf8')).toBe(
+      'ref: refs/heads/main\n'
+    );
+    expect(await fs.pathExists(path.join(target, 'node_modules'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, 'package-lock.json'))).toBe(false);
+    expect(await fs.readdir(target)).toEqual(['.git']);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 9/i);
+  });
+});
+
 describe('createNew robustness', () => {
   it('fails clearly and writes nothing when a template is missing', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-missing-'));
@@ -569,6 +790,32 @@ describe('new: declared modules', () => {
     expect(logs.join('\n')).toContain('detected on shop.webflow.io');
   });
 
+  // F-11: `det.ok && det.loader` must not become `||` — ok without loader must not adopt the list.
+  it('[F-11] detection ok without loader does not adopt the module list', async () => {
+    const detectSite = vi.fn(async () => ({
+      ok: true,
+      url: 'https://shop.webflow.io/',
+      loader: null,
+      modules: [{ id: 'cookies', version: '2', cdn: 'jsdelivr' }],
+      list: ['cookies'],
+    }));
+    const logs = [];
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'https://shop.webflow.io/' },
+      {
+        isTTY: false,
+        argv: ['--yes'],
+        exec: async () => ({ stdout: '' }),
+        detectSite,
+        log: (m) => logs.push(String(m)),
+      }
+    );
+    expect(r.ok).toBe(true);
+    expect(r.config.siteModules).toEqual([]);
+    expect(logs.join('\n')).toMatch(/does not load @stagepass\/loader/);
+  });
+
   it('--site-modules wins and never fetches', async () => {
     const detectSite = vi.fn();
     const r = await resolveNewOptions(
@@ -682,6 +929,38 @@ describe('new: origins, php, preflight', () => {
       { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }) }
     );
     expect(withPort.ok).toBe(false);
+  });
+
+  it.each([
+    ['site', ' example.com'],
+    ['site', 'example.com '],
+    ['site', 'example.com\n'],
+    ['site', 'example.com\t'],
+    ['site', 'exa\tmple.com'],
+    ['site', 'exa\nmple.com'],
+    ['site', '\u0000example.com'],
+    ['staging', ' example.com'],
+    ['staging', 'example.com '],
+    ['staging', 'example.com\n'],
+    ['staging', 'example.com\t'],
+    ['staging', 'exa\tmple.com'],
+    ['staging', 'exa\nmple.com'],
+    ['production', ' example.com'],
+    ['production', 'example.com '],
+    ['production', 'example.com\n'],
+    ['production', 'example.com\t'],
+    ['production', 'exa\tmple.com'],
+    ['production', 'exa\nmple.com'],
+  ])('rejects whitespace/controls on --%s %j before write/network (AC-10)', async (flag, value) => {
+    const detectSite = vi.fn();
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, siteModules: 'none', [flag]: value },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), detectSite, log: () => {} }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/whitespace|control|Invalid/i);
+    expect(detectSite).not.toHaveBeenCalled();
   });
 
   it('rejects --php-examples without --php', async () => {
@@ -822,6 +1101,164 @@ describe('new: origins, php, preflight', () => {
     }
   });
 
+  it('does not run doctor preflight on --dry-run (interactive macOS)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-drypre-'));
+    const runDoctor = vi.fn();
+    const setup = vi.fn();
+    try {
+      const code = await createNew(
+        'dry-pre',
+        {
+          dryRun: true,
+          dir: path.join(tmp, 'dry-pre'),
+          lang: 'ts',
+          styles: 'scss',
+          modules: false,
+          git: false,
+          install: false,
+          author: 'Ada',
+          staging: 'dry.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: true,
+          argv: ['--dry-run', '--no-modules', '--no-git', '--no-install'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: async () => ({ stdout: 'Ada' }),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup,
+          createReadline: () => ({
+            question: vi.fn(async () => ''),
+            close: vi.fn(),
+          }),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).not.toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('validates options before doctor preflight (invalid staging skips doctor)', async () => {
+    const runDoctor = vi.fn();
+    const code = await createNew(
+      'bad-pre',
+      {
+        dir: '/tmp/unused-bad-pre',
+        lang: 'ts',
+        styles: 'scss',
+        modules: false,
+        git: false,
+        install: false,
+        author: 'Ada',
+        staging: ' example.com',
+      },
+      {
+        isTTY: true,
+        argv: ['--no-modules', '--no-git', '--no-install'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: os.tmpdir(),
+        log: () => {},
+        error: () => {},
+        exec: async () => ({ stdout: 'Ada' }),
+        spawn: vi.fn(),
+        platform: 'darwin',
+        runDoctor,
+        setup: vi.fn(),
+        createReadline: () => ({ question: vi.fn(), close: vi.fn() }),
+      }
+    );
+    expect(code).toBe(1);
+    expect(runDoctor).not.toHaveBeenCalled();
+  });
+
+  it('skips doctor preflight when --yes even on a TTY (mutant gate)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-yespre-'));
+    const target = path.join(tmp, 'yespre');
+    const runDoctor = vi.fn();
+    try {
+      const code = await createNew(
+        'yes-pre',
+        { yes: true, dir: target, git: false, siteModules: 'none' },
+        {
+          isTTY: true,
+          argv: ['--yes', '--no-git'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('continues when doctor preflight finds nothing to set up (mutant return 0)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-okpre-'));
+    const target = path.join(tmp, 'okpre');
+    const runDoctor = vi.fn(async () => ({
+      checks: [{ id: 'caddy', status: 'ok', message: 'ok' }],
+      summary: { ok: 1, warn: 0, fail: 0, info: 0 },
+      exitCode: 0,
+      hints: [],
+    }));
+    const setup = vi.fn();
+    const wizardAnswers = ['ok.webflow.io', '', 'n', 'n'];
+    try {
+      const code = await createNew(
+        'ok-pre',
+        {
+          dir: target,
+          lang: 'ts',
+          styles: 'scss',
+          modules: false,
+          git: false,
+          install: false,
+          author: 'Ada',
+        },
+        {
+          isTTY: true,
+          argv: ['--no-modules', '--no-git', '--no-install', '--lang', 'ts', '--styles', 'scss'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: async () => ({ stdout: 'Ada' }),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          runDoctor,
+          setup,
+          createReadline: () => ({
+            question: vi.fn(async () => wizardAnswers.shift() ?? ''),
+            close: vi.fn(),
+          }),
+          link: vi.fn(),
+        }
+      );
+      expect(code).toBe(0);
+      expect(runDoctor).toHaveBeenCalled();
+      expect(setup).not.toHaveBeenCalled();
+      expect(await fs.pathExists(target)).toBe(true);
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
   it('offers setup after failing doctor preflight on interactive macOS', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-doc-'));
     const target = path.join(tmp, 'doc');
@@ -869,6 +1306,83 @@ describe('new: origins, php, preflight', () => {
       expect(code).toBe(0);
       expect(runDoctor).toHaveBeenCalled();
       expect(setup).not.toHaveBeenCalled();
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('propagates link failure exit code for --link (files kept)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linkfail-'));
+    const target = path.join(tmp, 'linkfail');
+    const link = vi.fn(async () => 7);
+    const logs = [];
+    try {
+      const code = await createNew(
+        'linkfail-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          link: true,
+          staging: 'linkfail.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: (m) => logs.push(String(m ?? '')),
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          link,
+        }
+      );
+      expect(code).toBe(7);
+      expect(link).toHaveBeenCalled();
+      expect(await fs.pathExists(path.join(target, 'stagepass.json'))).toBe(true);
+      expect(logs.join('\n')).toMatch(/link failed/i);
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('passes verbose:true to link only when --verbose (mutant !==)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linkverb-'));
+    const target = path.join(tmp, 'linkverb');
+    const link = vi.fn(async () => 0);
+    try {
+      await createNew(
+        'linkverb-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          link: true,
+          verbose: true,
+          staging: 'linkverb.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link', '--verbose'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          link,
+        }
+      );
+      expect(link).toHaveBeenCalledWith(
+        'linkverb-app',
+        expect.objectContaining({ verbose: true }),
+        expect.anything()
+      );
     } finally {
       await fs.remove(tmp);
     }

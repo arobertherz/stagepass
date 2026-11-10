@@ -76,21 +76,65 @@ export const PROJECT_CDN_SCAN_FILES = Object.freeze([
   'stagepass-snippets.html',
 ]);
 
+/** Skip HTML / allowlisted files larger than this when scanning for unpinned CDN URLs. */
+export const PROJECT_CDN_SCAN_MAX_BYTES = 1024 * 1024;
+
+/**
+ * Non-recursive `*.html` in project root and `snippets/` (regular files only).
+ * @param {string} cwd
+ * @param {typeof fs} [fse]
+ * @returns {Promise<string[]>}
+ */
+export async function listProjectHtmlCdnScanFiles(cwd, fse = fs) {
+  /** @type {string[]} */
+  const out = [];
+  for (const dirRel of ['', 'snippets']) {
+    const dir = dirRel ? path.join(cwd, dirRel) : cwd;
+    let names;
+    try {
+      names = await fse.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!name.endsWith('.html')) continue;
+      const rel = dirRel ? path.join(dirRel, name) : name;
+      const full = path.join(cwd, rel);
+      try {
+        const st = await fse.lstat(full);
+        if (st.isSymbolicLink() || !st.isFile() || st.size > PROJECT_CDN_SCAN_MAX_BYTES) continue;
+        out.push(rel);
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Read-only scan of the current project's snippet-bearing files for unpinned CDN URLs.
+ * Scans allowlisted files plus `*.html` in the project root and `snippets/`
+ * (non-recursive; regular files ≤ 1 MB; symlinks skipped).
  *
  * @param {object} [opts]
  * @param {string} [opts.cwd]
  * @param {string[]} [opts.files]
+ * @param {boolean} [opts.skipHtmlDiscover]
+ * @param {typeof fs} [opts.fs]
  * @param {(p: string) => Promise<boolean>} [opts.pathExists]
  * @param {(p: string, enc: string) => Promise<string>} [opts.readFile]
  * @returns {Promise<{ ok: boolean, offenders: { file: string, match: string }[] }>}
  */
 export async function scanProjectUnpinnedCdn(opts = {}) {
   const cwd = opts.cwd || process.cwd();
-  const files = opts.files || PROJECT_CDN_SCAN_FILES;
-  const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
-  const readFile = opts.readFile || ((p, enc) => fs.readFile(p, enc));
+  const fse = opts.fs || fs;
+  const fixed = opts.files || PROJECT_CDN_SCAN_FILES;
+  const html =
+    opts.skipHtmlDiscover === true ? [] : await listProjectHtmlCdnScanFiles(cwd, fse);
+  const files = [...new Set([...fixed, ...html])];
+  const pathExists = opts.pathExists || ((p) => fse.pathExists(p));
+  const readFile = opts.readFile || ((p, enc) => fse.readFile(p, enc));
   /** @type {{ file: string, match: string }[]} */
   const offenders = [];
 
@@ -100,6 +144,12 @@ export async function scanProjectUnpinnedCdn(opts = {}) {
     }
     const full = path.join(cwd, rel);
     if (!(await pathExists(full))) continue;
+    try {
+      const st = await fse.lstat(full);
+      if (st.isSymbolicLink() || !st.isFile() || st.size > PROJECT_CDN_SCAN_MAX_BYTES) continue;
+    } catch {
+      continue;
+    }
     let content = '';
     try {
       content = await readFile(full, 'utf8');
