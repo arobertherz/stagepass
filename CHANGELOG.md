@@ -75,6 +75,8 @@ Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `n
 
 #### Fixed
 
+- Site TLS handshakes run only when Caddy is serving `:443`; otherwise domains are marked not checkable (no false TLS fail, renew offer, cert deletion, or `caddy reload` while Caddy is down) (M-1).
+- Short-lived Caddy leaf certificates no longer warn against the 90-day root threshold; leaves fail only when expired, not yet valid, unparseable, or SAN-mismatched (M-2).
 - Forward-ported from published CLI 2.2.3–2.2.7: strict snippet/registry semver (reject whitespace padding, leading zeros, build metadata); live-site / `--site` / stored-origin port checks including `:443`; `upgrade --version` resolves the loader pin before any write and honors the pin when `package.json` lists only `@stagepass/modules`; `start` closes the parent logfile FD after `caddy start`.
 - Restored the 2.2.3 guarantee: `stagepass upgrade --site` validates the site host (including rejecting ports such as `:443`) before any npm registry lookup, so a bad `--site` does not touch the network.
 - The CLI bin prints a clear Node engine error and exits 1 when Node is older than `>=20.17.0`, instead of crashing later inside a dependency (`string-width` / `@inquirer`).
