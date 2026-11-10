@@ -449,19 +449,39 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
 }
 
 /**
+ * True when `p` exists (lstat; does not follow the final symlink).
+ * @param {{ lstat: (p: string) => Promise<unknown> }} fse
+ * @param {string} p
+ */
+async function pathExistsLstat(fse, p) {
+  try {
+    await fse.lstat(p);
+    return true;
+  } catch (err) {
+    if (err && /** @type {{ code?: string }} */ (err).code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+/**
  * After `npm install`, align tsconfig/jsconfig types with the installed
  * @stagepass/modules (per-module entries only when it ships them).
+ * Only rewrites configs this run created (INV-4: never mutate pre-existing files).
  *
  * @param {string} targetDir
  * @param {{ siteModules: string[], perModuleTypes?: boolean }} config
  * @param {typeof fs} fse
  * @param {(msg?: string) => void} log
+ * @param {string[]} [createdPaths] absolute paths this run may rewrite
  */
-async function reconcileInstalledTypes(targetDir, config, fse, log) {
+async function reconcileInstalledTypes(targetDir, config, fse, log, createdPaths) {
   const installed = await installedHasPerModuleTypes(targetDir, fse);
   if (installed === null || installed === (config.perModuleTypes !== false)) return;
+  const created =
+    createdPaths == null ? null : new Set(createdPaths.map((p) => path.resolve(p)));
   for (const name of ['tsconfig.json', 'jsconfig.json']) {
-    const file = path.join(targetDir, name);
+    const file = path.resolve(targetDir, name);
+    if (created && !created.has(file)) continue;
     if (!(await fse.pathExists(file))) continue;
     const raw = await fse.readFile(file, 'utf8');
     const result = updateConfigTypes(raw, config.siteModules, {
@@ -748,6 +768,8 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const undo = async () => rollbackScaffold(written.created, written.createdTargetDir, fse);
 
   if (config.git) {
+    const gitDir = path.join(targetDir, '.git');
+    const gitExisted = await pathExistsLstat(fse, gitDir);
     try {
       await exec('git', ['init'], { cwd: targetDir });
       if (config.remote) {
@@ -755,7 +777,9 @@ export async function createNew(nameArg, options = {}, deps = {}) {
           cwd: targetDir,
         });
       }
+      if (!gitExisted) written.created.push(gitDir);
     } catch (err) {
+      if (!gitExisted) written.created.push(gitDir);
       await undo();
       error(
         chalk.red(
@@ -768,6 +792,14 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   }
 
   if (config.install) {
+    const nodeModulesDir = path.join(targetDir, 'node_modules');
+    const lockfile = path.join(targetDir, 'package-lock.json');
+    const nodeModulesExisted = await pathExistsLstat(fse, nodeModulesDir);
+    const lockfileExisted = await pathExistsLstat(fse, lockfile);
+    const trackInstallArtifacts = () => {
+      if (!nodeModulesExisted) written.created.push(nodeModulesDir);
+      if (!lockfileExisted) written.created.push(lockfile);
+    };
     try {
       const result = await spawn('npm', ['install'], {
         cwd: targetDir,
@@ -775,15 +807,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
         shell: false,
         env: process.env,
       });
+      trackInstallArtifacts();
       if (result.code !== 0) {
         await undo();
         error(chalk.red(`npm install exited with code ${result.code}`));
         return 1;
       }
       if (singleModuleTypes) {
-        await reconcileInstalledTypes(targetDir, config, fse, log);
+        await reconcileInstalledTypes(targetDir, config, fse, log, written.created);
       }
     } catch (err) {
+      trackInstallArtifacts();
       await undo();
       error(
         chalk.red(

@@ -439,6 +439,101 @@ describe('createNew INV-4 rollback', () => {
     expect(await fs.pathExists(target)).toBe(false);
     expect(errors.join('\n')).toMatch(/npm install exited with code 17/i);
   });
+
+  it('rolls back .git from an existing empty target after git init failure', async () => {
+    const target = path.join(tmp, 'preexist-git');
+    await fs.ensureDir(target);
+    expect(await fs.readdir(target)).toEqual([]);
+    const errors = [];
+    const code = await createNew(
+      'preexist-git',
+      { yes: true, dir: target, git: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'git' && args?.[0] === 'init') {
+            await fs.ensureDir(path.join(opts.cwd, '.git'));
+            throw new Error('git init denied');
+          }
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(true);
+    expect(await fs.readdir(target)).toEqual([]);
+    expect(errors.join('\n')).toMatch(/Git setup failed/i);
+  });
+
+  it('rolls back npm install artifacts from an existing target', async () => {
+    const target = path.join(tmp, 'preexist-npm');
+    await fs.ensureDir(target);
+    await fs.writeFile(path.join(target, 'KEEP'), 'stay');
+    const errors = [];
+    const code = await createNew(
+      'preexist-npm',
+      { yes: true, dir: target, git: false, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--no-git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        spawn: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'npm' && args?.[0] === 'install') {
+            await fs.ensureDir(path.join(opts.cwd, 'node_modules'));
+            await fs.writeFile(path.join(opts.cwd, 'package-lock.json'), '{}');
+            return { code: 1 };
+          }
+          return { code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.readdir(target)).toEqual(['KEEP']);
+    expect(await fs.readFile(path.join(target, 'KEEP'), 'utf8')).toBe('stay');
+    expect(await fs.pathExists(path.join(target, 'node_modules'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, 'package-lock.json'))).toBe(false);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 1/i);
+  });
+
+  it('leaves a pre-existing .git untouched on rollback', async () => {
+    const target = path.join(tmp, 'keep-git');
+    await fs.ensureDir(target);
+    const gitDir = path.join(target, '.git');
+    await fs.ensureDir(gitDir);
+    await fs.writeFile(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+    const errors = [];
+    const code = await createNew(
+      'keep-git',
+      { yes: true, dir: target, git: true, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args) => {
+          if (cmd === 'git' && args?.[0] === 'init') {
+            return { stdout: '', stderr: '', code: 0 };
+          }
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+        spawn: vi.fn(async (cmd, args, opts) => {
+          if (cmd === 'npm' && args?.[0] === 'install') {
+            await fs.ensureDir(path.join(opts.cwd, 'node_modules'));
+            await fs.writeFile(path.join(opts.cwd, 'package-lock.json'), '{}');
+            return { code: 9 };
+          }
+          return { code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(gitDir)).toBe(true);
+    expect(await fs.readFile(path.join(gitDir, 'HEAD'), 'utf8')).toBe(
+      'ref: refs/heads/main\n'
+    );
+    expect(await fs.pathExists(path.join(target, 'node_modules'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, 'package-lock.json'))).toBe(false);
+    expect(await fs.readdir(target)).toEqual(['.git']);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 9/i);
+  });
 });
 
 describe('createNew robustness', () => {
