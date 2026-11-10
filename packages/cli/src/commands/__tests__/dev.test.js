@@ -5,6 +5,13 @@ import path from 'path';
 import { dev } from '../dev.js';
 import { saveProjects, loadProjects } from '../../lib/projects.js';
 
+const readyOk = async () => ({
+  ok: true,
+  running: true,
+  linked: true,
+  started: false,
+});
+
 describe('stagepass dev command', () => {
   it('errors when the directory is not linked', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev-'));
@@ -19,6 +26,7 @@ describe('stagepass dev command', () => {
         caddyfilePath: path.join(tmp, 'Caddyfile'),
         log: () => {},
         error: (m) => errors.push(String(m)),
+        ensureStagepassReady: readyOk,
         createLiveServer: () => {
           throw new Error('should not start');
         },
@@ -28,6 +36,62 @@ describe('stagepass dev command', () => {
     );
     expect(code).toBe(1);
     expect(errors.join(' ')).toMatch(/link/i);
+    await fs.remove(tmp);
+  });
+
+  it('runs ensure before starting when Stagepass is down', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev-'));
+    const root = path.join(tmp, 'app');
+    await fs.ensureDir(root);
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ scripts: { watch: 'echo watch' } })
+    );
+    await fs.writeFile(
+      path.join(root, 'stagepass.json'),
+      JSON.stringify({ name: 'app', domain: 'app.sp', version: 1 })
+    );
+    const projectsPath = path.join(tmp, 'projects.json');
+    await saveProjects(
+      {
+        version: 1,
+        projects: {
+          'app.sp': {
+            root,
+            origins: ['example.com'],
+            allowAllOrigins: false,
+            php: false,
+          },
+        },
+      },
+      projectsPath
+    );
+    const ensure = vi.fn(readyOk);
+    const spawn = vi.fn(async () => ({ code: 0, signal: null }));
+    const code = await dev(
+      {},
+      {
+        cwd: root,
+        projectsPath,
+        caddyfilePath: path.join(tmp, 'Caddyfile'),
+        log: () => {},
+        error: () => {},
+        ensureStagepassReady: ensure,
+        spawnWatch: spawn,
+        reloadCaddy: async () => {},
+        createLiveServer: () => ({
+          listen: async () => ({
+            port: 34567,
+            close: async () => {},
+          }),
+        }),
+      }
+    );
+    expect(code).toBe(0);
+    expect(ensure).toHaveBeenCalledTimes(1);
+    expect(ensure.mock.invocationCallOrder[0]).toBeLessThan(
+      spawn.mock.invocationCallOrder[0]
+    );
     await fs.remove(tmp);
   });
 
@@ -71,6 +135,7 @@ describe('stagepass dev command', () => {
         caddyfilePath,
         log: () => {},
         error: () => {},
+        ensureStagepassReady: readyOk,
         spawnWatch: spawn,
         reloadCaddy: async (cfg) => {
           reloads.push(cfg);
@@ -126,6 +191,7 @@ describe('stagepass dev command', () => {
         caddyfilePath: path.join(tmp, 'Caddyfile'),
         log: () => {},
         error: (m) => errors.push(String(m)),
+        ensureStagepassReady: readyOk,
         createLiveServer: () => ({ listen: async () => ({ port: 1, close: async () => {} }) }),
         spawnWatch: async () => ({ code: 0 }),
         reloadCaddy: async () => {},

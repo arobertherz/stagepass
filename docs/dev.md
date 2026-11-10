@@ -20,9 +20,11 @@ In a **linked** project directory:
 ```bash
 cd my-project
 stagepass link --origin my-project.webflow.io   # once
-stagepass start                                 # if needed
+stagepass start                                 # if needed (dev also offers to start when interactive)
 stagepass dev
 ```
+
+`stagepass dev` (and `stagepass watch`) check whether Stagepass is already running. On an interactive TTY they ask to run the same in-process start path as `stagepass start`; in CI / non-TTY they print a `stagepass start` hint and continue. An unlinked directory still fails with a clear `stagepass link` error.
 
 Then open the live site with `?stagepass=my-project.sp`.
 
