@@ -269,4 +269,92 @@ describe('start autostart / certs integration', () => {
     expect(joined).toMatch(/Certificate findings/);
     expect(joined).toMatch(/Non-interactive start/);
   });
+
+  it('[N-2] skipped site handshakes: no "Certificates: ok", no renew offer', async () => {
+    const confirmFn = vi.fn(async () => true);
+    const code = await start({
+      verbose: true,
+      interactive: true,
+      confirm: confirmFn,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [
+          {
+            status: 'skip',
+            servername: 'a.sp',
+            reason: 'Caddy is not serving :443; TLS not checkable.',
+          },
+        ],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: true,
+        plistExists: true,
+        plistPath: '/tmp/agent.plist',
+      }),
+      uid: 501,
+    });
+    expect(code).toBe(0);
+    expect(confirmFn).not.toHaveBeenCalled();
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).not.toMatch(/Certificates: ok/);
+    expect(joined).toMatch(/site TLS not checkable/);
+  });
+
+  it('[N-2] all handshakes ok: prints "Certificates: ok"', async () => {
+    const code = await start({
+      verbose: true,
+      interactive: true,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [{ status: 'ok', servername: 'a.sp' }],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: true,
+        plistExists: true,
+        plistPath: '/tmp/agent.plist',
+      }),
+      uid: 501,
+    });
+    expect(code).toBe(0);
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).toMatch(/Certificates: ok/);
+  });
+
+  it('[N-2] real site TLS failure still offers renew (Caddy serving)', async () => {
+    const certsRenewFn = vi.fn(async () => {});
+    const confirmFn = vi.fn(async () => true);
+    const code = await start({
+      verbose: true,
+      interactive: true,
+      confirm: confirmFn,
+      certsRenew: certsRenewFn,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [{ status: 'fail', servername: 'a.sp', reason: 'bad' }],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: true,
+        plistExists: true,
+        plistPath: '/tmp/agent.plist',
+      }),
+      uid: 501,
+    });
+    expect(code).toBe(0);
+    expect(confirmFn).toHaveBeenCalled();
+    expect(certsRenewFn).toHaveBeenCalled();
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).not.toMatch(/Certificates: ok/);
+  });
 });

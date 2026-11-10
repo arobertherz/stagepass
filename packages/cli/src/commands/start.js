@@ -282,6 +282,10 @@ export async function start(options = {}) {
           )
         );
       }
+    } else if ((certReport.handshakes || []).some((h) => h.status === 'skip')) {
+      console.log(
+        chalk.dim('Certificates: root ok, site TLS not checkable (Caddy not running yet).')
+      );
     } else {
       console.log(chalk.dim('Certificates: ok'));
     }
