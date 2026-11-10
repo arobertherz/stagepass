@@ -315,6 +315,132 @@ describe('createNew', () => {
   });
 });
 
+describe('createNew INV-4 rollback', () => {
+  /** @type {string} */
+  let tmp;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-new-inv4-'));
+  });
+  afterEach(async () => {
+    await fs.remove(tmp);
+  });
+
+  const baseDeps = (extra = {}) => ({
+    isTTY: false,
+    argv: ['--yes', '--no-git'],
+    templatesRoot: defaultTemplatesRoot(),
+    cwd: tmp,
+    log: () => {},
+    error: () => {},
+    exec: vi.fn(async () => ({ stdout: '', stderr: '', code: 0 })),
+    spawn: vi.fn(),
+    fetchPublished: vi.fn(async () => ({ distTags: { latest: '2.4.0' }, versions: ['2.4.0'] })),
+    ...extra,
+  });
+
+  it('refuses when src is a file and leaves the tree unchanged', async () => {
+    const target = path.join(tmp, 'conflict');
+    await fs.ensureDir(target);
+    await fs.writeFile(path.join(target, 'src'), 'KEEP');
+    const before = await fs.readFile(path.join(target, 'src'), 'utf8');
+    const listing = await fs.readdir(target);
+    const errors = [];
+    const code = await createNew(
+      'conflict',
+      { yes: true, dir: target, git: false, siteModules: 'none' },
+      baseDeps({ error: (m) => errors.push(String(m ?? '')) })
+    );
+    expect(code).toBe(1);
+    expect(errors.join('\n')).toMatch(/Refusing to overwrite|src/i);
+    expect(await fs.readFile(path.join(target, 'src'), 'utf8')).toBe(before);
+    expect(await fs.readdir(target)).toEqual(listing);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('refuses when parent path is a file', async () => {
+    const parent = path.join(tmp, 'afile');
+    await fs.writeFile(parent, 'x');
+    const errors = [];
+    const code = await createNew(
+      'child',
+      { yes: true, dir: path.join(parent, 'child'), git: false, siteModules: 'none' },
+      baseDeps({ error: (m) => errors.push(String(m ?? '')) })
+    );
+    expect(code).toBe(1);
+    expect(errors.join('\n')).toMatch(/Parent path is a file/i);
+    expect(await fs.pathExists(path.join(parent, 'child'))).toBe(false);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('rolls back on mid-loop write failure without a stacktrace', async () => {
+    const target = path.join(tmp, 'partial');
+    const errors = [];
+    let writes = 0;
+    const fse = {
+      ...fs,
+      writeFile: async (p, data, enc) => {
+        writes += 1;
+        if (writes === 3) {
+          const err = new Error('ENOSPC');
+          err.stack = 'Error: ENOSPC\n    at fake (test.js:1:1)';
+          throw err;
+        }
+        return fs.writeFile(p, data, enc);
+      },
+    };
+    const code = await createNew(
+      'partial',
+      { yes: true, dir: target, git: false, siteModules: 'none' },
+      baseDeps({
+        fs: fse,
+        error: (m) => errors.push(String(m ?? '')),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/ENOSPC/);
+    expect(errors.join('\n')).not.toMatch(/at fake/);
+  });
+
+  it('rolls back after git init failure', async () => {
+    const target = path.join(tmp, 'gitfail');
+    const errors = [];
+    const code = await createNew(
+      'gitfail',
+      { yes: true, dir: target, git: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--git'],
+        error: (m) => errors.push(String(m ?? '')),
+        exec: vi.fn(async (cmd, args) => {
+          if (cmd === 'git' && args?.[0] === 'init') throw new Error('git init denied');
+          return { stdout: '', stderr: '', code: 0 };
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/Git setup failed/i);
+    expect(errors.join('\n')).not.toMatch(/\n\s+at\s+/);
+  });
+
+  it('rolls back after npm install failure', async () => {
+    const target = path.join(tmp, 'npmfail');
+    const errors = [];
+    const code = await createNew(
+      'npmfail',
+      { yes: true, dir: target, git: false, install: true, siteModules: 'none' },
+      baseDeps({
+        argv: ['--yes', '--no-git', '--install'],
+        error: (m) => errors.push(String(m ?? '')),
+        spawn: vi.fn(async () => ({ code: 17 })),
+      })
+    );
+    expect(code).toBe(1);
+    expect(await fs.pathExists(target)).toBe(false);
+    expect(errors.join('\n')).toMatch(/npm install exited with code 17/i);
+  });
+});
+
 describe('createNew robustness', () => {
   it('fails clearly and writes nothing when a template is missing', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-missing-'));

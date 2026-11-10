@@ -354,14 +354,26 @@ export async function upgrade(options = {}, deps = {}) {
   if (options.dryRun) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
-    if (changes.length > 0) {
-      const trailingNewline = raw.endsWith('\n');
-      const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
-      await fse.writeFile(pkgPath, pkgBody, 'utf8');
-      log(chalk.green('\nUpdated package.json.'));
+    try {
+      if (changes.length > 0) {
+        const trailingNewline = raw.endsWith('\n');
+        const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
+        await fse.writeFile(pkgPath, pkgBody, 'utf8');
+        log(chalk.green('\nUpdated package.json.'));
+      }
+      await applyProjectSync(cwd, plan.writes, fse);
+      if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
+    } catch (err) {
+      // Restore package.json if project-sync failed after the pkg write.
+      try {
+        if (changes.length > 0) await fse.writeFile(pkgPath, raw, 'utf8');
+      } catch {
+        /* best effort */
+      }
+      log(chalk.red(err instanceof Error ? err.message : String(err)));
+      if (options.verbose === true && err instanceof Error && err.stack) log(err.stack);
+      return 1;
     }
-    await applyProjectSync(cwd, plan.writes, fse);
-    if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
   if (!snippetVersion) {

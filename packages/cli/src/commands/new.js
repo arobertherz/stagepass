@@ -11,6 +11,9 @@ import {
   defaultTemplatesRoot,
   planScaffoldFiles,
   findConflicts,
+  assertScaffoldParentPath,
+  writeScaffoldFiles,
+  rollbackScaffold,
 } from '../lib/scaffold.js';
 import {
   buildWebflowSnippets,
@@ -688,6 +691,12 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     }
   }
 
+  const parentCheck = await assertScaffoldParentPath(targetDir, fse);
+  if (!parentCheck.ok) {
+    error(chalk.red(parentCheck.error));
+    return 1;
+  }
+
   const conflicts = await findConflicts(targetDir, files, fse);
   if (conflicts.length > 0) {
     error(chalk.red('Refusing to overwrite existing files:'));
@@ -710,22 +719,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     return 0;
   }
 
-  await fse.ensureDir(targetDir);
-
-  for (const file of files) {
-    const abs = path.resolve(targetDir, file.relativePath);
-    const relToTarget = path.relative(targetDir, abs);
-    if (
-      relToTarget.startsWith('..') ||
-      path.isAbsolute(relToTarget) ||
-      relToTarget.split(path.sep).includes('..')
-    ) {
-      error(chalk.red(`Refusing to write outside project directory: ${file.relativePath}`));
-      return 1;
+  const written = await writeScaffoldFiles(targetDir, files, fse);
+  if (!written.ok) {
+    error(chalk.red(written.error));
+    if (options.verbose === true && written.errorObj instanceof Error && written.errorObj.stack) {
+      error(written.errorObj.stack);
     }
-    await fse.ensureDir(path.dirname(abs));
-    await fse.writeFile(abs, file.contents, 'utf8');
+    return 1;
   }
+
+  /** Roll back every file this run created (INV-4). */
+  const undo = async () => rollbackScaffold(written.created, written.createdTargetDir, fse);
 
   if (config.git) {
     try {
@@ -736,11 +740,13 @@ export async function createNew(nameArg, options = {}, deps = {}) {
         });
       }
     } catch (err) {
+      await undo();
       error(
         chalk.red(
           `Git setup failed: ${err instanceof Error ? err.message : String(err)}`
         )
       );
+      if (options.verbose === true && err instanceof Error && err.stack) error(err.stack);
       return 1;
     }
   }
@@ -754,18 +760,21 @@ export async function createNew(nameArg, options = {}, deps = {}) {
         env: process.env,
       });
       if (result.code !== 0) {
+        await undo();
         error(chalk.red(`npm install exited with code ${result.code}`));
-        return typeof result.code === 'number' ? result.code : 1;
+        return 1;
       }
       if (singleModuleTypes) {
         await reconcileInstalledTypes(targetDir, config, fse, log);
       }
     } catch (err) {
+      await undo();
       error(
         chalk.red(
           `npm install failed: ${err instanceof Error ? err.message : String(err)}`
         )
       );
+      if (options.verbose === true && err instanceof Error && err.stack) error(err.stack);
       return 1;
     }
   }

@@ -73,7 +73,8 @@ export function originsFromStagepassConfig(data) {
   for (const key of ['origin', 'production']) {
     const value = data[key];
     if (typeof value !== 'string' || value.trim() === '') continue;
-    const check = validateOriginEntry(value);
+    // Stored config may have incidental spaces; CLI flags are validated raw (AC-10).
+    const check = validateOriginEntry(value.trim());
     if (check.ok) raw.push(check.value);
   }
   const validated = validateOriginList(raw);
@@ -436,20 +437,49 @@ export async function planProjectSync(input, fse = fs) {
 }
 
 /**
- * Write planned changes (skips when dryRun).
+ * Write planned changes. On failure restores prior file contents (INV-4).
  * @param {string} cwd
  * @param {{ file: string, content: string }[]} writes
  * @param {typeof fs} [fse]
  */
 export async function applyProjectSync(cwd, writes, fse = fs) {
   const root = path.resolve(cwd);
-  for (const w of writes) {
-    const abs = path.resolve(root, w.file);
-    const rel = path.relative(root, abs);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      throw new Error(`Refusing to write outside the project: ${w.file}`);
+  /** @type {{ abs: string, previous: string | null, createdDir: string | null }[]} */
+  const journal = [];
+  try {
+    for (const w of writes) {
+      const abs = path.resolve(root, w.file);
+      const rel = path.relative(root, abs);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`Refusing to write outside the project: ${w.file}`);
+      }
+      let previous = null;
+      try {
+        previous = await fse.readFile(abs, 'utf8');
+      } catch (err) {
+        if (!(err && /** @type {{ code?: string }} */ (err).code === 'ENOENT')) throw err;
+      }
+      const parent = path.dirname(abs);
+      let createdDir = null;
+      if (!(await fse.pathExists(parent))) {
+        await fse.ensureDir(parent);
+        createdDir = parent;
+      } else {
+        await fse.ensureDir(parent);
+      }
+      await fse.writeFile(abs, w.content, 'utf8');
+      journal.push({ abs, previous, createdDir });
     }
-    await fse.ensureDir(path.dirname(abs));
-    await fse.writeFile(abs, w.content, 'utf8');
+  } catch (err) {
+    for (const entry of [...journal].reverse()) {
+      try {
+        if (entry.previous == null) await fse.remove(entry.abs);
+        else await fse.writeFile(entry.abs, entry.previous, 'utf8');
+        if (entry.createdDir) await fse.remove(entry.createdDir);
+      } catch {
+        /* best effort */
+      }
+    }
+    throw err;
   }
 }
