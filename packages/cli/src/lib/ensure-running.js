@@ -57,11 +57,17 @@ export async function ensureStagepassReady(options = {}, deps = {}) {
           exec: deps.exec,
           confirm,
         });
-        if (typeof code === 'number' && code !== 0) {
+        // start() must return 0 on success; undefined/non-zero means not started.
+        if (typeof code !== 'number' || code !== 0) {
           warn('Could not start Stagepass. Run: stagepass start');
+          running = await isRunningFn({ exec: deps.exec });
         } else {
-          started = true;
-          running = true;
+          running = await isRunningFn({ exec: deps.exec });
+          if (running === true) {
+            started = true;
+          } else {
+            warn('Could not start Stagepass. Run: stagepass start');
+          }
         }
       } catch {
         warn('Could not start Stagepass. Run: stagepass start');
