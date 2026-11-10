@@ -69,44 +69,25 @@ export async function findPort443Conflict(opts = {}) {
   }
 }
 
-/**
- * Send a signal via process.kill; escalate to `sudo kill` only on EPERM.
- * ESRCH (already gone) is success. Other errors / sudo failure → ok:false (no throw).
- * Caller must already have confirmation. Never runs `sudo -v`.
- * @param {string} pid
- * @param {'TERM'|'KILL'} signal
- * @param {import('../lib/exec.js').ExecFn} exec
- * @param {(pid: number, signal?: NodeJS.Signals|number) => boolean} [kill]
- * @returns {Promise<{ ok: boolean, usedSudo?: boolean, detail?: string }>}
- */
+/** process.kill; sudo kill only on EPERM. ESRCH=ok; else ok:false (no throw). */
 async function signalProcess(pid, signal, exec, kill = process.kill) {
-  const flag = signal === 'KILL' ? '-KILL' : '-TERM';
-  const sig = signal === 'KILL' ? 'SIGKILL' : 'SIGTERM';
   try {
-    kill(Number(pid), sig);
-    return { ok: true, usedSudo: false };
-  } catch (error) {
-    const code = /** @type {{ code?: string }} */ (error)?.code;
-    if (code === 'ESRCH') return { ok: true, usedSudo: false };
+    kill(Number(pid), /** @type {NodeJS.Signals} */ (`SIG${signal}`));
+    return { ok: true };
+  } catch (e) {
+    const code = /** @type {{ code?: string }} */ (e)?.code;
+    if (code === 'ESRCH') return { ok: true };
     if (code !== 'EPERM') {
-      return {
-        ok: false,
-        detail: `Failed to signal PID ${pid}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      };
+      return { ok: false, detail: `Failed to signal PID ${pid}: ${e?.message ?? e}` };
     }
   }
   try {
-    await exec('sudo', ['kill', flag, pid], { stdio: 'inherit' });
-    return { ok: true, usedSudo: true };
-  } catch (error) {
-    return {
-      ok: false,
-      detail: `sudo kill failed for PID ${pid}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    await exec('sudo', ['kill', signal === 'KILL' ? '-KILL' : '-TERM', pid], {
+      stdio: 'inherit',
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: `sudo kill failed for PID ${pid}: ${e?.message ?? e}` };
   }
 }
 
@@ -118,7 +99,7 @@ async function signalProcess(pid, signal, exec, kill = process.kill) {
  * @param {{ pid: string, name: string }} proc
  * @param {object} opts
  * @param {import('../lib/exec.js').ExecFn} [opts.exec]
- * @param {(pid: number, signal?: NodeJS.Signals|number) => boolean} [opts.kill]
+ * @param {typeof process.kill} [opts.kill]
  * @param {(message: string, o?: object) => Promise<boolean>} [opts.confirm]
  * @param {boolean} [opts.interactive]
  * @param {(ms: number) => Promise<void>} [opts.sleep]
@@ -127,7 +108,7 @@ async function signalProcess(pid, signal, exec, kill = process.kill) {
  */
 export async function resolvePort443Conflict(proc, opts = {}) {
   const exec = opts.exec || defaultExec;
-  const kill = opts.kill || process.kill.bind(process);
+  const kill = opts.kill || process.kill;
   const confirm = opts.confirm || defaultConfirm;
   const sleep =
     opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -155,8 +136,7 @@ export async function resolvePort443Conflict(proc, opts = {}) {
     return { ok: false, cancelled: true };
   }
 
-  /** @type {{ ok: boolean, detail?: string }|null} */
-  let signaled = null;
+  let signaled;
   // Prefer right-free service stops before any sudo (nginx: valet, then brew).
   if (String(proc.name).includes('nginx')) {
     try {
@@ -177,7 +157,7 @@ export async function resolvePort443Conflict(proc, opts = {}) {
   } else {
     signaled = await signalProcess(pid, 'TERM', exec, kill);
   }
-  if (signaled && !signaled.ok) return signaled;
+  if (signaled?.ok === false) return signaled;
 
   await sleep(400);
   let still = await recheck();

@@ -25,74 +25,44 @@ import { start as defaultStart } from './start.js';
 /** Grace before SIGKILL after a forwarded stop signal (overridable in tests). */
 export const DEV_SIGNAL_GRACE_MS = 3000;
 
-/** Exclusive start lock next to projects.json; stale after this age. */
-const DEV_START_LOCK_STALE_MS = 8000;
-
 const SIGNAL_NUM = /** @type {const} */ ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
 
-/**
- * Exclusive lock for concurrent `dev` starts (wx file next to projects.json).
- * Stale = dead pid or older than DEV_START_LOCK_STALE_MS → remove and retry once.
- * @param {string} projectsPath
- * @param {typeof fs} fse
- * @returns {Promise<{ ok: true, unlock: () => Promise<void> } | { ok: false, holderPid: number|null }>}
- */
+/** Exclusive wx lock next to projects.json; dead/unreadable/stale holder → unlink + retry once. */
+const DEV_START_LOCK_STALE_MS = 8000;
 async function acquireDevStartLock(projectsPath, fse) {
-  const lockPath = path.join(path.dirname(projectsPath), 'projects.dev.lock');
-  const write = async () => {
-    const fd = await fse.open(lockPath, 'wx');
-    try {
-      await fse.writeFile(fd, `${process.pid}\n${Date.now()}\n`);
-    } finally {
-      await fse.close(fd);
-    }
+  const p = path.join(path.dirname(projectsPath), 'projects.dev.lock');
+  const rm = () => fse.unlink(p).catch(() => {});
+  const grab = async () => {
+    const fd = await fse.open(p, 'wx');
+    try { await fse.writeFile(fd, `${process.pid}\n${Date.now()}\n`); }
+    finally { await fse.close(fd); }
   };
-  /** @returns {Promise<number|null>} */
-  const readHolder = async () => {
+  const read = async () => {
     try {
-      const n = Number(String(await fse.readFile(lockPath, 'utf8')).split('\n')[0]);
-      return Number.isInteger(n) && n > 0 ? n : null;
+      const [a, b] = String(await fse.readFile(p, 'utf8')).split('\n');
+      const pid = Number(a);
+      const at = Number(b);
+      return {
+        pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+        stale: !Number.isInteger(pid) || pid <= 0 || !isPidAlive(pid) ||
+          !Number.isFinite(at) || Date.now() - at > DEV_START_LOCK_STALE_MS,
+      };
     } catch {
-      return null;
+      return { pid: null, stale: true };
     }
   };
-  /** @returns {Promise<boolean>} */
-  const isStale = async () => {
+  for (let i = 0; i < 2; i++) {
     try {
-      const [pidLine, atLine] = String(await fse.readFile(lockPath, 'utf8')).split('\n');
-      const pid = Number(pidLine);
-      const at = Number(atLine);
-      if (!Number.isInteger(pid) || pid <= 0) return true;
-      if (!isPidAlive(pid)) return true;
-      if (!Number.isFinite(at) || Date.now() - at > DEV_START_LOCK_STALE_MS) return true;
-      return false;
-    } catch {
-      return true;
-    }
-  };
-  const unlock = async () => {
-    try {
-      await fse.unlink(lockPath);
-    } catch {
-      /* ignore */
-    }
-  };
-  try {
-    await write();
-    return { ok: true, unlock };
-  } catch (err) {
-    if (/** @type {{ code?: string }} */ (err)?.code !== 'EEXIST') throw err;
-  }
-  if (await isStale()) {
-    await unlock();
-    try {
-      await write();
-      return { ok: true, unlock };
-    } catch (err) {
-      if (/** @type {{ code?: string }} */ (err)?.code !== 'EEXIST') throw err;
+      await grab();
+      return { ok: true, unlock: rm };
+    } catch (e) {
+      if (/** @type {{ code?: string }} */ (e)?.code !== 'EEXIST') throw e;
+      const { pid, stale } = await read();
+      if (!stale || i) return { ok: false, holderPid: pid };
+      await rm();
     }
   }
-  return { ok: false, holderPid: await readHolder() };
+  return { ok: false, holderPid: null };
 }
 
 /**
@@ -167,14 +137,10 @@ export async function dev(options = {}, deps = {}) {
   await clearStaleDevPorts(projectsPath);
 
   const { domain } = matched;
-  const alreadyRunning = (pid) => {
-    error(
-      chalk.red(
-        `Another stagepass dev is already running for ${domain} (pid ${pid}). Stop it before starting a second one.`
-      )
-    );
-    return 1;
-  };
+  const alreadyRunning = (pid) => (
+    error(chalk.red(`Another stagepass dev is already running for ${domain} (pid ${pid}). Stop it before starting a second one.`)),
+    1
+  );
 
   const lock = await acquireDevStartLock(projectsPath, fse);
   if (!lock.ok) {
