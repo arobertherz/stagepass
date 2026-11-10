@@ -37,8 +37,10 @@ Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `n
 #### Changed interfaces / Notes for upgraders
 
 - **Node engine:** `>=18.0.0` -> `>=20.17.0` (required by `@inquirer/prompts@8`). Node 18 is no longer supported for this CLI.
-- **Dependency majors:** `commander` 11 -> 14, `execa` 8 -> 9, `ora` 7 -> 9, `inquirer` -> `@inquirer/prompts`.
-- **start:** Certificate check with repair offer (`certs trust` / site `renew`); PHP-FPM ensure (`brew services start php`, then `restart`); stale `devPort` cleanup; privilege-scoped port-443 handling (no standby `sudo -v`); help text for start/stop/daemon updated.
+- **Dependency majors:** `commander` 11 -> 14, `execa` 8 -> 9, `ora` 7 -> 9, `inquirer` -> `@inquirer/prompts`. Minors: `fs-extra` 11.2.0 -> 11.4.1, `vitest` 5.0.5 -> 5.1.0 (dev).
+- **start:** Certificate check with repair offer (`certs trust` / site `renew`); PHP-FPM ensure (`brew services start php`, then `restart`); stale `devPort` cleanup; privilege-scoped port-443 handling (no standby `sudo -v`; `sudo kill` only on EPERM; ESRCH = already exited); help text for start/stop/daemon updated.
+- **httpd:** port-443 handling still uses `sudo apachectl stop` after the SIGTERM confirmation, unchanged from 2.2.7.
+- **doctor:** unpinned-CDN warnings; project/PHP checks; self-hosted loader display.
 - **daemon:** PHP-FPM safeguard and macOS notifications via `osascript`.
 - **new:** Doctor preflight after input validation (never on `--dry-run`); optional `--staging` / `--production` / `--php` / `--link`.
 - **prepack / release:** `scripts/sync-cli-versions.mjs --check` verifies `package-versions.js` against loader/modules versions and writes nothing (exit 1 on drift).
