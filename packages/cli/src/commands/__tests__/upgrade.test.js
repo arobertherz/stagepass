@@ -341,6 +341,43 @@ describe('upgrade: published versions only', () => {
   });
 });
 
+describe('upgrade: --site before registry', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-site-'));
+    await fsx.writeJson(
+      path.join(dir, 'package.json'),
+      { name: 'app', devDependencies: { '@stagepass/loader': '^2.0.0' } },
+      { spaces: 2 }
+    );
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  it('rejects an invalid --site before any registry lookup and writes nothing', async () => {
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const logs = [];
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.2.0'] }));
+    const code = await upgrade(
+      { site: 'demo.webflow.io:443' },
+      {
+        cwd: dir,
+        fetchPublished,
+        log: (m) => logs.push(String(m ?? '')),
+        isTTY: false,
+        loadProjects: async () => ({ projects: {} }),
+        detectSite: vi.fn(),
+      }
+    );
+    expect(code).toBe(1);
+    expect(fetchPublished).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toMatch(/must not contain a port/i);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+});
+
 describe('upgrade: snippet version pin (AC-7 / AC-14)', () => {
   /** @type {string} */
   let dir;
