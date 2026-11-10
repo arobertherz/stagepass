@@ -253,7 +253,9 @@ describe('createNew', () => {
 
     const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
     expect(readme).toContain('@stagepass/loader@2');
-    expect(readme).toContain('data-stagepass-version="2.0.0"');
+    // Resolved loader version (fetchPublished stub: latest 2.2.0), not the CLI version 2.0.0 (AC-14).
+    expect(readme).toContain('data-stagepass-version="2.2.0"');
+    expect(readme).not.toContain('data-stagepass-version="2.0.0"');
     expect(readme).not.toContain('unpkg.com');
 
     const agents = await fs.readFile(path.join(target, 'AGENTS.md'), 'utf8');
@@ -431,13 +433,16 @@ describe('new: dependency ranges and types vs. published versions', () => {
     expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules']);
   });
 
-  it('does not query npm for none or all', async () => {
-    const fetchPublished = vi.fn();
+  it('does not query @stagepass/modules for none or all', async () => {
+    // The loader lookup for the snippet version is expected (AC-14); the
+    // per-module types lookup of @stagepass/modules is not needed here.
+    const fetchPublished = vi.fn(async () => null);
     for (const [name, mods] of [['pub-none', 'none'], ['pub-all', 'all']]) {
       const { code } = await run(name, { siteModules: mods }, { fetchPublished });
       expect(code).toBe(0);
     }
-    expect(fetchPublished).not.toHaveBeenCalled();
+    expect(fetchPublished).not.toHaveBeenCalledWith('@stagepass/modules', expect.anything());
+    expect(fetchPublished).toHaveBeenCalledWith('@stagepass/loader', expect.anything());
   });
 
   it('npm install succeeds with only 2.0.0 published and types follow the installed package', async () => {

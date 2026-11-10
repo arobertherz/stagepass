@@ -9,13 +9,14 @@ import {
 
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { LOADER_VERSION } from '../lib/versions.js';
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 import {
   PACKAGES_MAJOR_RANGE,
   fetchPublished,
   installedHasPerModuleTypes,
   maxSatisfying,
   rangeHasPerModuleTypes,
+  resolveSnippetLoaderVersion,
   satisfiesSimple,
 } from '../lib/registry.js';
 import { detectSite } from '../lib/site-detect.js';
@@ -319,6 +320,28 @@ export async function upgrade(options = {}, deps = {}) {
     );
   }
 
+  // Snippet: --version pin of loader on 2.x wins; resolve before writing so a failure changes nothing.
+  let loaderPub = '@stagepass/loader' in published ? published['@stagepass/loader'] : undefined;
+  const getLoaderPub = async () => {
+    if (loaderPub !== undefined) return loaderPub;
+    const lookup = deps.fetchPublished || ((name) => fetchPublished(name, { exec: deps.exec || defaultExec }));
+    loaderPub = await lookup('@stagepass/loader');
+    return loaderPub;
+  };
+  let snippetVersion = null;
+  if (options.version != null) {
+    let t = targets['@stagepass/loader'];
+    if (!t) {
+      try {
+        t = resolvePackageTarget('@stagepass/loader', options.version, await getLoaderPub());
+      } catch (e) {
+        log(chalk.red(e instanceof Error ? e.message : String(e)));
+        return 1;
+      }
+    }
+    if (t.resolved && satisfiesSimple(t.resolved, PACKAGES_MAJOR_RANGE)) snippetVersion = t.resolved;
+  }
+
   if (options.dryRun) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
@@ -332,8 +355,16 @@ export async function upgrade(options = {}, deps = {}) {
     if (plan.writes.length > 0) log(chalk.green(`Updated ${plan.writes.length} project file(s).`));
   }
 
+  if (!snippetVersion) {
+    snippetVersion = await resolveSnippetLoaderVersion({
+      published: await getLoaderPub(),
+      cwd,
+      bundled: STAGEPASS_PACKAGES_VERSION,
+      fse,
+    });
+  }
   const snippets = buildWebflowSnippets({
-    version: targets['@stagepass/loader']?.resolved || LOADER_VERSION,
+    version: snippetVersion,
     moduleList: resolved.modules,
   });
   printWebflowSnippets(snippets, log);

@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { execa } from 'execa';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import fs from 'fs-extra';
 import { getCaddyfilePath, getProjectsPath } from '../lib/paths.js';
 import {
@@ -12,7 +12,7 @@ export async function reload(options = {}) {
   const caddyFilePath = getCaddyfilePath();
   const projectsPath = getProjectsPath();
 
-  const spinner = ora('Reloading Caddy...').start();
+  const spinner = createSpinner('Reloading Caddy...').start();
 
   if (!(await fs.pathExists(caddyFilePath))) {
     spinner.fail('No Caddyfile found. Run "stagepass link" first.');
