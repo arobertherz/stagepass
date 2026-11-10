@@ -13,6 +13,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### `@stagepass/cli`
 
+- `stagepass watch` / `stagepass dev` check whether Stagepass is running before starting (#40). Interactive TTY asks to start (same in-process path as `stagepass start`); non-TTY / CI prints a `stagepass start` hint and continues. `watch` also warns with `stagepass link` when the cwd is not linked; `dev` keeps the existing hard error for unlinked projects.
 - Live site detection (#31): also recognise jsDelivr/unpkg package-root URLs (`…/@stagepass/loader@2`, `…/@stagepass/modules@2`, trailing slash / query; modules root → `all` via `main`) and self-hosted embeds (Stagepass build filenames under a `stagepass` / `@stagepass` path, or with a `data-stagepass-*` hint; renamed loader via loader-config attributes). Result `cdn: "self"` is display-only; `upgrade` does not rewrite self-hosted tags to CDN. Bare `loader.js` / `all.min.js` without a Stagepass hint stay unmatched.
 - Live reload: content-based change detection in `live-server` (sha256 per file under `outDir`). Identical rewrites are ignored; `manifest.json` is ignored; CSS-only real changes emit `{type:"css"}`, other real changes emit `{type:"reload"}`.
 - Scaffold `scripts/build.mjs --watch`: rebuild only the affected part (JS entry/imports via esbuild watch, CSS entry separately); write dist files and `manifest.json` only when bytes change, so CSS-only edits do not rewrite `main.js` and do not force a full page reload.

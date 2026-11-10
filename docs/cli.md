@@ -24,8 +24,8 @@ Typical order: `setup` → `start` → `link` (then `dev` / `reload` / `unlink` 
 | `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications via `osascript`); never sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (flags for every option incl. `--site` / `--site-modules` / `--staging` / `--production`, `--php` / `--php-examples`, `--link`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
-| `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). |
-| `stagepass dev` | Run project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain. See [dev.md](./dev.md). |
+| `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
+| `stagepass dev` | Run project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain. Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
 | `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).

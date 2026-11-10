@@ -19,6 +19,8 @@ import { createLiveServer, resolveOutputDir } from '../lib/live-server.js';
 import { readStagepassJson } from '../lib/project-sync.js';
 import { getCaddyfilePath, getProjectsPath, validateRoot } from '../lib/paths.js';
 import { isValidDevPort } from '../lib/dev-port.js';
+import { ensureStagepassReady } from '../lib/ensure-running.js';
+import { start as defaultStart } from './start.js';
 
 /**
  * Read optional outDir from stagepass.json (default dist).
@@ -34,6 +36,7 @@ export async function readProjectOutDir(cwd, fse = fs) {
 /**
  * @param {object} [options]
  * @param {boolean} [options.verbose]
+ * @param {boolean} [options.yes]
  * @param {object} [deps]
  * @returns {Promise<number>}
  */
@@ -59,6 +62,16 @@ export async function dev(options = {}, deps = {}) {
     error(chalk.red(`❌ ${rootCheck.error}`));
     return 1;
   }
+
+  const ensure = deps.ensureStagepassReady || ensureStagepassReady;
+  await ensure(options, {
+    ...deps,
+    cwd,
+    projectsPath,
+    start: deps.start || defaultStart,
+    // Linked check stays below with the existing hard error
+    unlinked: 'skip',
+  });
 
   await clearStaleDevPorts(projectsPath);
 

@@ -62,7 +62,8 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass daemon` | Non-interactive LaunchAgent helper (PHP-FPM ensure, certs log-only, `caddy run`, macOS notifications). Never uses sudo. |
 | `stagepass new [name]` | Scaffold a lean Webflow project (TypeScript + SCSS by default). |
 | `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
-| `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). |
+| `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). If Stagepass is not running, asks to start it (TTY) or prints a `stagepass start` hint (non-TTY / CI); warns with `stagepass link` when the cwd is not linked. |
+| `stagepass dev` | Like watch, plus live reload on the linked `.sp` domain. Same running check as watch; requires `stagepass link` (hard error if unlinked). |
 | `stagepass upgrade` | Bump `@stagepass/*`, sync declared modules, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. |
 
 All commands support `-v, --verbose` where applicable.

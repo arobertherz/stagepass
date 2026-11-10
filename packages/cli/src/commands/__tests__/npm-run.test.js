@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runNpmScript, watch, build } from '../npm-run.js';
 
+const readyOk = async () => ({
+  ok: true,
+  running: true,
+  linked: true,
+  started: false,
+});
+
 describe('runNpmScript', () => {
   it('errors when script is missing', async () => {
     const errors = [];
@@ -54,9 +61,43 @@ describe('runNpmScript', () => {
       readFile: async () =>
         JSON.stringify({ scripts: { watch: 'w', build: 'b' } }),
     };
-    expect(await watch({}, { fs, cwd: '/p', spawn, log: () => {}, error: () => {} })).toBe(0);
+    expect(
+      await watch(
+        {},
+        {
+          fs,
+          cwd: '/p',
+          spawn,
+          log: () => {},
+          error: () => {},
+          ensureStagepassReady: readyOk,
+        }
+      )
+    ).toBe(0);
     expect(spawn.mock.calls[0][1]).toEqual(['run', 'watch']);
     expect(await build({}, { fs, cwd: '/p', spawn, log: () => {}, error: () => {} })).toBe(0);
     expect(spawn.mock.calls[1][1]).toEqual(['run', 'build']);
+  });
+
+  it('watch runs ensure before npm and still forwards exit code', async () => {
+    const ensure = vi.fn(readyOk);
+    const spawn = vi.fn(async () => ({ code: 0, signal: null }));
+    const code = await watch(
+      {},
+      {
+        fs: {
+          pathExists: async () => true,
+          readFile: async () => JSON.stringify({ scripts: { watch: 'w' } }),
+        },
+        cwd: '/p',
+        spawn,
+        log: () => {},
+        error: () => {},
+        ensureStagepassReady: ensure,
+      }
+    );
+    expect(code).toBe(0);
+    expect(ensure).toHaveBeenCalledTimes(1);
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 });

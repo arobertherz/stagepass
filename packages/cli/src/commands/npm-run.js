@@ -2,6 +2,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 import { defaultSpawn } from '../lib/spawn.js';
+import { ensureStagepassReady } from '../lib/ensure-running.js';
+import { start as defaultStart } from './start.js';
 
 /**
  * Run an npm lifecycle script in cwd via spawn (no shell).
@@ -67,10 +69,18 @@ export async function runNpmScript(scriptName, options = {}, deps = {}) {
 
 /**
  * @param {object} [options]
+ * @param {boolean} [options.verbose]
+ * @param {boolean} [options.yes]
  * @param {object} [deps]
  * @returns {Promise<number>}
  */
 export async function watch(options = {}, deps = {}) {
+  const ensure = deps.ensureStagepassReady || ensureStagepassReady;
+  await ensure(options, {
+    ...deps,
+    start: deps.start || defaultStart,
+    unlinked: 'warn',
+  });
   return runNpmScript('watch', options, deps);
 }
 
