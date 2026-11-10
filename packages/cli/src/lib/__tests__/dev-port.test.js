@@ -23,4 +23,14 @@ describe('dev-port', () => {
     expect(isPidAlive(-1)).toBe(false);
     expect(isPidAlive('nope')).toBe(false);
   });
+
+  // Kills mutant: `typeof n !== 'number' && !Number.isInteger(n)` (wrong operator).
+  it('rejects non-integer numbers (mutant isPidAlive typeof/Integer gate)', () => {
+    expect(isPidAlive(1.5)).toBe(false);
+    expect(isPidAlive(NaN)).toBe(false);
+    expect(isPidAlive(0)).toBe(false);
+    expect(isPidAlive(null)).toBe(false);
+    expect(isPidAlive(undefined)).toBe(false);
+    expect(isPidAlive('123')).toBe(false);
+  });
 });

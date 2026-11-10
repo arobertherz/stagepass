@@ -18,7 +18,7 @@ import { applySiteBlock } from '../lib/apply-site-block.js';
 import { createLiveServer, resolveOutputDir } from '../lib/live-server.js';
 import { readStagepassJson } from '../lib/project-sync.js';
 import { getCaddyfilePath, getProjectsPath, validateRoot } from '../lib/paths.js';
-import { isValidDevPort } from '../lib/dev-port.js';
+import { isPidAlive, isValidDevPort } from '../lib/dev-port.js';
 import { ensureStagepassReady } from '../lib/ensure-running.js';
 import { start as defaultStart } from './start.js';
 
@@ -63,16 +63,7 @@ export async function dev(options = {}, deps = {}) {
     return 1;
   }
 
-  await (deps.ensureStagepassReady || ensureStagepassReady)(options, {
-    ...deps,
-    cwd,
-    projectsPath,
-    start: deps.start || defaultStart,
-    unlinked: 'skip',
-  });
-
-  await clearStaleDevPorts(projectsPath);
-
+  // AC-8: refuse unlinked projects before offering to start Stagepass.
   const matched = await findProjectByRoot(cwd, projectsPath);
   if (!matched) {
     error(
@@ -83,10 +74,36 @@ export async function dev(options = {}, deps = {}) {
     return 1;
   }
 
+  await (deps.ensureStagepassReady || ensureStagepassReady)(options, {
+    ...deps,
+    cwd,
+    projectsPath,
+    start: deps.start || defaultStart,
+    unlinked: 'skip',
+  });
+
+  await clearStaleDevPorts(projectsPath);
+
   const { domain } = matched;
   let project = await getProject(domain, projectsPath);
   if (!project) {
     error(chalk.red(`No projects.json entry for ${domain}.`));
+    return 1;
+  }
+
+  const foreignPid =
+    typeof project.devPid === 'number' &&
+    Number.isInteger(project.devPid) &&
+    project.devPid > 0 &&
+    project.devPid !== process.pid
+      ? project.devPid
+      : null;
+  if (foreignPid != null && isPidAlive(foreignPid)) {
+    error(
+      chalk.red(
+        `Another stagepass dev is already running for ${domain} (pid ${foreignPid}). Stop it before starting a second one.`
+      )
+    );
     return 1;
   }
 
@@ -154,14 +171,21 @@ export async function dev(options = {}, deps = {}) {
       /* ignore */
     }
     try {
-      await setProjectDevPort(domain, { port: null }, projectsPath);
-      const cleared = await getProject(domain, projectsPath);
-      if (cleared) {
-        await applySiteBlock(domain, cleared, { caddyfilePath, fs: fse });
-        try {
-          await reloadCaddy(caddyfilePath, options.verbose);
-        } catch {
-          /* ignore on exit */
+      // Only clear our own port so a parallel later `dev` is not wiped (AC-7).
+      const current = await getProject(domain, projectsPath);
+      if (
+        current &&
+        (current.devPid == null || current.devPid === process.pid)
+      ) {
+        await setProjectDevPort(domain, { port: null }, projectsPath);
+        const cleared = await getProject(domain, projectsPath);
+        if (cleared) {
+          await applySiteBlock(domain, cleared, { caddyfilePath, fs: fse });
+          try {
+            await reloadCaddy(caddyfilePath, options.verbose);
+          } catch {
+            /* ignore on exit */
+          }
         }
       }
     } catch {
@@ -202,6 +226,7 @@ export async function dev(options = {}, deps = {}) {
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
+  process.once('SIGHUP', onSignal);
 
   let watchCode = 1;
   try {
@@ -218,6 +243,7 @@ export async function dev(options = {}, deps = {}) {
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    process.off('SIGHUP', onSignal);
     await cleanup();
   }
 

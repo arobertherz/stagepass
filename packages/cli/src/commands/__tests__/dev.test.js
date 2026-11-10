@@ -18,6 +18,7 @@ describe('stagepass dev command', () => {
     const projectsPath = path.join(tmp, 'projects.json');
     await saveProjects({ version: 1, projects: {} }, projectsPath);
     const errors = [];
+    const ensure = vi.fn(readyOk);
     const code = await dev(
       {},
       {
@@ -26,7 +27,7 @@ describe('stagepass dev command', () => {
         caddyfilePath: path.join(tmp, 'Caddyfile'),
         log: () => {},
         error: (m) => errors.push(String(m)),
-        ensureStagepassReady: readyOk,
+        ensureStagepassReady: ensure,
         createLiveServer: () => {
           throw new Error('should not start');
         },
@@ -36,7 +37,72 @@ describe('stagepass dev command', () => {
     );
     expect(code).toBe(1);
     expect(errors.join(' ')).toMatch(/link/i);
+    expect(ensure).not.toHaveBeenCalled();
     await fs.remove(tmp);
+  });
+
+  it('refuses a second dev while a foreign live pid owns the port', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev2-'));
+    const root = path.join(tmp, 'app');
+    await fs.ensureDir(root);
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ scripts: { watch: 'echo watch' } })
+    );
+    const projectsPath = path.join(tmp, 'projects.json');
+    await saveProjects(
+      {
+        version: 1,
+        projects: {
+          'app.sp': {
+            root,
+            origins: ['example.com'],
+            allowAllOrigins: false,
+            php: false,
+            devPort: 34567,
+            devPid: 1,
+          },
+        },
+      },
+      projectsPath
+    );
+    const { spawn } = await import('node:child_process');
+    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{}, 1000)'], {
+      stdio: 'ignore',
+      detached: true,
+    });
+    child.unref();
+    const doc = await loadProjects(projectsPath);
+    doc.projects['app.sp'].devPid = child.pid;
+    await saveProjects(doc, projectsPath);
+    const errors = [];
+    try {
+      const code = await dev(
+        {},
+        {
+          cwd: root,
+          projectsPath,
+          caddyfilePath: path.join(tmp, 'Caddyfile'),
+          log: () => {},
+          error: (m) => errors.push(String(m)),
+          ensureStagepassReady: readyOk,
+          createLiveServer: () => {
+            throw new Error('should not start');
+          },
+          spawnWatch: async () => ({ code: 0 }),
+          reloadCaddy: async () => {},
+        }
+      );
+      expect(code).toBe(1);
+      expect(errors.join(' ')).toMatch(/already running/i);
+    } finally {
+      try {
+        process.kill(child.pid, 'SIGKILL');
+      } catch {
+        /* ignore */
+      }
+      await fs.remove(tmp);
+    }
   });
 
   it('runs ensure before starting when Stagepass is down', async () => {
