@@ -356,6 +356,14 @@ export async function upgrade(options = {}, deps = {}) {
   } else {
     try {
       if (changes.length > 0) {
+        try {
+          if ((await fse.lstat(pkgPath)).isSymbolicLink()) {
+            log(chalk.red('package.json is a symlink; refusing to write.'));
+            return 1;
+          }
+        } catch {
+          /* missing / unreadable: writeFile will surface the error */
+        }
         const trailingNewline = raw.endsWith('\n');
         const pkgBody = `${JSON.stringify(next, null, 2)}${trailingNewline ? '\n' : ''}`;
         await fse.writeFile(pkgPath, pkgBody, 'utf8');

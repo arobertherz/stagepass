@@ -90,6 +90,53 @@ describe('planProjectSync / applyProjectSync', () => {
   it('refuses writes outside the project', async () => {
     await expect(applyProjectSync(dir, [{ file: '../evil', content: '' }])).rejects.toThrow(/outside/);
   });
+
+  it('[P-2][INV-3] skips symlinked targets with a note', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-sync-out-'));
+    try {
+      const agentsOutside = path.join(outside, 'AGENTS.md');
+      const tsOutside = path.join(outside, 'tsconfig.json');
+      const cursorOutside = path.join(outside, 'cursor-target');
+      await fs.writeFile(agentsOutside, '# secret outside\n');
+      await fs.writeFile(
+        tsOutside,
+        JSON.stringify({ compilerOptions: { types: ['@stagepass/loader'] } }, null, 2) + '\n'
+      );
+      await fs.mkdir(cursorOutside);
+      await fs.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
+      await fs.symlink(tsOutside, path.join(dir, 'tsconfig.json'));
+      await fs.symlink(cursorOutside, path.join(dir, '.cursor'));
+
+      const agentsBefore = await fs.readFile(agentsOutside, 'utf8');
+      const tsBefore = await fs.readFile(tsOutside, 'utf8');
+      const cursorListing = await fs.readdir(cursorOutside);
+
+      const plan = await planProjectSync({
+        cwd: dir,
+        modules: ['cookies'],
+        pkg: { name: 'demo', devDependencies: { '@stagepass/modules': '^2.2.0' } },
+      });
+      expect(plan.notes.some((n) => n === 'AGENTS.md is a symlink; left unchanged')).toBe(true);
+      expect(plan.notes.some((n) => n === 'tsconfig.json is a symlink; left unchanged')).toBe(true);
+      expect(plan.notes.some((n) => n.includes('.cursor/rules/stagepass.mdc') && n.includes('symlink'))).toBe(
+        true
+      );
+      expect(plan.writes.map((w) => w.file)).not.toContain('AGENTS.md');
+      expect(plan.writes.map((w) => w.file)).not.toContain('tsconfig.json');
+      expect(plan.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
+
+      await applyProjectSync(dir, plan.writes);
+      expect(await fs.readFile(agentsOutside, 'utf8')).toBe(agentsBefore);
+      expect(await fs.readFile(tsOutside, 'utf8')).toBe(tsBefore);
+      expect(await fs.readdir(cursorOutside)).toEqual(cursorListing);
+
+      await expect(
+        applyProjectSync(dir, [{ file: 'AGENTS.md', content: 'hijack\n' }])
+      ).rejects.toThrow(/symlink/);
+    } finally {
+      await fs.remove(outside);
+    }
+  });
 });
 
 describe('originsFromStagepassConfig / phpFromStagepassConfig', () => {

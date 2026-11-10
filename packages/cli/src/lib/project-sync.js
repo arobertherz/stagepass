@@ -321,6 +321,15 @@ export function updateConfigTypes(raw, modules, opts) {
   return { status: 'updated', content: `${JSON.stringify(json, null, 2)}${trailing}`, types: nextTypes };
 }
 
+/** @param {string} abs @param {typeof fs} fse */
+async function isSymlink(abs, fse) {
+  try {
+    return (await fse.lstat(abs)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Plan file changes for the declared modules (pure, no writes).
  *
@@ -343,12 +352,29 @@ export async function planProjectSync(input, fse = fs) {
     pkg?.dependencies?.['@stagepass/modules'] || pkg?.devDependencies?.['@stagepass/modules']
   );
   const perModuleTypes = input.perModuleTypes;
+  /** Skip target when it (or a path ancestor under cwd) is a symlink. */
+  const skipSymlink = async (rel) => {
+    const abs = path.join(cwd, rel);
+    const root = path.resolve(cwd);
+    let cur = abs;
+    for (;;) {
+      if (await isSymlink(cur, fse)) {
+        notes.push(`${rel} is a symlink; left unchanged`);
+        return true;
+      }
+      const parent = path.dirname(cur);
+      if (parent === cur || path.resolve(parent) === root) break;
+      if (!path.resolve(parent).startsWith(root + path.sep) && path.resolve(parent) !== root) break;
+      cur = parent;
+    }
+    return false;
+  };
 
   // stagepass.json
   const sp = await readStagepassJson(cwd, fse);
   if (sp.exists && !sp.data) {
     notes.push(`stagepass.json skipped: ${sp.error}`);
-  } else {
+  } else if (!(await skipSymlink('stagepass.json'))) {
     /** @type {Record<string, unknown>} */
     let data;
     if (sp.data) {
@@ -372,7 +398,9 @@ export async function planProjectSync(input, fse = fs) {
   // AGENTS.md
   const block = buildManagedBlock(modules);
   const agentsPath = path.join(cwd, 'AGENTS.md');
-  if (await fse.pathExists(agentsPath)) {
+  if (await skipSymlink('AGENTS.md')) {
+    // note already added
+  } else if (await fse.pathExists(agentsPath)) {
     const raw = await fse.readFile(agentsPath, 'utf8');
     const result = upsertManagedBlock(raw, block);
     if (result.action === 'invalid') {
@@ -395,7 +423,9 @@ export async function planProjectSync(input, fse = fs) {
 
   // Cursor rule
   const rulePath = path.join(cwd, CURSOR_RULE_PATH);
-  if (await fse.pathExists(rulePath)) {
+  if (await skipSymlink(CURSOR_RULE_PATH)) {
+    // note already added
+  } else if (await fse.pathExists(rulePath)) {
     const raw = await fse.readFile(rulePath, 'utf8');
     if (raw.includes(BLOCK_BEGIN)) {
       const result = upsertManagedBlock(raw, block);
@@ -417,6 +447,7 @@ export async function planProjectSync(input, fse = fs) {
     const file = path.join(cwd, name);
     if (!(await fse.pathExists(file))) continue;
     sawConfig = true;
+    if (await skipSymlink(name)) continue;
     const raw = await fse.readFile(file, 'utf8');
     const result = updateConfigTypes(raw, modules, { modulesDependency, perModuleTypes });
     if (result.status === 'skipped') {
@@ -444,6 +475,7 @@ export async function planProjectSync(input, fse = fs) {
  */
 export async function applyProjectSync(cwd, writes, fse = fs) {
   const root = path.resolve(cwd);
+  const rootReal = await fse.realpath(root);
   /** @type {{ abs: string, previous: string | null, createdDir: string | null }[]} */
   const journal = [];
   try {
@@ -453,13 +485,31 @@ export async function applyProjectSync(cwd, writes, fse = fs) {
       if (rel.startsWith('..') || path.isAbsolute(rel)) {
         throw new Error(`Refusing to write outside the project: ${w.file}`);
       }
+      if (await isSymlink(abs, fse)) {
+        throw new Error(`Refusing to write through symlink: ${w.file}`);
+      }
+      const parent = path.dirname(abs);
+      let parentProbe = parent;
+      for (;;) {
+        try {
+          const parentReal = await fse.realpath(parentProbe);
+          if (parentReal !== rootReal && !parentReal.startsWith(rootReal + path.sep)) {
+            throw new Error(`Refusing to write outside the project: ${w.file}`);
+          }
+          break;
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith('Refusing')) throw err;
+          const up = path.dirname(parentProbe);
+          if (up === parentProbe) throw err;
+          parentProbe = up;
+        }
+      }
       let previous = null;
       try {
         previous = await fse.readFile(abs, 'utf8');
       } catch (err) {
         if (!(err && /** @type {{ code?: string }} */ (err).code === 'ENOENT')) throw err;
       }
-      const parent = path.dirname(abs);
       let createdDir = null;
       if (!(await fse.pathExists(parent))) {
         await fse.ensureDir(parent);
