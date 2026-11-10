@@ -156,6 +156,25 @@ describe('moveLocalCaAuthorityToBackup', () => {
     expect(moves[0].dest).toMatch(/local\.backup\.2026-01-02T03-04-05-678Z$/);
     expect(fs.existsSync).toBeTypeOf('function');
   });
+
+  // Mutant: `return { ok: false, error: '…not a directory.' }` -> `return undefined`
+  it('returns ok:false (not undefined) when the CA path is a file', async () => {
+    const move = vi.fn();
+    const result = await moveLocalCaAuthorityToBackup({
+      authorityDir: '/tmp/caddy/pki/authorities/local',
+      pathExists: async () => true,
+      lstat: async () => ({
+        isSymbolicLink: () => false,
+        isDirectory: () => false,
+      }),
+      move,
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: 'CA authority path is not a directory.',
+    });
+    expect(move).not.toHaveBeenCalled();
+  });
 });
 
 describe('deleteKeychainCertificateBySha1', () => {

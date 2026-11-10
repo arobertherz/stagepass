@@ -89,6 +89,50 @@ describe('certs renew command', () => {
     expect(move).not.toHaveBeenCalled();
   });
 
+  it('warms sudo before orphan delete unless skipSudo (mutant skipSudo gate)', async () => {
+    const exec = vi.fn(async (file, args) => {
+      if (file === 'sudo' && args?.[0] === '-v') return { stdout: '', stderr: '', code: 0 };
+      return { stdout: '', stderr: '', code: 0 };
+    });
+    const deleteFn = vi.fn(async () => ({
+      ok: true,
+      args: ['delete-certificate', '-Z', 'AABBCCDDEEFF00112233445566778899AABBCCDD'],
+    }));
+    const code = await certsRenew({
+      removeOrphans: true,
+      yes: true,
+      brewPrefix: null,
+      runCheck: async () => ({
+        orphans: [
+          { sha1: 'AABBCCDDEEFF00112233445566778899AABBCCDD', sha256: 'FF'.repeat(32) },
+        ],
+      }),
+      deleteKeychainCertificateBySha1: deleteFn,
+      exec,
+    });
+    expect(code).toBe(0);
+    expect(exec.mock.calls.some((c) => c[0] === 'sudo' && c[1]?.[0] === '-v')).toBe(true);
+    expect(deleteFn).toHaveBeenCalled();
+
+    exec.mockClear();
+    deleteFn.mockClear();
+    const skipped = await certsRenew({
+      removeOrphans: true,
+      yes: true,
+      skipSudo: true,
+      brewPrefix: null,
+      runCheck: async () => ({
+        orphans: [
+          { sha1: 'AABBCCDDEEFF00112233445566778899AABBCCDD', sha256: 'FF'.repeat(32) },
+        ],
+      }),
+      deleteKeychainCertificateBySha1: deleteFn,
+      exec,
+    });
+    expect(skipped).toBe(0);
+    expect(exec.mock.calls.some((c) => c[0] === 'sudo' && c[1]?.[0] === '-v')).toBe(false);
+  });
+
   it('removes orphans by SHA-1 after per-cert confirmation', async () => {
     const deleted = [];
     const code = await certsRenew({

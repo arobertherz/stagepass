@@ -1228,6 +1228,45 @@ describe('new: origins, php, preflight', () => {
     }
   });
 
+  it('passes verbose:true to link only when --verbose (mutant !==)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linkverb-'));
+    const target = path.join(tmp, 'linkverb');
+    const link = vi.fn(async () => 0);
+    try {
+      await createNew(
+        'linkverb-app',
+        {
+          yes: true,
+          dir: target,
+          git: false,
+          link: true,
+          verbose: true,
+          staging: 'linkverb.webflow.io',
+          siteModules: 'none',
+        },
+        {
+          isTTY: false,
+          argv: ['--yes', '--no-git', '--link', '--verbose'],
+          templatesRoot: defaultTemplatesRoot(),
+          cwd: tmp,
+          log: () => {},
+          error: () => {},
+          exec: vi.fn(),
+          spawn: vi.fn(),
+          platform: 'darwin',
+          link,
+        }
+      );
+      expect(link).toHaveBeenCalledWith(
+        'linkverb-app',
+        expect.objectContaining({ verbose: true }),
+        expect.anything()
+      );
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
   it('calls link on macOS with --link after scaffold', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-linknew-'));
     const target = path.join(tmp, 'linked');

@@ -39,6 +39,21 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     expect(conflict).toEqual({ pid: '4242', name: 'nginx' });
   });
 
+  // Mutant: `listener.name || basename(command)` -> `&&` would drop the basename fallback.
+  it('findPort443Conflict falls back to basename when listener name is empty', async () => {
+    const conflict = await findPort443Conflict({
+      exec: async () => ({
+        stdout: `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+/opt/homebrew/bin/weirdd  4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
+`,
+        stderr: '',
+        code: 0,
+      }),
+    });
+    expect(conflict?.pid).toBe('4242');
+    expect(conflict?.name).toMatch(/weirdd/);
+  });
+
   it('resolvePort443Conflict requires confirm; httpd may use apachectl without sudo -v', async () => {
     const calls = [];
     const confirms = [];
