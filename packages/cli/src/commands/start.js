@@ -297,7 +297,7 @@ export async function start(options = {}) {
           `Port 443 is blocked by ${conflict.name} (PID ${conflict.pid}). Refusing to signal without confirmation.`
         )
       );
-      return;
+      return 1;
     }
     const resolved = await (options.resolvePort443Conflict ||
       resolvePort443Conflict)(conflict, {
@@ -308,7 +308,7 @@ export async function start(options = {}) {
     });
     if (!resolved.ok) {
       if (resolved.detail) console.log(chalk.red(resolved.detail));
-      return;
+      return 1;
     }
     console.log(chalk.green(`Port freed (${resolved.detail}).`));
   }
@@ -375,7 +375,7 @@ export async function start(options = {}) {
           console.log(
             chalk.red(error instanceof Error ? error.message : String(error))
           );
-          return;
+          return 1;
         }
       }
       try {
@@ -392,7 +392,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
-        return;
+        return 0;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
         console.log(
@@ -420,6 +420,7 @@ export async function start(options = {}) {
     } else {
       console.log(chalk.green('✔ Stagepass is active.'));
     }
+    return 0;
   } catch (error) {
     if (!options.verbose) spinner.fail('Failed to start.');
     else console.log(chalk.red('Failed to start.'));
@@ -429,6 +430,7 @@ export async function start(options = {}) {
     } else if (error instanceof Error) {
       console.log(chalk.red(error.message));
     }
+    return 1;
   } finally {
     if (logFd != null) {
       try {
