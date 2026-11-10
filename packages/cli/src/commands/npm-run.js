@@ -75,11 +75,9 @@ export async function runNpmScript(scriptName, options = {}, deps = {}) {
  * @returns {Promise<number>}
  */
 export async function watch(options = {}, deps = {}) {
-  const ensure = deps.ensureStagepassReady || ensureStagepassReady;
-  await ensure(options, {
+  await (deps.ensureStagepassReady || ensureStagepassReady)(options, {
     ...deps,
     start: deps.start || defaultStart,
-    unlinked: 'warn',
   });
   return runNpmScript('watch', options, deps);
 }

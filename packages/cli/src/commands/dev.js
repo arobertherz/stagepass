@@ -63,13 +63,11 @@ export async function dev(options = {}, deps = {}) {
     return 1;
   }
 
-  const ensure = deps.ensureStagepassReady || ensureStagepassReady;
-  await ensure(options, {
+  await (deps.ensureStagepassReady || ensureStagepassReady)(options, {
     ...deps,
     cwd,
     projectsPath,
     start: deps.start || defaultStart,
-    // Linked check stays below with the existing hard error
     unlinked: 'skip',
   });
 

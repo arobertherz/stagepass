@@ -1,9 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  isStagepassRunning,
-  isInteractiveSession,
-  ensureStagepassReady,
-} from '../ensure-running.js';
+import { isStagepassRunning, ensureStagepassReady } from '../ensure-running.js';
 
 describe('isStagepassRunning', () => {
   it('returns true when lsof shows caddy on 443', async () => {
@@ -40,36 +36,12 @@ describe('isStagepassRunning', () => {
   });
 });
 
-describe('isInteractiveSession', () => {
-  it('is false under CI, --yes, or missing TTY', () => {
-    expect(
-      isInteractiveSession({}, { ci: true, stdin: { isTTY: true }, stdout: { isTTY: true } })
-    ).toBe(false);
-    expect(
-      isInteractiveSession(
-        { yes: true },
-        { ci: false, stdin: { isTTY: true }, stdout: { isTTY: true } }
-      )
-    ).toBe(false);
-    expect(
-      isInteractiveSession({}, { ci: false, stdin: { isTTY: false }, stdout: { isTTY: true } })
-    ).toBe(false);
-  });
-
-  it('is true when both streams are TTY and not CI', () => {
-    expect(
-      isInteractiveSession({}, { ci: false, stdin: { isTTY: true }, stdout: { isTTY: true } })
-    ).toBe(true);
-  });
-});
-
 describe('ensureStagepassReady', () => {
   const baseDeps = (overrides = {}) => ({
     ci: true,
     stdin: { isTTY: false },
     stdout: { isTTY: false },
     log: vi.fn(),
-    error: vi.fn(),
     cwd: '/proj',
     projectsPath: '/tmp/projects.json',
     start: vi.fn(async () => {}),
@@ -83,7 +55,6 @@ describe('ensureStagepassReady', () => {
     const deps = baseDeps();
     const result = await ensureStagepassReady({}, deps);
     expect(result).toEqual({
-      ok: true,
       running: true,
       linked: true,
       started: false,
@@ -152,28 +123,56 @@ describe('ensureStagepassReady', () => {
   it('not linked (warn): prints stagepass link hint and continues', async () => {
     const deps = baseDeps({
       findProjectByRoot: vi.fn(async () => null),
-      unlinked: 'warn',
     });
     const result = await ensureStagepassReady({}, deps);
-    expect(result.ok).toBe(true);
     expect(result.linked).toBe(false);
+    expect(result.started).toBe(false);
     expect(String(deps.log.mock.calls[0][0])).toMatch(/stagepass link/);
   });
 
-  it('not linked (error): returns code 1', async () => {
+  it('unlinked skip: does not check link or warn', async () => {
     const deps = baseDeps({
       findProjectByRoot: vi.fn(async () => null),
-      unlinked: 'error',
+      unlinked: 'skip',
     });
     const result = await ensureStagepassReady({}, deps);
-    expect(result).toEqual({
-      ok: false,
-      running: true,
-      linked: false,
-      started: false,
-      code: 1,
+    expect(result.linked).toBe(true);
+    expect(deps.findProjectByRoot).not.toHaveBeenCalled();
+    expect(deps.log).not.toHaveBeenCalled();
+  });
+
+  it('start throws: warns, continues, started=false', async () => {
+    const deps = baseDeps({
+      isStagepassRunning: vi.fn(async () => false),
+      start: vi.fn(async () => {
+        throw new Error('boot failed');
+      }),
     });
-    expect(String(deps.error.mock.calls[0][0])).toMatch(/stagepass link/);
+    const result = await ensureStagepassReady({ yes: true }, deps);
+    expect(result).toEqual({
+      running: false,
+      linked: true,
+      started: false,
+    });
+    expect(String(deps.log.mock.calls[0][0])).toMatch(
+      /Could not start Stagepass\. Run: stagepass start/
+    );
+  });
+
+  it('start returns non-zero: warns, continues, started=false', async () => {
+    const deps = baseDeps({
+      isStagepassRunning: vi.fn(async () => false),
+      start: vi.fn(async () => 1),
+    });
+    const result = await ensureStagepassReady({ yes: true }, deps);
+    expect(result).toEqual({
+      running: false,
+      linked: true,
+      started: false,
+    });
+    expect(String(deps.log.mock.calls[0][0])).toMatch(
+      /Could not start Stagepass\. Run: stagepass start/
+    );
   });
 
   it('unknown running status: skips start prompt', async () => {
