@@ -330,7 +330,16 @@ export async function assertScaffoldParentPath(targetDir, fs) {
     try {
       st = await fs.lstat(cur);
     } catch (err) {
-      if (err && /** @type {{ code?: string }} */ (err).code === 'ENOENT') {
+      const code = err && /** @type {{ code?: string }} */ (err).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        // Missing path, or an ancestor is a file (ENOTDIR when walking through it).
+        if (code === 'ENOTDIR') {
+          const parent = path.dirname(cur);
+          return {
+            ok: false,
+            error: `Parent path is a file, not a directory: ${parent === cur ? cur : parent}`,
+          };
+        }
         const next = path.dirname(cur);
         if (next === cur) break;
         cur = next;

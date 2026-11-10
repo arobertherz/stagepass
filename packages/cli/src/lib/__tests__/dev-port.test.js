@@ -31,6 +31,6 @@ describe('dev-port', () => {
     expect(isPidAlive(0)).toBe(false);
     expect(isPidAlive(null)).toBe(false);
     expect(isPidAlive(undefined)).toBe(false);
-    expect(isPidAlive('123')).toBe(false);
+    expect(isPidAlive('nope')).toBe(false);
   });
 });

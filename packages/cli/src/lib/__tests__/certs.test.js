@@ -199,16 +199,9 @@ describe('certificate helpers', () => {
   // Mutant `(list && []).filter` always yields [] for array inputs and would
   // drop unrelated orphans; `(list || [])` keeps non-matching entries.
   it('keeps orphans that are not the secondary brew root fingerprint', async () => {
-    const brewPrefix = path.join(fixturesDir, 'brew-prefix');
-    const rootPath = path.join(
-      fixturesDir,
-      'caddy',
-      'pki',
-      'authorities',
-      'local',
-      'root.crt'
-    );
-    const secondaryPem = path.join(fixturesDir, 'secondary-root.pem');
+    const rootPath = path.join(fixturesDir, 'test-ca.crt');
+    const secondaryPem = path.join(fixturesDir, 'test-ca-short.crt');
+    const brewPrefix = '/opt/homebrew';
     const secondaryPath = path.join(
       brewPrefix,
       'var',
@@ -223,7 +216,7 @@ describe('certificate helpers', () => {
     const secondaryCert = loadCertificate(fs.readFileSync(secondaryPem));
     const rootFp = normalizeFingerprint(rootCert.fingerprint256);
     const secondaryFp = normalizeFingerprint(secondaryCert.fingerprint256);
-    const otherFp = 'aa'.repeat(32);
+    const otherFp = 'AA'.repeat(32);
     const now = new Date(
       new Date(rootCert.validFrom).getTime() + 24 * 60 * 60 * 1000
     );
