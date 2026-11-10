@@ -66,6 +66,7 @@ Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `n
 - Forward-ported from published CLI 2.2.3–2.2.7: strict snippet/registry semver (reject whitespace padding, leading zeros, build metadata); live-site / `--site` / stored-origin port checks including `:443`; `upgrade --version` resolves the loader pin before any write and honors the pin when `package.json` lists only `@stagepass/modules`; `start` closes the parent logfile FD after `caddy start`.
 - `stagepass upgrade --site` validates the site host (including rejecting ports such as `:443`) before any npm registry lookup, so a bad `--site` does not touch the network.
 - The CLI bin prints a clear Node engine error and exits 1 when Node is older than `>=20.17.0`, instead of crashing later inside a dependency (`string-width` / `@inquirer`).
+- Privilege-scoped `start` / port conflict resolution (F-04): no standby `sudo -v`; signal own processes without elevated rights first; `sudo kill` only after unprivileged failure; nginx tries `valet stop` before any sudo; re-export `isSafePid`. Keeps 2.3 cert repair offers, `ensurePhpFpm` (start then restart), stale dev-port cleanup, and autostart kickstart/bootout. `defaultExec` uses spawn-wait for custom stdio so logfile FD inheritance does not hang `caddy start`.
 
 ### [2.2.7] - 2026-11-08
 
