@@ -79,12 +79,10 @@ describe('start privilege / port safety', () => {
   it('resolvePort443Conflict: TERM then KILL only after second confirm', async () => {
     /** @type {string[]} */
     const signals = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     let listen = true;
     const exec = vi.fn(async (file, args = []) => {
-      if (file === 'kill') {
-        signals.push(`kill:${args.join(' ')}`);
-        return { stdout: '', stderr: '', code: 0 };
-      }
       if (file === 'sudo') {
         signals.push(`sudo:${args.join(' ')}`);
         return { stdout: '', stderr: '', code: 0 };
@@ -96,6 +94,10 @@ describe('start privilege / port safety', () => {
       { pid: '4242', name: 'OtherApp' },
       {
         exec,
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
+        },
         confirm: async (message) => {
           confirms.push(message);
           return true;
@@ -115,30 +117,21 @@ describe('start privilege / port safety', () => {
     expect(confirms).toHaveLength(2);
     expect(confirms[0]).toMatch(/SIGTERM/);
     expect(confirms[1]).toMatch(/SIGKILL/);
-    expect(signals.some((s) => s.includes('-TERM') || s.includes('TERM'))).toBe(
-      true
-    );
-    expect(signals.some((s) => s.includes('-KILL') || s.includes('KILL'))).toBe(
-      true
-    );
+    expect(kills).toEqual([
+      [4242, 'SIGTERM'],
+      [4242, 'SIGKILL'],
+    ]);
     expect(signals.some((s) => /kill -9\b/.test(s))).toBe(false);
     // Own process: unprivileged kill first; no standby sudo -v
     expect(signals.some((s) => s === 'sudo:-v' || s.startsWith('sudo:-v '))).toBe(
       false
     );
-    expect(signals.filter((s) => s.startsWith('kill:'))).toHaveLength(2);
   });
 
   it('resolvePort443Conflict uses sudo kill only after unprivileged kill fails', async () => {
     /** @type {string[]} */
     const signals = [];
     const exec = vi.fn(async (file, args = []) => {
-      if (file === 'kill') {
-        signals.push(`kill:${args.join(' ')}`);
-        const err = new Error('Operation not permitted');
-        Object.assign(err, { code: 'EPERM' });
-        throw err;
-      }
       if (file === 'sudo') {
         signals.push(`sudo:${args.join(' ')}`);
         return { stdout: '', stderr: '', code: 0 };
@@ -149,6 +142,11 @@ describe('start privilege / port safety', () => {
       { pid: '4242', name: 'OtherApp' },
       {
         exec,
+        kill: () => {
+          const err = new Error('Operation not permitted');
+          Object.assign(err, { code: 'EPERM' });
+          throw err;
+        },
         confirm: async () => true,
         sleep: async () => {},
         recheck: async () => null,
@@ -156,8 +154,7 @@ describe('start privilege / port safety', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.detail).toBe('SIGTERM');
-    expect(signals[0]).toBe('kill:-TERM 4242');
-    expect(signals[1]).toBe('sudo:kill -TERM 4242');
+    expect(signals[0]).toBe('sudo:kill -TERM 4242');
     expect(signals.some((s) => s.includes('-v'))).toBe(false);
   });
 
@@ -406,6 +403,8 @@ describe('start privilege model [F-04]', () => {
   it('[F-04] unprivileged kill success never escalates to sudo', async () => {
     /** @type {unknown[][]} */
     const calls = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     const exec = vi.fn(async (file, args = []) => {
       calls.push([file, ...(Array.isArray(args) ? args : [])]);
       return { stdout: '', stderr: '', code: 0 };
@@ -414,14 +413,199 @@ describe('start privilege model [F-04]', () => {
       { pid: '4242', name: 'OtherApp' },
       {
         exec,
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
+        },
         confirm: async () => true,
         sleep: async () => {},
         recheck: async () => null,
       }
     );
     expect(result.ok).toBe(true);
-    expect(calls.some((c) => c[0] === 'kill')).toBe(true);
+    expect(kills).toEqual([[4242, 'SIGTERM']]);
     assertNoSudo(calls);
+  });
+
+  describe('[R5 F-01] signalProcess EPERM/ESRCH', () => {
+    /** @param {string} code */
+    function errWith(code) {
+      const err = new Error(code);
+      Object.assign(err, { code });
+      return err;
+    }
+
+    it('[R5 F-01] ESRCH -> no sudo, ok', async () => {
+      /** @type {unknown[][]} */
+      const calls = [];
+      const result = await resolvePort443Conflict(
+        { pid: '99', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: () => {
+            throw errWith('ESRCH');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => null,
+        }
+      );
+      expect(result).toEqual({ ok: true, detail: 'SIGTERM' });
+      assertNoSudo(calls);
+    });
+
+    it('[R5 F-01] EPERM -> sudo kill with right args, ok', async () => {
+      /** @type {unknown[][]} */
+      const calls = [];
+      const result = await resolvePort443Conflict(
+        { pid: '4242', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: () => {
+            throw errWith('EPERM');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => null,
+        }
+      );
+      expect(result.ok).toBe(true);
+      expect(calls).toEqual([['sudo', 'kill', '-TERM', '4242']]);
+      expect(calls.every((c) => !(c[0] === 'sudo' && c[1] === '-v'))).toBe(true);
+    });
+
+    it('[R5 F-01] EPERM + sudo kill fails -> start() returns 1, red message, no throw', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const code = await start({
+        verbose: true,
+        interactive: true,
+        skipHandshake: true,
+        confirm: async () => true,
+        sleep: async () => {},
+        kill: () => {
+          throw errWith('EPERM');
+        },
+        exec: async (file, args = []) => {
+          if (file === 'sudo' && args[0] === 'kill') {
+            throw new Error('sudo kill denied');
+          }
+          return { stdout: '', stderr: '', code: 0 };
+        },
+        runCertsCheck: async () => okCerts,
+        findPort443Conflict: async () => ({ pid: '4242', name: 'OtherApp' }),
+        getAutostartStatus: async () => ({ loaded: false, plistExists: false }),
+      });
+      expect(code).toBe(1);
+      const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(joined).toMatch(/sudo kill failed/i);
+      logSpy.mockRestore();
+    });
+
+    it('[R5 F-01] other error -> ok:false, no sudo', async () => {
+      /** @type {unknown[][]} */
+      const calls = [];
+      const result = await resolvePort443Conflict(
+        { pid: '42', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: () => {
+            throw errWith('EINVAL');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => null,
+        }
+      );
+      expect(result.ok).toBe(false);
+      expect(result.detail).toMatch(/Failed to signal PID 42/);
+      assertNoSudo(calls);
+    });
+
+    it('[R5 F-01] KILL path: ESRCH ok without sudo; EPERM escalates; other error ok:false', async () => {
+      /** @type {unknown[][]} */
+      const calls = [];
+      let phase = 0;
+      const resultEsrch = await resolvePort443Conflict(
+        { pid: '7', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: (_pid, sig) => {
+            if (sig === 'SIGTERM') return true;
+            throw errWith('ESRCH');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => {
+            phase += 1;
+            return phase === 1 ? { pid: '7', name: 'OtherApp' } : null;
+          },
+        }
+      );
+      expect(resultEsrch).toEqual({ ok: true, detail: 'SIGKILL' });
+      assertNoSudo(calls);
+
+      calls.length = 0;
+      phase = 0;
+      const resultEperm = await resolvePort443Conflict(
+        { pid: '8', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: (_pid, sig) => {
+            if (sig === 'SIGTERM') return true;
+            throw errWith('EPERM');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => {
+            phase += 1;
+            return phase === 1 ? { pid: '8', name: 'OtherApp' } : null;
+          },
+        }
+      );
+      expect(resultEperm.ok).toBe(true);
+      expect(calls).toEqual([['sudo', 'kill', '-KILL', '8']]);
+      expect(calls.every((c) => !(c[0] === 'sudo' && c[1] === '-v'))).toBe(true);
+
+      calls.length = 0;
+      phase = 0;
+      const resultOther = await resolvePort443Conflict(
+        { pid: '9', name: 'OtherApp' },
+        {
+          exec: async (file, args = []) => {
+            calls.push([file, ...(Array.isArray(args) ? args : [])]);
+            return { stdout: '', stderr: '', code: 0 };
+          },
+          kill: (_pid, sig) => {
+            if (sig === 'SIGTERM') return true;
+            throw errWith('EINVAL');
+          },
+          confirm: async () => true,
+          sleep: async () => {},
+          recheck: async () => {
+            phase += 1;
+            return phase === 1 ? { pid: '9', name: 'OtherApp' } : null;
+          },
+        }
+      );
+      expect(resultOther.ok).toBe(false);
+      expect(resultOther.detail).toMatch(/Failed to signal PID 9/);
+      assertNoSudo(calls);
+    });
   });
 
   it('[F-04] certs check never calls sudo', async () => {

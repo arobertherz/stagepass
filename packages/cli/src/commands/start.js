@@ -70,20 +70,43 @@ export async function findPort443Conflict(opts = {}) {
 }
 
 /**
- * Send a signal; use sudo only if the unprivileged kill fails (other uid / EPERM).
+ * Send a signal via process.kill; escalate to `sudo kill` only on EPERM.
+ * ESRCH (already gone) is success. Other errors / sudo failure → ok:false (no throw).
  * Caller must already have confirmation. Never runs `sudo -v`.
  * @param {string} pid
  * @param {'TERM'|'KILL'} signal
  * @param {import('../lib/exec.js').ExecFn} exec
+ * @param {(pid: number, signal?: NodeJS.Signals|number) => boolean} [kill]
+ * @returns {Promise<{ ok: boolean, usedSudo?: boolean, detail?: string }>}
  */
-async function signalProcess(pid, signal, exec) {
+async function signalProcess(pid, signal, exec, kill = process.kill) {
   const flag = signal === 'KILL' ? '-KILL' : '-TERM';
+  const sig = signal === 'KILL' ? 'SIGKILL' : 'SIGTERM';
   try {
-    await exec('kill', [flag, pid]);
+    kill(Number(pid), sig);
     return { ok: true, usedSudo: false };
-  } catch {
+  } catch (error) {
+    const code = /** @type {{ code?: string }} */ (error)?.code;
+    if (code === 'ESRCH') return { ok: true, usedSudo: false };
+    if (code !== 'EPERM') {
+      return {
+        ok: false,
+        detail: `Failed to signal PID ${pid}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  }
+  try {
     await exec('sudo', ['kill', flag, pid], { stdio: 'inherit' });
     return { ok: true, usedSudo: true };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `sudo kill failed for PID ${pid}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
   }
 }
 
@@ -95,6 +118,7 @@ async function signalProcess(pid, signal, exec) {
  * @param {{ pid: string, name: string }} proc
  * @param {object} opts
  * @param {import('../lib/exec.js').ExecFn} [opts.exec]
+ * @param {(pid: number, signal?: NodeJS.Signals|number) => boolean} [opts.kill]
  * @param {(message: string, o?: object) => Promise<boolean>} [opts.confirm]
  * @param {boolean} [opts.interactive]
  * @param {(ms: number) => Promise<void>} [opts.sleep]
@@ -103,6 +127,7 @@ async function signalProcess(pid, signal, exec) {
  */
 export async function resolvePort443Conflict(proc, opts = {}) {
   const exec = opts.exec || defaultExec;
+  const kill = opts.kill || process.kill.bind(process);
   const confirm = opts.confirm || defaultConfirm;
   const sleep =
     opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -130,6 +155,8 @@ export async function resolvePort443Conflict(proc, opts = {}) {
     return { ok: false, cancelled: true };
   }
 
+  /** @type {{ ok: boolean, detail?: string }|null} */
+  let signaled = null;
   // Prefer right-free service stops before any sudo (nginx: valet, then brew).
   if (String(proc.name).includes('nginx')) {
     try {
@@ -138,18 +165,19 @@ export async function resolvePort443Conflict(proc, opts = {}) {
       try {
         await exec('brew', ['services', 'stop', 'nginx']);
       } catch {
-        await signalProcess(pid, 'TERM', exec);
+        signaled = await signalProcess(pid, 'TERM', exec, kill);
       }
     }
   } else if (String(proc.name).includes('httpd')) {
     try {
       await exec('sudo', ['apachectl', 'stop'], { stdio: 'inherit' });
     } catch {
-      await signalProcess(pid, 'TERM', exec);
+      signaled = await signalProcess(pid, 'TERM', exec, kill);
     }
   } else {
-    await signalProcess(pid, 'TERM', exec);
+    signaled = await signalProcess(pid, 'TERM', exec, kill);
   }
+  if (signaled && !signaled.ok) return signaled;
 
   await sleep(400);
   let still = await recheck();
@@ -169,7 +197,8 @@ export async function resolvePort443Conflict(proc, opts = {}) {
     };
   }
 
-  await signalProcess(pid, 'KILL', exec);
+  const killed = await signalProcess(pid, 'KILL', exec, kill);
+  if (!killed.ok) return killed;
   await sleep(200);
   still = await recheck();
   if (still && String(still.pid) === pid) {
@@ -302,6 +331,7 @@ export async function start(options = {}) {
     const resolved = await (options.resolvePort443Conflict ||
       resolvePort443Conflict)(conflict, {
       exec,
+      kill: options.kill,
       confirm,
       interactive,
       sleep: options.sleep,

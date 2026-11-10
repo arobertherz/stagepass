@@ -115,6 +115,8 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
 
   it('escalates to SIGKILL only after second confirmation (unprivileged kill first)', async () => {
     const calls = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     const confirms = [];
     const result = await resolvePort443Conflict(
       { pid: '55', name: 'otherd' },
@@ -122,6 +124,10 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
         exec: async (file, args) => {
           calls.push({ file, args });
           return { stdout: '', stderr: '', code: 0 };
+        },
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
         },
         confirm: async (message) => {
           confirms.push(message);
@@ -135,14 +141,10 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     expect(result.ok).toBe(true);
     expect(result.detail).toBe('SIGKILL');
     expect(confirms).toHaveLength(2);
-    expect(
-      calls.some(
-        (c) =>
-          c.file === 'kill' &&
-          c.args[0] === '-KILL' &&
-          c.args[1] === '55'
-      )
-    ).toBe(true);
+    expect(kills).toEqual([
+      [55, 'SIGTERM'],
+      [55, 'SIGKILL'],
+    ]);
     expect(calls.every((c) => !(c.file === 'sudo' && c.args[0] === '-v'))).toBe(
       true
     );
@@ -150,12 +152,18 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
 
   it('SIGTERM-only path when process exits after first signal', async () => {
     const calls = [];
+    /** @type {Array<[number, string]>} */
+    const kills = [];
     const result = await resolvePort443Conflict(
       { pid: '77', name: 'otherd' },
       {
         exec: async (file, args) => {
           calls.push({ file, args });
           return { stdout: '', stderr: '', code: 0 };
+        },
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
         },
         confirm: async () => true,
         sleep: async () => {},
@@ -164,14 +172,7 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
     );
     expect(result.ok).toBe(true);
     expect(result.detail).toBe('SIGTERM');
-    expect(
-      calls.some(
-        (c) =>
-          c.file === 'kill' &&
-          c.args[0] === '-TERM' &&
-          c.args[1] === '77'
-      )
-    ).toBe(true);
+    expect(kills).toEqual([[77, 'SIGTERM']]);
     expect(calls.every((c) => !(c.args || []).includes('-KILL'))).toBe(true);
     expect(calls.every((c) => !(c.file === 'sudo' && c.args[0] === '-v'))).toBe(
       true
