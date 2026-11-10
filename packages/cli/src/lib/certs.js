@@ -316,7 +316,7 @@ export function handshakeLocalDomain(opts) {
               });
               return;
             }
-            const validity = assessCertificateValidity(peer, { now });
+            const validity = assessCertificateValidity(peer, { now, warnDays: 0 });
             if (validity.status === 'fail') {
               finish({
                 status: 'fail',

@@ -375,3 +375,59 @@ describe('[M-1] TLS only when Caddy serves :443', () => {
     ]);
   });
 });
+describe('[M-2] no 90-day warning for short-lived leaves', () => {
+  it('[M-2] 12h leaf remaining is ok with warnDays 0', () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 12 * 60 * 60 * 1000);
+    expect(assessCertificateValidity(cert, { now, warnDays: 0 }).status).toBe(
+      'ok'
+    );
+    expect(assessCertificateValidity(cert, { now, warnDays: 90 }).status).toBe(
+      'warn'
+    );
+  });
+
+  it('[M-2] handshake treats 12h leaf as ok (not warn)', async () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 12 * 60 * 60 * 1000);
+    const result = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now,
+      connect: mockTlsConnect(cert),
+    });
+    expect(result.status).toBe('ok');
+  });
+
+  it('[M-2] expired leaf fails; not-yet-valid leaf fails', async () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-site.crt'))
+    );
+    const expired = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now: new Date(new Date(cert.validTo).getTime() + 60_000),
+      connect: mockTlsConnect(cert),
+    });
+    expect(expired.status).toBe('fail');
+    expect(expired.reason).toMatch(/expired/i);
+
+    const early = await handshakeLocalDomain({
+      servername: 'my-project.sp',
+      now: new Date(new Date(cert.validFrom).getTime() - 60_000),
+      connect: mockTlsConnect(cert),
+    });
+    expect(early.status).toBe('fail');
+    expect(early.reason).toMatch(/not valid yet/i);
+  });
+
+  it('[M-2] root with <90 days still warns', () => {
+    const cert = loadCertificate(
+      fs.readFileSync(path.join(fixturesDir, 'test-ca-short.crt'))
+    );
+    const now = new Date(new Date(cert.validTo).getTime() - 10 * 24 * 60 * 60 * 1000);
+    expect(assessCertificateValidity(cert, { now }).status).toBe('warn');
+  });
+});
