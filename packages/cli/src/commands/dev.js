@@ -209,12 +209,13 @@ export async function dev(options = {}, deps = {}) {
 
   /** @type {NodeJS.Signals | null} */
   let stopSignal = null;
+  let setupDone = false; // eager cleanup only after setup (P-3 / AC-7)
   /** @param {NodeJS.Signals} signal */
   const onSignal = (signal) => {
     stopSignal = signal;
-    void cleanup();
+    if (setupDone) void cleanup();
   };
-  // Register before setProjectDevPort so a signal in the setup window cleans up (P-3 / AC-7).
+  // Register before setProjectDevPort so a signal in the setup window is seen (P-3 / AC-7).
   // Node signal listeners do not receive the name as an argument — bind it explicitly.
   const onSigInt = () => onSignal('SIGINT');
   const onSigTerm = () => onSignal('SIGTERM');
@@ -261,6 +262,8 @@ export async function dev(options = {}, deps = {}) {
     await cleanup();
     return signalExitCode(stopSignal);
   }
+
+  setupDone = true;
 
   log(chalk.green(`Live reload on https://${domain}/__stagepass/live (127.0.0.1:${live.port})`));
   if (options.verbose) {

@@ -375,6 +375,65 @@ describe('stagepass dev command', () => {
     await fs.remove(tmp);
   });
 
+  it('[P-3][AC-7] SIGTERM while setProjectDevPort pending clears port without watch', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev-race-'));
+    const root = path.join(tmp, 'app');
+    const projectsPath = path.join(tmp, 'projects.json');
+    await linkedApp(root, projectsPath);
+    const spawn = vi.fn(async () => ({ code: 0 }));
+    const origWrite = fs.writeFile.bind(fs);
+    let releaseWrite;
+    const writeHeld = new Promise((resolve) => {
+      releaseWrite = resolve;
+    });
+    let resolveEntered;
+    const holdEntered = new Promise((resolve) => {
+      resolveEntered = resolve;
+    });
+    let gated = false;
+    const spy = vi.spyOn(fs, 'writeFile').mockImplementation(async (file, data, enc) => {
+      if (
+        !gated &&
+        String(file) === projectsPath &&
+        /"devPort"\s*:/.test(String(data))
+      ) {
+        gated = true;
+        process.emit('SIGTERM');
+        resolveEntered();
+        await writeHeld;
+      }
+      return origWrite(file, data, enc);
+    });
+    try {
+      const pending = dev(
+        {},
+        {
+          cwd: root,
+          projectsPath,
+          caddyfilePath: path.join(tmp, 'Caddyfile'),
+          log: () => {},
+          error: () => {},
+          ensureStagepassReady: readyOk,
+          spawnWatch: spawn,
+          createLiveServer: () => ({
+            listen: async () => ({ port: 34567, close: async () => {} }),
+          }),
+          reloadCaddy: async () => {},
+        }
+      );
+      await holdEntered;
+      releaseWrite();
+      const code = await pending;
+      expect(code).toBe(143);
+      expect(spawn).not.toHaveBeenCalled();
+      const doc = await loadProjects(projectsPath);
+      expect(doc.projects['app.sp'].devPort).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+      await fs.remove(tmp);
+    }
+  });
+
   it('[P-3] defaultSpawnWatch forwards SIGHUP and SIGKILLs a ignoring child after grace', async () => {
     const start = Date.now();
     const pending = defaultSpawnWatch(
