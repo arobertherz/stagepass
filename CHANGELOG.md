@@ -11,26 +11,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### `@stagepass/cli`
-
-- `stagepass watch` / `stagepass dev` check whether Stagepass is running before starting (#40). Interactive TTY asks to start (same in-process path as `stagepass start`); non-TTY / CI prints a `stagepass start` hint and continues. `watch` also warns with `stagepass link` when the cwd is not linked; `dev` keeps the existing hard error for unlinked projects.
-- Live site detection (#31): also recognise jsDelivr/unpkg package-root URLs (`…/@stagepass/loader@2`, `…/@stagepass/modules@2`, trailing slash / query; modules root → `all` via `main`) and self-hosted embeds (Stagepass build filenames under a `stagepass` / `@stagepass` path, or with a `data-stagepass-*` hint; renamed loader via loader-config attributes). Result `cdn: "self"` is display-only; `upgrade` does not rewrite self-hosted tags to CDN. Bare `loader.js` / `all.min.js` without a Stagepass hint stay unmatched.
-- Live reload: content-based change detection in `live-server` (sha256 per file under `outDir`). Identical rewrites are ignored; `manifest.json` is ignored; CSS-only real changes emit `{type:"css"}`, other real changes emit `{type:"reload"}`.
-- Scaffold `scripts/build.mjs --watch`: rebuild only the affected part (JS entry/imports via esbuild watch, CSS entry separately); write dist files and `manifest.json` only when bytes change, so CSS-only edits do not rewrite `main.js` and do not force a full page reload.
-- `LOADER_VERSION` / `MODULES_VERSION` are generated into `package-versions.js` from the monorepo package.json files (`scripts/sync-cli-versions.mjs`; CLI `prepack` + release workflow). Snippets and `data-stagepass-version` use the loader version. `STAGEPASS_PACKAGES_VERSION` remains a deprecated alias of `LOADER_VERSION`. Drift test fails if the generated file is stale.
-- `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version) in recommended snippets and in the current project's snippet-bearing files (`README.md`, `stagepass.json`, generated snippet HTML).
-- `stagepass certs renew`: scoped repair of failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`); `renew --root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`; `renew --remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`).
-- `stagepass start` runs a read-only `certs check` and, when interactive, can offer `certs trust` / site `renew`. Non-interactive prints findings and a hint. Sudo is requested only when a confirmed port conflict kill (or orphan delete) needs it. Port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation.
-- When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently).
-- `stagepass daemon` ensures PHP-FPM (never sudo) and reports problems via macOS notifications (`osascript` with argv-safe AppleScript).
-- Dependencies: `inquirer` replaced with `@inquirer/prompts@^8`; `commander@^14`, `execa@^9`, `ora@^9`. CLI `engines.node` is now `>=20.17.0` (required by `@inquirer/prompts@8`). Chalk 6 / Commander 15 / Execa 10 / Ora 10 were not taken (they require Node 22+).
-- `stagepass new`: staging / production origins (`--staging`, `--production`; wizard suggests `<name>.webflow.io`), written to `stagepass.json` as `origin` / `production`. Skipping production prints a short `stagepass link --origin` hint. `stagepass link` with no `--origin` flags uses those hosts. `--site` still works and must match `--staging` when both are set.
-- `stagepass new`: optional PHP (`--php` / `--no-php`, default off). PHP on creates `api/`, stores `"php": true`, and omits `php_fastcgi` when false. Existing linked projects without a `php` setting keep PHP on (non-breaking). Optional `--php-examples` adds secure samples under `examples/php/`.
-- `stagepass new`: interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY). Optional `link` at the end (`--link` or interactive ask, macOS only).
-- Generated projects: `npm run dev` aliases `watch`; `scripts/build.mjs` writes SRI `integrity` (sha384) per file in `dist/manifest.json`.
-- `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
-- `stagepass dev` (#11): project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (no Vite). Caddy `reverse_proxy` with `flush_interval -1`, same CORS / LNA policy as assets; `devPort` stored in `projects.json` only while running and cleared when the PID is dead.
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -43,10 +23,46 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - Docs split under `docs/` (#11): getting started, CLI, loader, modules, migration pointer, troubleshooting, live reload. README keeps a short intro and index.
 - Headless Playwright E2E under `e2e/` (Chromium, Firefox, WebKit locally). CI `e2e` job on `[self-hosted, cerebro]` runs Chromium only (#11).
 
+
 ---
 
 
 ## `@stagepass/cli`
+
+### [2.3.0-beta.1] - 2026-11-10
+
+Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `next` after staging + 2FA (not `latest`). `@stagepass/loader` / `@stagepass/modules` package.json on this branch stay at monorepo source versions; online `new`/`upgrade` resolve snippet pins from the registry (published loader **2.4.0** / modules **2.2.2**).
+
+#### Notable
+
+- **Node engine:** `engines.node` is now `>=20.17.0` (required by `@inquirer/prompts@8`). Node 18 is no longer supported for this CLI.
+
+#### Added
+
+- `stagepass watch` / `stagepass dev` check whether Stagepass is running before starting (#40). Interactive TTY asks to start (same in-process path as `stagepass start`); non-TTY / CI prints a `stagepass start` hint and continues. `watch` also warns with `stagepass link` when the cwd is not linked; `dev` keeps the existing hard error for unlinked projects.
+- Live site detection (#31): also recognise jsDelivr/unpkg package-root URLs (`…/@stagepass/loader@2`, `…/@stagepass/modules@2`, trailing slash / query; modules root → `all` via `main`) and self-hosted embeds (Stagepass build filenames under a `stagepass` / `@stagepass` path, or with a `data-stagepass-*` hint; renamed loader via loader-config attributes). Result `cdn: "self"` is display-only; `upgrade` does not rewrite self-hosted tags to CDN. Bare `loader.js` / `all.min.js` without a Stagepass hint stay unmatched.
+- Live reload: content-based change detection in `live-server` (sha256 per file under `outDir`). Identical rewrites are ignored; `manifest.json` is ignored; CSS-only real changes emit `{type:"css"}`, other real changes emit `{type:"reload"}`.
+- Scaffold `scripts/build.mjs --watch`: rebuild only the affected part (JS entry/imports via esbuild watch, CSS entry separately); write dist files and `manifest.json` only when bytes change, so CSS-only edits do not rewrite `main.js` and do not force a full page reload.
+- `LOADER_VERSION` / `MODULES_VERSION` are generated into `package-versions.js` from the monorepo package.json files (`scripts/sync-cli-versions.mjs`; CLI `prepack` + release workflow). Online snippets prefer the newest published stable 2.x loader from the registry; offline they fall back to installed then bundled. `STAGEPASS_PACKAGES_VERSION` remains a deprecated alias of `LOADER_VERSION`. Drift test fails if the generated file is stale.
+- `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version) in recommended snippets and in the current project's snippet-bearing files (`README.md`, `stagepass.json`, generated snippet HTML).
+- `stagepass certs renew`: scoped repair of failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`); `renew --root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`; `renew --remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`).
+- `stagepass start` runs a read-only `certs check` and, when interactive, can offer `certs trust` / site `renew`. Non-interactive prints findings and a hint. Sudo is requested only when a confirmed port conflict kill (or orphan delete) needs it. Port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation.
+- When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently). LaunchAgent plists embed a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel.
+- `stagepass daemon` ensures PHP-FPM (never sudo) and reports problems via macOS notifications (`osascript` with argv-safe AppleScript).
+- `stagepass new`: staging / production origins (`--staging`, `--production`; wizard suggests `<name>.webflow.io`), written to `stagepass.json` as `origin` / `production`. Skipping production prints a short `stagepass link --origin` hint. `stagepass link` with no `--origin` flags uses those hosts. `--site` still works and must match `--staging` when both are set.
+- `stagepass new`: optional PHP (`--php` / `--no-php`, default off). PHP on creates `api/`, stores `"php": true`, and omits `php_fastcgi` when false. Existing linked projects without a `php` setting keep PHP on (non-breaking). Optional `--php-examples` adds secure samples under `examples/php/`.
+- `stagepass new`: interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY). Optional `link` at the end (`--link` or interactive ask, macOS only).
+- Generated projects: `npm run dev` aliases `watch`; `scripts/build.mjs` writes SRI `integrity` (sha384) per file in `dist/manifest.json`.
+- `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
+- `stagepass dev` (#11): project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (no Vite). Caddy `reverse_proxy` with `flush_interval -1`, same CORS / LNA policy as assets; `devPort` stored in `projects.json` only while running and cleared when the PID is dead.
+
+#### Changed
+
+- Dependencies: `inquirer` replaced with `@inquirer/prompts@^8`; `commander@^14`, `execa@^9`, `ora@^9`. Ora spinners use a safe TTY geometry wrapper (width `0` / invalid / resize-to-zero no longer runaway). Chalk 6 / Commander 15 / Execa 10 / Ora 10 were not taken (they require Node 22+).
+
+#### Fixed
+
+- Forward-ported from published CLI 2.2.3–2.2.7: strict snippet/registry semver (reject whitespace padding, leading zeros, build metadata); live-site / `--site` / stored-origin port checks including `:443`; `upgrade --version` resolves the loader pin before any write and honors the pin when `package.json` lists only `@stagepass/modules`; `start` closes the parent logfile FD after `caddy start`.
 
 ### [2.2.1] - 2026-11-02
 
