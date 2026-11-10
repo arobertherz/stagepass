@@ -394,7 +394,7 @@ describe('stagepass dev command', () => {
     const spy = vi.spyOn(fs, 'writeFile').mockImplementation(async (file, data, enc) => {
       if (
         !gated &&
-        String(file) === projectsPath &&
+        String(file).startsWith(projectsPath) &&
         /"devPort"\s*:/.test(String(data))
       ) {
         gated = true;
@@ -748,12 +748,19 @@ describe('stagepass dev concurrent start [R5 F-06]', () => {
         new Promise((r) => setTimeout(r, 2000)),
       ]);
 
+      const ab = `\nA:${ca.out}\nB:${cb.out}`;
       expect(
         winners.length,
-        `expected one Live reload, got ${winners.length}\nA:${ca.out}\nB:${cb.out}`
+        `expected one Live reload, got ${winners.length}${ab}`
       ).toBe(1);
-      expect(losers.length).toBe(1);
-      expect(losers[0].child.exitCode).toBe(1);
+      expect(
+        losers.length,
+        `expected one already-running loser, got ${losers.length}${ab}`
+      ).toBe(1);
+      expect(
+        losers[0].child.exitCode,
+        `expected loser exit 1, got ${losers[0].child.exitCode}${ab}`
+      ).toBe(1);
 
       fs.rmSync(home, { recursive: true, force: true });
     }, 20000);
