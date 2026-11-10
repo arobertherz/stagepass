@@ -330,7 +330,8 @@ describe('stagepass dev command', () => {
           listen: async () => ({ port: 34567, close: async () => {} }),
         }),
         spawnWatch: async () => {
-          process.kill(process.pid, 'SIGHUP');
+          // Emit without OS delivery so the vitest worker is not terminated.
+          process.emit('SIGHUP');
           await new Promise((r) => setTimeout(r, 30));
           return { code: null, signal: 'SIGHUP' };
         },
@@ -362,7 +363,7 @@ describe('stagepass dev command', () => {
           listen: async () => ({ port: 34567, close: async () => {} }),
         }),
         reloadCaddy: async () => {
-          process.kill(process.pid, 'SIGTERM');
+          process.emit('SIGTERM');
           await new Promise((r) => setTimeout(r, 40));
         },
       }
@@ -385,7 +386,7 @@ describe('stagepass dev command', () => {
       { stdio: 'ignore', signalGraceMs: 80 }
     );
     await new Promise((r) => setTimeout(r, 40));
-    process.kill(process.pid, 'SIGHUP');
+    process.emit('SIGHUP');
     const result = await pending;
     expect(Date.now() - start).toBeLessThan(2000);
     expect(result.signal === 'SIGKILL' || result.code !== 0 || result.signal != null).toBe(true);

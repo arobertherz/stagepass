@@ -267,6 +267,52 @@ describe('upgrade command', () => {
     expect(await upgrade({ site: 'http://app.webflow.io' }, baseDeps([]))).toBe(1);
     expect(await upgrade({ site: 'https://u:p@app.webflow.io' }, baseDeps([]))).toBe(1);
   });
+
+  it('[P-2][INV-3] leaves symlinked AGENTS.md byte-identical and exits 0 with note', async () => {
+    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-agents-out-'));
+    try {
+      const agentsOutside = path.join(outside, 'AGENTS.md');
+      await fsx.writeFile(agentsOutside, '# outside agents\n');
+      await oldStyleProject({ agents: null, modulesDep: true });
+      await fsx.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
+      const before = await fsx.readFile(agentsOutside, 'utf8');
+      const logs = [];
+      const code = await upgrade(
+        { skipSite: true, yes: true, siteModules: 'cookies' },
+        baseDeps(logs)
+      );
+      expect(code).toBe(0);
+      expect(logs.join('\n')).toMatch(/AGENTS\.md is a symlink; left unchanged/);
+      expect(await fsx.readFile(agentsOutside, 'utf8')).toBe(before);
+    } finally {
+      await fsx.remove(outside);
+    }
+  });
+
+  it('[P-2][INV-3] refuses symlinked package.json with exit 1 and leaves target unchanged', async () => {
+    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-pkg-out-'));
+    try {
+      const pkgOutside = path.join(outside, 'package.json');
+      const pkg = {
+        name: 'app',
+        devDependencies: { '@stagepass/loader': '^2.0.0' },
+      };
+      await fsx.writeFile(pkgOutside, JSON.stringify(pkg, null, 2) + '\n');
+      await fsx.writeFile(
+        path.join(dir, 'stagepass.json'),
+        JSON.stringify({ name: 'app', modules: [], version: 1 }, null, 2) + '\n'
+      );
+      await fsx.symlink(pkgOutside, path.join(dir, 'package.json'));
+      const before = await fsx.readFile(pkgOutside, 'utf8');
+      const logs = [];
+      const code = await upgrade({ skipSite: true, yes: true }, baseDeps(logs));
+      expect(code).toBe(1);
+      expect(logs.join('\n')).toMatch(/package\.json is a symlink/);
+      expect(await fsx.readFile(pkgOutside, 'utf8')).toBe(before);
+    } finally {
+      await fsx.remove(outside);
+    }
+  });
 });
 
 async function snapshot(root) {
@@ -406,52 +452,6 @@ describe('upgrade: --site before registry', () => {
     expect(detectSite).not.toHaveBeenCalled();
     expect(logs.join('\n')).toMatch(/whitespace|control/i);
     expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
-  });
-
-  it('[P-2][INV-3] leaves symlinked AGENTS.md byte-identical and exits 0 with note', async () => {
-    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-agents-out-'));
-    try {
-      const agentsOutside = path.join(outside, 'AGENTS.md');
-      await fsx.writeFile(agentsOutside, '# outside agents\n');
-      await oldStyleProject({ agents: null, modulesDep: true });
-      await fsx.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
-      const before = await fsx.readFile(agentsOutside, 'utf8');
-      const logs = [];
-      const code = await upgrade(
-        { skipSite: true, yes: true, siteModules: 'cookies' },
-        baseDeps(logs)
-      );
-      expect(code).toBe(0);
-      expect(logs.join('\n')).toMatch(/AGENTS\.md is a symlink; left unchanged/);
-      expect(await fsx.readFile(agentsOutside, 'utf8')).toBe(before);
-    } finally {
-      await fsx.remove(outside);
-    }
-  });
-
-  it('[P-2][INV-3] refuses symlinked package.json with exit 1 and leaves target unchanged', async () => {
-    const outside = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-pkg-out-'));
-    try {
-      const pkgOutside = path.join(outside, 'package.json');
-      const pkg = {
-        name: 'app',
-        devDependencies: { '@stagepass/loader': '^2.0.0' },
-      };
-      await fsx.writeFile(pkgOutside, JSON.stringify(pkg, null, 2) + '\n');
-      await fsx.writeFile(
-        path.join(dir, 'stagepass.json'),
-        JSON.stringify({ name: 'app', modules: [], version: 1 }, null, 2) + '\n'
-      );
-      await fsx.symlink(pkgOutside, path.join(dir, 'package.json'));
-      const before = await fsx.readFile(pkgOutside, 'utf8');
-      const logs = [];
-      const code = await upgrade({ skipSite: true, yes: true }, baseDeps(logs));
-      expect(code).toBe(1);
-      expect(logs.join('\n')).toMatch(/package\.json is a symlink/);
-      expect(await fsx.readFile(pkgOutside, 'utf8')).toBe(before);
-    } finally {
-      await fsx.remove(outside);
-    }
   });
 });
 

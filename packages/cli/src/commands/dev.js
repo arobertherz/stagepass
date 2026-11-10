@@ -215,13 +215,17 @@ export async function dev(options = {}, deps = {}) {
     void cleanup();
   };
   // Register before setProjectDevPort so a signal in the setup window cleans up (P-3 / AC-7).
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
-  process.once('SIGHUP', onSignal);
+  // Node signal listeners do not receive the name as an argument — bind it explicitly.
+  const onSigInt = () => onSignal('SIGINT');
+  const onSigTerm = () => onSignal('SIGTERM');
+  const onSigHup = () => onSignal('SIGHUP');
+  process.once('SIGINT', onSigInt);
+  process.once('SIGTERM', onSigTerm);
+  process.once('SIGHUP', onSigHup);
   const detachSignals = () => {
-    process.off('SIGINT', onSignal);
-    process.off('SIGTERM', onSignal);
-    process.off('SIGHUP', onSignal);
+    process.off('SIGINT', onSigInt);
+    process.off('SIGTERM', onSigTerm);
+    process.off('SIGHUP', onSigHup);
   };
 
   try {
