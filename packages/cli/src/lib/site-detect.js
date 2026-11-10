@@ -12,6 +12,8 @@ import { MODULE_CHOICES, normalizeModulesList } from './project-modules.js';
 export const DETECT_TIMEOUT_MS = 5000;
 export const DETECT_MAX_BYTES = 2 * 1024 * 1024;
 export const DETECT_MAX_REDIRECTS = 3;
+export const SITE_PORT_ERROR =
+  'Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.';
 
 // Bounded attribute run keeps the scan linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
@@ -30,6 +32,30 @@ const VERSION_ATTR_RE = /\sdata-stagepass-version\s*=\s*(?:"([^"]*)"|'([^']*)'|(
 const SAFE_VERSION_RE = /^[0-9A-Za-z][0-9A-Za-z.^~_-]*$/;
 
 /**
+ * True when the raw URL names a port (`:443`/`:0443` included).
+ * new URL drops default ports; read authority from the raw string before new URL.
+ * @param {string} input
+ * @returns {boolean}
+ */
+function hasExplicitPort(input) {
+  const s = String(input == null ? '' : input)
+    .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '')
+    .replace(/[\t\n\r]/g, '')
+    .replace(/\\/g, '/');
+  const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(s);
+  const rest = scheme ? s.slice(scheme[0].length) : s;
+  // No authority without `//`.
+  if (!rest.startsWith('//')) return false;
+  const authority = rest.replace(/^\/+/, '').split(/[/?#]/, 1)[0];
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
+  if (hostPort.startsWith('[')) {
+    const end = hostPort.indexOf(']');
+    return end === -1 || hostPort.slice(end + 1).includes(':');
+  }
+  return hostPort.includes(':');
+}
+
+/**
  * Normalize a live site input (host or https URL) to an https URL.
  * Rejects http, wildcards, credentials, and invalid hosts.
  *
@@ -39,9 +65,14 @@ const SAFE_VERSION_RE = /^[0-9A-Za-z][0-9A-Za-z.^~_-]*$/;
 export function normalizeSiteUrl(input) {
   const raw = String(input == null ? '' : input).trim();
   if (!raw) return { ok: false, error: 'No live site given.' };
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  // Port check on raw string before new URL (default ports would be dropped).
+  if (hasExplicitPort(candidate)) {
+    return { ok: false, error: SITE_PORT_ERROR };
+  }
   let url;
   try {
-    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    url = new URL(candidate);
   } catch {
     return { ok: false, error: `Invalid site URL: ${raw}` };
   }
@@ -52,7 +83,7 @@ export function normalizeSiteUrl(input) {
     return { ok: false, error: 'Site URL must not contain credentials.' };
   }
   if (url.port) {
-    return { ok: false, error: 'Site URL must not contain a port.' };
+    return { ok: false, error: SITE_PORT_ERROR };
   }
   const host = url.hostname.toLowerCase();
   const check = validateOriginEntry(host);
@@ -235,6 +266,10 @@ export async function detectSite(siteInput, deps = {}) {
         }
         if (next.username || next.password) {
           return { ok: false, url: current, error: 'Redirect URL contains credentials.' };
+        }
+        // Port check on raw Location before following (URL drops default ports).
+        if (next.port || hasExplicitPort(location)) {
+          return { ok: false, url: current, error: 'Redirect URL contains a port and was not followed.' };
         }
         current = next.toString();
         continue;

@@ -29,6 +29,9 @@ describe('normalizeSiteUrl', () => {
     ['http://example.com', /https/],
     ['https://user:pw@example.com', /credentials/],
     ['https://example.com:8443', /port/],
+    ['https://example.com:443', /port/],
+    ['example.com:443', /port/],
+    ['https://example.com:0443', /port/],
     ['*.webflow.io', /./],
     ['', /No live site/],
     ['javascript:alert(1)', /./],
@@ -226,6 +229,15 @@ describe('detectSite', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/More than 3 redirects/);
     expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('refuses redirects that name an explicit port (including :443)', async () => {
+    let r = await detectSite('app.com', { fetch: async () => redirect('https://app.com:443/') });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port/);
+    r = await detectSite('app.com', { fetch: async () => redirect('https://app.com:8443/path') });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/port/);
   });
 
   it('refuses http and credential redirects', async () => {

@@ -17,7 +17,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-import { LOADER_VERSION } from '../lib/versions.js';
+import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
@@ -25,6 +25,7 @@ import {
   fetchPublished,
   installedHasPerModuleTypes,
   rangeHasPerModuleTypes,
+  resolveSnippetLoaderVersion,
 } from '../lib/registry.js';
 import { updateConfigTypes } from '../lib/project-sync.js';
 import { validateOriginEntry, isBroadWebflowWildcard } from '../lib/origins.js';
@@ -442,7 +443,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       install,
       dryRun: options.dryRun === true,
       loaderVersion:
-        deps.packagesVersion || deps.cliVersion || LOADER_VERSION,
+        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
     },
   };
 }
@@ -657,6 +658,17 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     config.perModuleTypes =
       rangeHasPerModuleTypes(published ? published.versions : null, PACKAGES_MAJOR_RANGE) === true;
     if (!config.perModuleTypes) log(chalk.yellow(PER_MODULE_TYPES_HINT));
+  }
+
+  // Snippets pin the resolved loader, never the CLI version (AC-14).
+  if (!config.dryRun) {
+    const loader = await (deps.fetchPublished || fetchPublished)('@stagepass/loader', { exec });
+    config.loaderVersion = await resolveSnippetLoaderVersion({
+      published: loader,
+      cwd: targetDir,
+      bundled: config.loaderVersion,
+      fse,
+    });
   }
 
   let files;

@@ -58,6 +58,8 @@ describe('autostart helpers', () => {
     const plist = renderLaunchAgentPlist({
       nodePath: '/usr/local/bin/node',
       cliPath: '/Users/me/.nvm/versions/node/bin/stagepass',
+      pathEnv:
+        '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin',
       stdoutPath: '/Users/me/.stagepass/logs/daemon.stdout.log',
       stderrPath: '/Users/me/.stagepass/logs/daemon.stderr.log',
       workingDirectory: '/Users/me',
@@ -68,6 +70,11 @@ describe('autostart helpers', () => {
     expect(plist).toContain('<true/>');
     expect(plist).toContain('<key>SuccessfulExit</key>');
     expect(plist).toContain('<false/>');
+    expect(plist).toContain('<key>EnvironmentVariables</key>');
+    expect(plist).toContain('<key>PATH</key>');
+    expect(plist).toContain(
+      '<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>'
+    );
     expect(plist).toContain('<string>/usr/local/bin/node</string>');
     expect(plist).toContain(
       '<string>/Users/me/.nvm/versions/node/bin/stagepass</string>'
@@ -123,6 +130,14 @@ describe('autostart helpers', () => {
         nodePath: '/usr/local/bin/node',
         cliPath: '/opt/cli/bin/index.js',
       },
+      runtime: {
+        ok: true,
+        brewPath: '/opt/homebrew/bin/brew',
+        caddyPath: '/opt/homebrew/bin/caddy',
+        brewPrefix: '/opt/homebrew',
+        pathEnv:
+          '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin',
+      },
       pathExists: async () => true,
       ensureDir: async () => {},
       writeFile: async (p, c) => {
@@ -137,9 +152,37 @@ describe('autostart helpers', () => {
     expect(result.ok).toBe(true);
     expect(writes).toHaveLength(1);
     expect(writes[0].content).toContain(LAUNCH_AGENT_LABEL);
+    expect(writes[0].content).toContain('<key>EnvironmentVariables</key>');
+    expect(writes[0].content).toContain('/opt/homebrew/bin:/opt/homebrew/sbin');
     expect(calls.some((c) => c.args[0] === 'bootout')).toBe(true);
     expect(calls.some((c) => c.args[0] === 'bootstrap')).toBe(true);
     expect(calls.every((c) => c.file === 'launchctl')).toBe(true);
+  });
+
+  it('enableAutostart does not write plist when runtime PATH resolution fails', async () => {
+    const writes = [];
+    const result = await enableAutostart({
+      uid: 501,
+      plistPath: '/tmp/io.github.arobertherz.stagepass.plist',
+      logsDir: '/tmp/stagepass-logs',
+      paths: {
+        ok: true,
+        nodePath: '/usr/local/bin/node',
+        cliPath: '/opt/cli/bin/index.js',
+      },
+      runtime: { ok: false, error: 'Caddy not found. Run `stagepass setup`.' },
+      pathExists: async () => true,
+      ensureDir: async () => {},
+      writeFile: async (path, content) => {
+        writes.push({ path, content });
+      },
+      exec: async () => {
+        throw new Error('should not exec launchctl');
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Caddy not found/);
+    expect(writes).toHaveLength(0);
   });
 
   it('enableAutostart refuses when injected paths are missing', async () => {
@@ -151,6 +194,11 @@ describe('autostart helpers', () => {
         ok: true,
         nodePath: '/usr/local/bin/node',
         cliPath: '/opt/cli/bin/index.js',
+      },
+      runtime: {
+        ok: true,
+        pathEnv:
+          '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin',
       },
       pathExists: async () => false,
       ensureDir: async () => {},

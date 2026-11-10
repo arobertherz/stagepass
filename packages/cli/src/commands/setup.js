@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import chalk from 'chalk';
 import fs from 'fs-extra';
 import path from 'path';
@@ -21,7 +21,7 @@ export async function setup(options = {}) {
   const execOpts = options.verbose ? { stdio: 'inherit' } : {};
 
   // 1. Check Homebrew
-  const brewSpinner = ora('Checking system requirements...').start();
+  const brewSpinner = createSpinner('Checking system requirements...').start();
   try {
     await execa('brew', ['--version']);
     brewSpinner.succeed('System requirements met.');
@@ -31,7 +31,7 @@ export async function setup(options = {}) {
   }
 
   // 2. Install Dependencies
-  const installSpinner = ora('Installing dependencies...').start();
+  const installSpinner = createSpinner('Installing dependencies...').start();
   try {
     await execa('brew', ['install', 'caddy', 'php', 'dnsmasq'], execOpts);
     installSpinner.succeed('Core dependencies installed.');
@@ -41,7 +41,7 @@ export async function setup(options = {}) {
   }
   
   // 3. Configure Dnsmasq (DIRECT WRITE STRATEGY)
-  const dnsSpinner = ora('Configuring local DNS (.sp)...').start();
+  const dnsSpinner = createSpinner('Configuring local DNS (.sp)...').start();
   try {
     const { stdout: brewPrefixRaw } = await execa('brew', ['--prefix']);
     const brewPrefix = brewPrefixRaw.trim();
@@ -82,7 +82,7 @@ export async function setup(options = {}) {
   }
 
   // 5. Restart DNS Services
-  const restartSpinner = ora('Restarting DNS services...').start();
+  const restartSpinner = createSpinner('Restarting DNS services...').start();
   try {
       // Dnsmasq Restart
       try {

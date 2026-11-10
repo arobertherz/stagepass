@@ -340,3 +340,83 @@ describe('upgrade: published versions only', () => {
     expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
   });
 });
+
+describe('upgrade: snippet version pin (AC-7 / AC-14)', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-ac7-'));
+    await fsx.writeJson(
+      path.join(dir, 'stagepass.json'),
+      { name: 'app', modules: ['cookies'], version: 1 },
+      { spaces: 2 }
+    );
+    await fsx.writeJson(
+      path.join(dir, 'tsconfig.json'),
+      { compilerOptions: { strict: true, types: ['@stagepass/loader', '@stagepass/modules/cookies'] } },
+      { spaces: 2 }
+    );
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  const published = (latest, versions) => async () => ({ distTags: { latest }, versions });
+  const snippetVersions = (text) => [...text.matchAll(/data-stagepass-version="([^"]*)"/g)].map((m) => m[1]);
+  const writePkg = async (deps) => {
+    await fsx.writeJson(path.join(dir, 'package.json'), { name: 'app', devDependencies: deps }, { spaces: 2 });
+  };
+  const run = async (options, fetchPublished) => {
+    const logs = [];
+    const code = await upgrade(options, {
+      cwd: dir,
+      fetchPublished,
+      log: (m) => logs.push(String(m ?? '')),
+      isTTY: false,
+      loadProjects: async () => ({ projects: {} }),
+      detectSite: vi.fn(),
+    });
+    return { code, out: logs.join('\n') };
+  };
+
+  it('[AC-7] --version pin wins when package.json lists only @stagepass/modules', async () => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run(
+      { siteModules: 'cookies', version: '2.1.0' },
+      published('2.3.4', ['2.1.0', '2.3.4'])
+    );
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.1.0']);
+  });
+
+  it.each([
+    [
+      'unpublished loader version',
+      async (n) => ({
+        distTags: { latest: '2.3.4' },
+        versions: n === '@stagepass/loader' ? ['2.3.4'] : ['2.1.0', '2.3.4'],
+      }),
+    ],
+    [
+      'loader registry offline',
+      async (n) =>
+        n === '@stagepass/loader'
+          ? null
+          : { distTags: { latest: '2.3.4' }, versions: ['2.1.0', '2.3.4'] },
+    ],
+  ])('[INV-1][AC-7] modules-only --version with %s exits 1 and writes nothing', async (_label, fetch) => {
+    await writePkg({ '@stagepass/modules': '^2.0.0' });
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const { code, out } = await run({ siteModules: 'cookies', version: '2.1.0' }, vi.fn(fetch));
+    expect(code).toBe(1);
+    expect(snippetVersions(out)).toEqual([]);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+
+  it('uses newest published loader for snippets when both packages are listed', async () => {
+    await writePkg({ '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' });
+    const { code, out } = await run({ siteModules: 'cookies' }, published('2.3.4', ['2.0.0', '2.3.4']));
+    expect(code).toBe(0);
+    expect(snippetVersions(out)).toEqual(['2.3.4']);
+  });
+});

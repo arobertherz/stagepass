@@ -114,6 +114,18 @@ describe('originsFromStagepassConfig / phpFromStagepassConfig', () => {
 });
 
 describe('resolveProjectOrigin', () => {
+  it('warns when a stored origin is skipped because of a port (F-6)', async () => {
+    const logs = [];
+    const found = await resolveProjectOrigin(
+      '/p',
+      { origin: 'a.webflow.io:443' },
+      { log: (m) => logs.push(String(m)) }
+    );
+    expect(found).toBeNull();
+    expect(logs.join('\n')).toMatch(/stagepass\.json origin/);
+    expect(logs.join('\n')).toMatch(/port/);
+  });
+
   it('prefers stagepass.json origin, else the linked project', async () => {
     expect(await resolveProjectOrigin('/p', { origin: 'a.webflow.io' })).toEqual({ origin: 'a.webflow.io', source: 'stagepass.json' });
     const loadProjects = async () => ({

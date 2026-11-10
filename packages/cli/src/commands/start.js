@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import path from 'path';
 import fs from 'fs-extra';
-import ora from 'ora';
+import { createSpinner } from '../lib/spinner.js';
 import os from 'node:os';
 import {
   getCaddyfilePath,
@@ -302,16 +302,18 @@ export async function start(options = {}) {
   }
 
   // 4. Boot services (autostart-aware)
-  const spinner = ora('Booting background services...').start();
+  const spinner = createSpinner('Booting background services...').start();
 
+  /** @type {number|null} */
+  let logFd = null;
   let stdioMode = 'ignore';
   if (options.verbose) {
     spinner.stop();
     console.log(chalk.dim('--- Verbose Logs ---'));
     stdioMode = 'inherit';
   } else {
-    const logStream = fs.openSync(logFile, 'w');
-    stdioMode = ['ignore', logStream, logStream];
+    logFd = fs.openSync(logFile, 'w');
+    stdioMode = ['ignore', logFd, logFd];
   }
 
   try {
@@ -398,6 +400,14 @@ export async function start(options = {}) {
       console.log(chalk.dim(logFile));
     } else if (error instanceof Error) {
       console.log(chalk.red(error.message));
+    }
+  } finally {
+    if (logFd != null) {
+      try {
+        fs.closeSync(logFd);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

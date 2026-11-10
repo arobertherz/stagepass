@@ -11,6 +11,7 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import { defaultExec } from './exec.js';
 import { MODULE_IDS } from './project-modules.js';
+import { STAGEPASS_PACKAGES_VERSION } from './versions.js';
 
 /** Major range used for new projects (matches the `@2` CDN embed policy). */
 export const PACKAGES_MAJOR_RANGE = '^2';
@@ -18,18 +19,19 @@ export const PACKAGES_MAJOR_RANGE = '^2';
 /** First @stagepass/modules release with per-module type entry points. */
 export const PER_MODULE_TYPES_SINCE = '2.2.0';
 
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const PKG_NAME_RE = /^@stagepass\/[a-z0-9][a-z0-9._-]*$/;
 
 /**
  * Parse a semver string (prerelease kept as a flag).
+ * Rejects whitespace padding, leading zeros, and build metadata (`+…`).
  * @param {string} version
  * @returns {{ major: number, minor: number, patch: number, pre: boolean } | null}
  */
 export function parseSemver(version) {
-  const m = SEMVER_RE.exec(String(version).trim());
+  const m = SEMVER_RE.exec(String(version));
   if (!m) return null;
-  return { major: +m[1], minor: +m[2], patch: +m[3], pre: String(version).includes('-') };
+  return { major: +m[1], minor: +m[2], patch: +m[3], pre: Boolean(m[4]) };
 }
 
 /**
@@ -166,4 +168,38 @@ export async function installedHasPerModuleTypes(cwd, fse = fs) {
     if (!(await fse.pathExists(path.join(dir, `${id}.d.ts`)))) return false;
   }
   return true;
+}
+
+/**
+ * Installed @stagepass/loader version when it is a stable 2.x.
+ * @param {string} cwd
+ * @param {typeof fs} [fse]
+ * @returns {Promise<string | null>}
+ */
+export async function installedLoaderVersion(cwd, fse = fs) {
+  const file = path.join(cwd, 'node_modules', '@stagepass', 'loader', 'package.json');
+  try {
+    if (!(await fse.pathExists(file))) return null;
+    const pkg = await fse.readJson(file);
+    const version = typeof pkg?.version === 'string' ? pkg.version : '';
+    return satisfiesSimple(version, PACKAGES_MAJOR_RANGE) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loader version for Webflow snippets; never the CLI version.
+ * Prefers the newest published stable 2.x, then installed, then bundled.
+ * @param {object} options
+ * @param {{ distTags: Record<string, string>, versions: string[] } | null} options.published
+ * @param {string} options.cwd
+ * @param {string} [options.bundled]
+ * @param {typeof fs} [options.fse]
+ * @returns {Promise<string>}
+ */
+export async function resolveSnippetLoaderVersion({ published, cwd, bundled, fse = fs }) {
+  const best = published ? maxSatisfying(published.versions, PACKAGES_MAJOR_RANGE) : null;
+  if (best) return best;
+  return (await installedLoaderVersion(cwd, fse)) || bundled || STAGEPASS_PACKAGES_VERSION;
 }
