@@ -32,7 +32,17 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### [2.3.0-beta.1] - 2026-11-10 (prerelease, not yet published)
 
-Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `next` after staging + 2FA (not `latest`). `@stagepass/loader` / `@stagepass/modules` package.json on this branch stay at monorepo source versions; online `new`/`upgrade` resolve snippet pins from the registry (published loader **2.4.0** / modules **2.2.2**).
+Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `next` after staging + 2FA (not `latest`). The monorepo `packages/loader` and `packages/modules` package.json files already sit on the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
+
+#### Changed interfaces / Notes for upgraders
+
+- **Node engine:** `>=18.0.0` -> `>=20.17.0` (required by `@inquirer/prompts@8`). Node 18 is no longer supported for this CLI.
+- **Dependency majors:** `commander` 11 -> 14, `execa` 8 -> 9, `ora` 7 -> 9, `inquirer` -> `@inquirer/prompts`.
+- **start:** Certificate check with repair offer (`certs trust` / site `renew`); PHP-FPM ensure (`brew services start php`, then `restart`); stale `devPort` cleanup; privilege-scoped port-443 handling (no standby `sudo -v`); help text for start/stop/daemon updated.
+- **daemon:** PHP-FPM safeguard and macOS notifications via `osascript`.
+- **new:** Doctor preflight after input validation (never on `--dry-run`); optional `--staging` / `--production` / `--php` / `--link`.
+- **prepack / release:** `scripts/sync-cli-versions.mjs --check` verifies `package-versions.js` against loader/modules versions and writes nothing (exit 1 on drift).
+- **certs renew:** `--root` needs two interactive confirmations, or `--yes --i-understand-root-renewal` (`--yes` alone always aborts). Do not combine `--root` with `--remove-orphans`.
 
 #### Notable
 
@@ -64,7 +74,7 @@ Prerelease of the CLI only. First 2.3.0 line candidate; ships as npm dist-tag `n
 #### Fixed
 
 - Forward-ported from published CLI 2.2.3–2.2.7: strict snippet/registry semver (reject whitespace padding, leading zeros, build metadata); live-site / `--site` / stored-origin port checks including `:443`; `upgrade --version` resolves the loader pin before any write and honors the pin when `package.json` lists only `@stagepass/modules`; `start` closes the parent logfile FD after `caddy start`.
-- `stagepass upgrade --site` validates the site host (including rejecting ports such as `:443`) before any npm registry lookup, so a bad `--site` does not touch the network.
+- Restored the 2.2.3 guarantee: `stagepass upgrade --site` validates the site host (including rejecting ports such as `:443`) before any npm registry lookup, so a bad `--site` does not touch the network.
 - The CLI bin prints a clear Node engine error and exits 1 when Node is older than `>=20.17.0`, instead of crashing later inside a dependency (`string-width` / `@inquirer`).
 - Privilege-scoped `start` / port conflict resolution (F-04): no standby `sudo -v`; signal own processes without elevated rights first; `sudo kill` only after unprivileged failure; nginx tries `valet stop` before any sudo; re-export `isSafePid`. Keeps 2.3 cert repair offers, `ensurePhpFpm` (start then restart), stale dev-port cleanup, and autostart kickstart/bootout. `defaultExec` uses spawn-wait for custom stdio so logfile FD inheritance does not hang `caddy start`.
 
