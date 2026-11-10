@@ -654,3 +654,108 @@ describe('stagepass dev process signal-exit race [P-3][AC-7]', () => {
     }
   }
 });
+
+describe('stagepass dev concurrent start [R5 F-06]', () => {
+  const REPS = 8;
+
+  /** @param {number|undefined} pid */
+  function killTree(pid) {
+    if (!pid) return;
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  for (let n = 1; n <= REPS; n++) {
+    it(`[R5 F-06] parallel launch #${n}: exactly one keeps running`, async () => {
+      const { home, binDir, project } = setupDevProcessFixture();
+      const env = {
+        ...process.env,
+        HOME: home,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
+        CI: 'true',
+        [SKIP_PLATFORM_CHECK_ENV]: '1',
+      };
+
+      /** @param {import('node:child_process').ChildProcess} child */
+      const collect = (child) => {
+        let out = '';
+        const onData = (chunk) => {
+          out += chunk.toString('utf8');
+        };
+        child.stdout?.on('data', onData);
+        child.stderr?.on('data', onData);
+        const closed = new Promise((resolve) => {
+          child.once('close', (code, signal) => resolve({ code, signal }));
+        });
+        return {
+          get out() {
+            return out;
+          },
+          closed,
+        };
+      };
+
+      const a = spawn(process.execPath, [binPath, 'dev'], {
+        cwd: project,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      });
+      const b = spawn(process.execPath, [binPath, 'dev'], {
+        cwd: project,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      });
+      const ca = collect(a);
+      const cb = collect(b);
+      /** @type {{ child: import('node:child_process').ChildProcess, bag: ReturnType<typeof collect> }[]} */
+      const kids = [
+        { child: a, bag: ca },
+        { child: b, bag: cb },
+      ];
+
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline) {
+        const liveMsgs = kids.filter((k) => /Live reload/i.test(k.bag.out)).length;
+        const already = kids.filter((k) =>
+          /Another stagepass dev is already running/i.test(k.bag.out)
+        ).length;
+        const exited = kids.filter(
+          (k) => k.child.exitCode != null || k.child.signalCode != null
+        ).length;
+        if (liveMsgs >= 1 && already >= 1 && exited >= 1) break;
+        if (liveMsgs >= 2) break;
+        if (exited === 2) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+
+      const winners = kids.filter((k) => /Live reload/i.test(k.bag.out));
+      const losers = kids.filter((k) =>
+        /Another stagepass dev is already running/i.test(k.bag.out)
+      );
+
+      for (const k of kids) killTree(k.child.pid);
+      await Promise.race([
+        Promise.all([ca.closed, cb.closed]),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+
+      expect(
+        winners.length,
+        `expected one Live reload, got ${winners.length}\nA:${ca.out}\nB:${cb.out}`
+      ).toBe(1);
+      expect(losers.length).toBe(1);
+      expect(losers[0].child.exitCode).toBe(1);
+
+      fs.rmSync(home, { recursive: true, force: true });
+    }, 20000);
+  }
+});

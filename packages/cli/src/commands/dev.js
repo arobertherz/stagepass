@@ -25,7 +25,75 @@ import { start as defaultStart } from './start.js';
 /** Grace before SIGKILL after a forwarded stop signal (overridable in tests). */
 export const DEV_SIGNAL_GRACE_MS = 3000;
 
+/** Exclusive start lock next to projects.json; stale after this age. */
+const DEV_START_LOCK_STALE_MS = 8000;
+
 const SIGNAL_NUM = /** @type {const} */ ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 });
+
+/**
+ * Exclusive lock for concurrent `dev` starts (wx file next to projects.json).
+ * Stale = dead pid or older than DEV_START_LOCK_STALE_MS → remove and retry once.
+ * @param {string} projectsPath
+ * @param {typeof fs} fse
+ * @returns {Promise<{ ok: true, unlock: () => Promise<void> } | { ok: false, holderPid: number|null }>}
+ */
+async function acquireDevStartLock(projectsPath, fse) {
+  const lockPath = path.join(path.dirname(projectsPath), 'projects.dev.lock');
+  const write = async () => {
+    const fd = await fse.open(lockPath, 'wx');
+    try {
+      await fse.writeFile(fd, `${process.pid}\n${Date.now()}\n`);
+    } finally {
+      await fse.close(fd);
+    }
+  };
+  /** @returns {Promise<number|null>} */
+  const readHolder = async () => {
+    try {
+      const n = Number(String(await fse.readFile(lockPath, 'utf8')).split('\n')[0]);
+      return Number.isInteger(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  };
+  /** @returns {Promise<boolean>} */
+  const isStale = async () => {
+    try {
+      const [pidLine, atLine] = String(await fse.readFile(lockPath, 'utf8')).split('\n');
+      const pid = Number(pidLine);
+      const at = Number(atLine);
+      if (!Number.isInteger(pid) || pid <= 0) return true;
+      if (!isPidAlive(pid)) return true;
+      if (!Number.isFinite(at) || Date.now() - at > DEV_START_LOCK_STALE_MS) return true;
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const unlock = async () => {
+    try {
+      await fse.unlink(lockPath);
+    } catch {
+      /* ignore */
+    }
+  };
+  try {
+    await write();
+    return { ok: true, unlock };
+  } catch (err) {
+    if (/** @type {{ code?: string }} */ (err)?.code !== 'EEXIST') throw err;
+  }
+  if (await isStale()) {
+    await unlock();
+    try {
+      await write();
+      return { ok: true, unlock };
+    } catch (err) {
+      if (/** @type {{ code?: string }} */ (err)?.code !== 'EEXIST') throw err;
+    }
+  }
+  return { ok: false, holderPid: await readHolder() };
+}
 
 /**
  * @param {NodeJS.Signals} signal
@@ -99,145 +167,172 @@ export async function dev(options = {}, deps = {}) {
   await clearStaleDevPorts(projectsPath);
 
   const { domain } = matched;
-  let project = await getProject(domain, projectsPath);
-  if (!project) {
-    error(chalk.red(`No projects.json entry for ${domain}.`));
-    return 1;
-  }
-
-  const foreignPid =
-    typeof project.devPid === 'number' &&
-    Number.isInteger(project.devPid) &&
-    project.devPid > 0 &&
-    project.devPid !== process.pid
-      ? project.devPid
-      : null;
-  if (foreignPid != null && isPidAlive(foreignPid)) {
+  const alreadyRunning = (pid) => {
     error(
       chalk.red(
-        `Another stagepass dev is already running for ${domain} (pid ${foreignPid}). Stop it before starting a second one.`
+        `Another stagepass dev is already running for ${domain} (pid ${pid}). Stop it before starting a second one.`
       )
     );
     return 1;
+  };
+
+  const lock = await acquireDevStartLock(projectsPath, fse);
+  if (!lock.ok) {
+    return alreadyRunning(lock.holderPid ?? 'unknown');
   }
 
-  const pkgPath = path.join(cwd, 'package.json');
-  if (!(await fse.pathExists(pkgPath))) {
-    error(chalk.red('No package.json found in the current directory.'));
-    return 1;
-  }
-  let pkg;
-  try {
-    pkg = JSON.parse(await fse.readFile(pkgPath, 'utf8'));
-  } catch {
-    error(chalk.red('package.json is not valid JSON.'));
-    return 1;
-  }
-  if (!pkg.scripts || typeof pkg.scripts.watch !== 'string') {
-    error(
-      chalk.red(
-        'No "watch" script in package.json. Add one, or use a project from `stagepass new`.'
-      )
-    );
-    return 1;
-  }
-
-  const outDir = await readProjectOutDir(cwd, fse);
-  if (!outDir.ok) {
-    error(chalk.red(`❌ ${outDir.error}`));
-    return 1;
-  }
-
-  if (options.verbose) {
-    log(chalk.dim(`Live reload watching ${outDir.rel}/ → https://${domain}/__stagepass/live`));
-  }
-
+  /** @type {{ port: number, close: () => Promise<void> } | undefined} */
   let live;
-  try {
-    const server = createServer({
-      projectRoot: rootCheck.path,
-      outDir: outDir.rel,
-      log: options.verbose ? (m) => log(chalk.dim(m)) : () => {},
-    });
-    live = await server.listen(0);
-  } catch (err) {
-    error(chalk.red(err instanceof Error ? err.message : String(err)));
-    return 1;
-  }
-
-  if (!isValidDevPort(live.port)) {
-    await live.close().catch(() => {});
-    error(chalk.red(`Event server bound an invalid port (${live.port}).`));
-    return 1;
-  }
-
-  /** @type {Promise<void>|null} */
-  let cleaning = null;
-  // Idempotent: every caller awaits the same run, so the Caddy block is restored before exit.
-  const cleanup = () => {
-    if (!cleaning) cleaning = runCleanup();
-    return cleaning;
-  };
-  const runCleanup = async () => {
-    try {
-      await live.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      // Only clear our own port so a parallel later `dev` is not wiped (AC-7).
-      const current = await getProject(domain, projectsPath);
-      if (
-        current &&
-        (current.devPid == null || current.devPid === process.pid)
-      ) {
-        await setProjectDevPort(domain, { port: null }, projectsPath);
-        const cleared = await getProject(domain, projectsPath);
-        if (cleared) {
-          await applySiteBlock(domain, cleared, { caddyfilePath, fs: fse });
-          try {
-            await reloadCaddy(caddyfilePath, options.verbose);
-          } catch {
-            /* ignore on exit */
-          }
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  };
-
+  /** @type {(() => void) | null} */
+  let detachSignals = null;
+  /** @type {(() => Promise<void>) | null} */
+  let cleanup = null;
   /** @type {NodeJS.Signals | null} */
   let stopSignal = null;
-  let setupDone = false; // eager cleanup only after setup (P-3 / AC-7)
-  /** @param {NodeJS.Signals} signal */
-  const onSignal = (signal) => {
-    if (stopSignal) return;
-    stopSignal = signal;
-    if (setupDone) void cleanup();
-  };
-  // Register before setProjectDevPort so a signal in the setup window is seen (P-3 / AC-7).
-  // Node signal listeners do not receive the name as an argument — bind it explicitly.
-  const onSigInt = () => onSignal('SIGINT');
-  const onSigTerm = () => onSignal('SIGTERM');
-  const onSigHup = () => onSignal('SIGHUP');
-  process.on('SIGINT', onSigInt);
-  process.on('SIGTERM', onSigTerm);
-  process.on('SIGHUP', onSigHup);
-  const detachSignals = () => {
-    process.off('SIGINT', onSigInt);
-    process.off('SIGTERM', onSigTerm);
-    process.off('SIGHUP', onSigHup);
-  };
+  let setupDone = false;
 
   try {
-    await setProjectDevPort(domain, { port: live.port, pid: process.pid }, projectsPath);
-    if (stopSignal) {
-      detachSignals();
-      await cleanup();
-      return signalExitCode(stopSignal);
+    let project = await getProject(domain, projectsPath);
+    if (!project) {
+      error(chalk.red(`No projects.json entry for ${domain}.`));
+      return 1;
     }
-    project = await getProject(domain, projectsPath);
+
+    const foreignPid =
+      typeof project.devPid === 'number' &&
+      Number.isInteger(project.devPid) &&
+      project.devPid > 0 &&
+      project.devPid !== process.pid
+        ? project.devPid
+        : null;
+    if (foreignPid != null && isPidAlive(foreignPid)) {
+      return alreadyRunning(foreignPid);
+    }
+
+    const pkgPath = path.join(cwd, 'package.json');
+    if (!(await fse.pathExists(pkgPath))) {
+      error(chalk.red('No package.json found in the current directory.'));
+      return 1;
+    }
+    let pkg;
+    try {
+      pkg = JSON.parse(await fse.readFile(pkgPath, 'utf8'));
+    } catch {
+      error(chalk.red('package.json is not valid JSON.'));
+      return 1;
+    }
+    if (!pkg.scripts || typeof pkg.scripts.watch !== 'string') {
+      error(
+        chalk.red(
+          'No "watch" script in package.json. Add one, or use a project from `stagepass new`.'
+        )
+      );
+      return 1;
+    }
+
+    const outDir = await readProjectOutDir(cwd, fse);
+    if (!outDir.ok) {
+      error(chalk.red(`❌ ${outDir.error}`));
+      return 1;
+    }
+
+    if (options.verbose) {
+      log(chalk.dim(`Live reload watching ${outDir.rel}/ → https://${domain}/__stagepass/live`));
+    }
+
+    try {
+      const server = createServer({
+        projectRoot: rootCheck.path,
+        outDir: outDir.rel,
+        log: options.verbose ? (m) => log(chalk.dim(m)) : () => {},
+      });
+      live = await server.listen(0);
+    } catch (err) {
+      error(chalk.red(err instanceof Error ? err.message : String(err)));
+      return 1;
+    }
+
+    if (!isValidDevPort(live.port)) {
+      await live.close().catch(() => {});
+      error(chalk.red(`Event server bound an invalid port (${live.port}).`));
+      return 1;
+    }
+
+    /** @type {Promise<void>|null} */
+    let cleaning = null;
+    // Idempotent: every caller awaits the same run, so the Caddy block is restored before exit.
+    cleanup = () => {
+      if (!cleaning) cleaning = runCleanup();
+      return cleaning;
+    };
+    const runCleanup = async () => {
+      try {
+        await live.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        // Only clear our own port so a parallel later `dev` is not wiped (AC-7).
+        const current = await getProject(domain, projectsPath);
+        if (
+          current &&
+          (current.devPid == null || current.devPid === process.pid)
+        ) {
+          await setProjectDevPort(domain, { port: null }, projectsPath);
+          const cleared = await getProject(domain, projectsPath);
+          if (cleared) {
+            await applySiteBlock(domain, cleared, { caddyfilePath, fs: fse });
+            try {
+              await reloadCaddy(caddyfilePath, options.verbose);
+            } catch {
+              /* ignore on exit */
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    /** @param {NodeJS.Signals} signal */
+    const onSignal = (signal) => {
+      if (stopSignal) return;
+      stopSignal = signal;
+      if (setupDone) void cleanup();
+    };
+    // Register before setProjectDevPort so a signal in the setup window is seen (P-3 / AC-7).
+    // Node signal listeners do not receive the name as an argument — bind it explicitly.
+    const onSigInt = () => onSignal('SIGINT');
+    const onSigTerm = () => onSignal('SIGTERM');
+    const onSigHup = () => onSignal('SIGHUP');
+    process.on('SIGINT', onSigInt);
+    process.on('SIGTERM', onSigTerm);
+    process.on('SIGHUP', onSigHup);
+    detachSignals = () => {
+      process.off('SIGINT', onSigInt);
+      process.off('SIGTERM', onSigTerm);
+      process.off('SIGHUP', onSigHup);
+    };
+
+    await setProjectDevPort(domain, { port: live.port, pid: process.pid }, projectsPath);
+  } catch (err) {
+    if (detachSignals) detachSignals();
+    if (cleanup) await cleanup();
+    else if (live) await live.close().catch(() => {});
+    error(chalk.red(err instanceof Error ? err.message : String(err)));
+    return 1;
+  } finally {
+    await lock.unlock();
+  }
+
+  if (stopSignal) {
+    detachSignals();
+    await cleanup();
+    return signalExitCode(stopSignal);
+  }
+
+  try {
+    const project = await getProject(domain, projectsPath);
     const applied = await applySiteBlock(domain, project, { caddyfilePath, fs: fse });
     if (!applied.ok) {
       detachSignals();
