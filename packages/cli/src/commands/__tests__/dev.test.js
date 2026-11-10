@@ -452,50 +452,83 @@ describe('stagepass dev command', () => {
   });
 });
 
-describe('stagepass dev process SIGHUP [P-3][AC-7]', () => {
-  it('exits within 10s on SIGHUP to the dev pid and clears devPort', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-dev-proc-'));
-    const binDir = path.join(home, 'bin');
-    const project = path.join(home, 'Sites', 'app');
-    const stageDir = path.join(home, '.stagepass');
-    fs.mkdirSync(binDir, { recursive: true });
-    fs.mkdirSync(project, { recursive: true });
-    fs.mkdirSync(stageDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(project, 'package.json'),
-      JSON.stringify({ name: 'app', scripts: { watch: 'node -e "setInterval(()=>{},1000)"' } })
-    );
-    fs.writeFileSync(
-      path.join(project, 'stagepass.json'),
-      JSON.stringify({ name: 'app', version: 1 })
-    );
-    fs.writeFileSync(
-      path.join(stageDir, 'projects.json'),
-      JSON.stringify({
-        version: 1,
-        projects: {
-          'app.sp': {
-            root: project,
-            origins: ['example.com'],
-            allowAllOrigins: false,
-            php: false,
-          },
+/**
+ * Linked project + fake PATH tools for process-level `stagepass dev` (round-4).
+ * @param {{ slowReload?: boolean }} [opts]
+ */
+function setupDevProcessFixture(opts = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-dev-proc-'));
+  const binDir = path.join(home, 'bin');
+  const project = path.join(home, 'Sites', 'app');
+  const stageDir = path.join(home, '.stagepass');
+  const projectsPath = path.join(stageDir, 'projects.json');
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.mkdirSync(project, { recursive: true });
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(project, 'package.json'),
+    JSON.stringify({ name: 'app', scripts: { watch: 'node -e "setInterval(()=>{},1000)"' } })
+  );
+  fs.writeFileSync(
+    path.join(project, 'stagepass.json'),
+    JSON.stringify({ name: 'app', version: 1 })
+  );
+  fs.writeFileSync(
+    projectsPath,
+    JSON.stringify({
+      version: 1,
+      projects: {
+        'app.sp': {
+          root: project,
+          origins: ['example.com'],
+          allowAllOrigins: false,
+          php: false,
         },
-      })
-    );
-    fs.writeFileSync(path.join(stageDir, 'Caddyfile'), '');
-    fs.writeFileSync(path.join(binDir, 'caddy'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    fs.writeFileSync(
-      path.join(binDir, 'npm'),
-      `#!/bin/sh
+      },
+    })
+  );
+  fs.writeFileSync(path.join(stageDir, 'Caddyfile'), '');
+  // Slow reload widens the execa + signal-exit race window after devPort appears.
+  const caddyBody = opts.slowReload
+    ? '#!/bin/sh\nif [ "$1" = "reload" ]; then sleep 1; fi\nexit 0\n'
+    : '#!/bin/sh\nexit 0\n';
+  fs.writeFileSync(path.join(binDir, 'caddy'), caddyBody, { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(binDir, 'npm'),
+    `#!/bin/sh
 if [ "$1" = "run" ] && [ "$2" = "watch" ]; then
-  exec "${process.execPath}" -e "['SIGHUP','SIGINT','SIGTERM'].forEach(s=>process.on(s,()=>{})); setInterval(()=>{},1000)"
+  exec "${process.execPath}" -e "['SIGHUP','SIGINT','SIGTERM'].forEach(s=>process.on(s,()=>process.exit(0))); setInterval(()=>{},1000)"
 fi
 exit 0
 `,
-      { mode: 0o755 }
-    );
-    fs.writeFileSync(path.join(binDir, 'lsof'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    { mode: 0o755 }
+  );
+  fs.writeFileSync(path.join(binDir, 'lsof'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  return { home, binDir, project, stageDir, projectsPath };
+}
+
+/**
+ * @param {string} projectsPath
+ * @param {number} timeoutMs
+ */
+async function waitForDevPort(projectsPath, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(projectsPath, 'utf8'));
+      const port = doc?.projects?.['app.sp']?.devPort;
+      if (typeof port === 'number' && port > 0) return port;
+    } catch {
+      /* ignore */
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return null;
+}
+
+describe('stagepass dev process SIGHUP [P-3][AC-7]', () => {
+  it('exits within 10s on SIGHUP to the dev pid and clears devPort', async () => {
+    const { home, binDir, project, projectsPath } = setupDevProcessFixture();
 
     const child = spawn(process.execPath, [binPath, 'dev'], {
       cwd: project,
@@ -548,8 +581,76 @@ exit 0
       }
     }
     expect(closed.timedOut).toBe(false);
-    const doc = JSON.parse(fs.readFileSync(path.join(stageDir, 'projects.json'), 'utf8'));
+    const doc = JSON.parse(fs.readFileSync(projectsPath, 'utf8'));
     expect(doc.projects['app.sp'].devPort).toBeUndefined();
     fs.rmSync(home, { recursive: true, force: true });
   }, 20000);
+});
+
+describe('stagepass dev process signal-exit race [P-3][AC-7]', () => {
+  const SIGNAL_NUM = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 };
+
+  for (const signal of /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP'])) {
+    for (const delayMs of [0, 300]) {
+      for (let n = 1; n <= 5; n++) {
+        it(`${signal} delay ${delayMs}ms #${n} exits 128+signo and clears devPort/devPid`, async () => {
+          const { home, binDir, project, projectsPath } = setupDevProcessFixture({
+            slowReload: true,
+          });
+          const child = spawn(process.execPath, [binPath, 'dev'], {
+            cwd: project,
+            env: {
+              ...process.env,
+              HOME: home,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
+              CI: 'true',
+              [SKIP_PLATFORM_CHECK_ENV]: '1',
+            },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+
+          const port = await waitForDevPort(projectsPath, 15000);
+          if (port == null) {
+            try {
+              if (child.pid) process.kill(child.pid, 'SIGKILL');
+            } catch {
+              /* ignore */
+            }
+          }
+          expect(port).not.toBeNull();
+          expect(child.pid).toBeTypeOf('number');
+
+          if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+          process.kill(child.pid, signal);
+
+          const closed = await new Promise((resolve) => {
+            const t = setTimeout(() => resolve({ timedOut: true, code: null, signal: null }), 15000);
+            child.once('close', (code, sig) => {
+              clearTimeout(t);
+              resolve({ timedOut: false, code, signal: sig });
+            });
+          });
+
+          if (closed.timedOut && child.pid) {
+            try {
+              process.kill(child.pid, 'SIGKILL');
+            } catch {
+              /* ignore */
+            }
+          }
+
+          expect(closed.timedOut).toBe(false);
+          // Default signal death leaves code=null and signal=<name>; handlers must exit 128+n.
+          expect(closed.signal).toBeNull();
+          expect(closed.code).toBe(128 + SIGNAL_NUM[signal]);
+
+          await new Promise((r) => setTimeout(r, 50));
+          const doc = JSON.parse(fs.readFileSync(projectsPath, 'utf8'));
+          expect(doc.projects['app.sp'].devPort).toBeUndefined();
+          expect(doc.projects['app.sp'].devPid).toBeUndefined();
+          fs.rmSync(home, { recursive: true, force: true });
+        }, 25000);
+      }
+    }
+  }
 });

@@ -212,6 +212,7 @@ export async function dev(options = {}, deps = {}) {
   let setupDone = false; // eager cleanup only after setup (P-3 / AC-7)
   /** @param {NodeJS.Signals} signal */
   const onSignal = (signal) => {
+    if (stopSignal) return;
     stopSignal = signal;
     if (setupDone) void cleanup();
   };
@@ -220,9 +221,9 @@ export async function dev(options = {}, deps = {}) {
   const onSigInt = () => onSignal('SIGINT');
   const onSigTerm = () => onSignal('SIGTERM');
   const onSigHup = () => onSignal('SIGHUP');
-  process.once('SIGINT', onSigInt);
-  process.once('SIGTERM', onSigTerm);
-  process.once('SIGHUP', onSigHup);
+  process.on('SIGINT', onSigInt);
+  process.on('SIGTERM', onSigTerm);
+  process.on('SIGHUP', onSigHup);
   const detachSignals = () => {
     process.off('SIGINT', onSigInt);
     process.off('SIGTERM', onSigTerm);
