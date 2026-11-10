@@ -9,13 +9,11 @@ export function isValidDomain(d: string): boolean {
   if (typeof d !== 'string' || !d) return false;
   if (d === 'debug' || d === 'localhost') return true;
   if (d.startsWith('localhost:')) {
-    const port = d.slice('localhost:'.length);
-    return /^[0-9]{1,5}$/.test(port) && Number(port) <= 65535;
+    d = d.slice(10);
+    return /^[1-9]\d{0,4}$/.test(d) && +d < 65536;
   }
   // DNS-safe labels ending in .sp only (no spaces, quotes, schemes, paths)
-  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(
-    d
-  );
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(d);
 }
 
 /**

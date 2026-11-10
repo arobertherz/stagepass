@@ -4,12 +4,10 @@ var Stagepass = (() => {
     if (typeof d !== "string" || !d) return false;
     if (d === "debug" || d === "localhost") return true;
     if (d.startsWith("localhost:")) {
-      const port = d.slice("localhost:".length);
-      return /^[0-9]{1,5}$/.test(port) && Number(port) <= 65535;
+      d = d.slice(10);
+      return /^[1-9]\d{0,4}$/.test(d) && +d < 65536;
     }
-    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(
-      d
-    );
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.sp$/i.test(d);
   }
   function cleanDomain(d) {
     if (!d) return null;
@@ -288,7 +286,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.3.1" : "0.0.0";
+    const PKG_VERSION = true ? "2.4.0" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function flagBase(v, file) {
       if (typeof v !== "string" || !(v = v.trim())) return null;
@@ -325,7 +323,7 @@ var Stagepass = (() => {
     const liveSrc = attr("live-src") === "true";
     const p = new URLSearchParams(loc.search);
     let hasActiveSession = false;
-    const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION };
+    const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION, vd: isValidDomain };
     let renderFlag = null;
     const draw = () => renderFlag && renderFlag();
     const time = () => (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);

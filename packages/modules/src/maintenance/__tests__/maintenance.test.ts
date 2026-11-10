@@ -18,6 +18,10 @@ describe('Maintenance module', () => {
     delete (globalThis as any).stagepass;
     delete (window as any).sp;
     delete (globalThis as any).sp;
+    Object.defineProperty(document, 'currentScript', {
+      configurable: true,
+      get: () => null,
+    });
   });
 
   it('registers enable/disable/isActive and shows overlay for visitors', async () => {
@@ -104,5 +108,38 @@ describe('Maintenance module', () => {
     await import('../index.ts');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('enable() without options keeps last title/text; disable() does not reset them', async () => {
+    const stagepassObj: any = {
+      vars: { isLocal: false, env: 'production', domain: 'example.com', timestamp: 0, version: '2.0.0' },
+      is: () => false,
+      use: (_n: string, _v: string, factory: (api: any) => void) => {
+        factory(stagepassObj);
+        return true;
+      },
+    };
+    await loadMaintenance(stagepassObj);
+
+    stagepassObj.maintenance.enable();
+    expect(document.getElementById('stagepass-maintenance-title')?.textContent).toBe(
+      'We will be back soon'
+    );
+    expect(document.getElementById('stagepass-maintenance-desc')?.textContent).toBe(
+      'This site is temporarily unavailable while we perform maintenance.'
+    );
+
+    stagepassObj.maintenance.enable({ title: 'Zwei', text: 'Zwei-Text' });
+    expect(document.getElementById('stagepass-maintenance-title')?.textContent).toBe('Zwei');
+    expect(document.getElementById('stagepass-maintenance-desc')?.textContent).toBe('Zwei-Text');
+
+    stagepassObj.maintenance.disable();
+    expect(document.getElementById('stagepass-maintenance-overlay')).toBeNull();
+    expect(stagepassObj.maintenance.isActive()).toBe(false);
+
+    stagepassObj.maintenance.enable();
+    expect(stagepassObj.maintenance.isActive()).toBe(true);
+    expect(document.getElementById('stagepass-maintenance-title')?.textContent).toBe('Zwei');
+    expect(document.getElementById('stagepass-maintenance-desc')?.textContent).toBe('Zwei-Text');
   });
 });

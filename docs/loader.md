@@ -1,12 +1,12 @@
 # Loader
 
-Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). CDN files live under `dist/` (`loader.min.js`, plus session-only chunks `flag.min.js`, `flag-card.min.js`, and — when the publish includes it — `live.min.js`).
+Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). CDN files live under `dist/` (`loader.min.js`, plus session-only chunks `flag.min.js`, `flag-card.min.js`, and when the publish includes it, `live.min.js`).
 
 ## Version pinning
 
 Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production CDN embeds, pin the **major** (`@2`), or an **exact** version when you want to freeze one publish and avoid alias caching.
 
-**Published 2.4.0 and live reload:** jsDelivr `@2` is a major-range alias, not a synonym for the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3. `live.min.js` is in published loader **2.4.0** (`loader-v2.4.0` / `cddec72`; npm `latest`). Published **2.3.3** does **not** include it (CDN `/dist/live.min.js` on `@2.3.3` 404s — version scope, not a packaging bug). Pin `@2.4.0` if you need it. Do not assume a CDN `@2` embed ships live reload.
+**Published 2.4.0 and live reload:** `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. `live.min.js` is in published loader **2.4.0** (`loader-v2.4.0` / `cddec72`; npm `latest`). Published **2.3.3** does **not** include it (CDN `/dist/live.min.js` on `@2.3.3` 404s; version scope, not a packaging bug). Do not assume a CDN `@2` embed ships live reload.
 
 ### Recommended (`@2`)
 
@@ -20,7 +20,7 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 
 unpkg serves the same paths if you need an alternative CDN. Always use the **full file path** ending in `/dist/loader.min.js` (as above). Short package URLs such as `https://unpkg.com/@stagepass/loader@2` redirect to the file, but the script element keeps the short URL, so session chunks (`flag.min.js`, `flag-card.min.js`, `live.min.js`) resolve from the wrong folder and 404. Same rule for any CDN that redirects. Alternatively set `data-stagepass-flag-base` to the folder that contains those chunks.
 
-See [MIGRATION.md](../MIGRATION.md) for breaking changes from 1.x. `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version).
+See [MIGRATION.md](../MIGRATION.md) for breaking changes from 1.x. `stagepass doctor` unpinned CDN warnings (`@latest`, bare major `@1`, or bare package with no version) are **(unreleased, CLI 2.3.0)**.
 
 ### Optional exact pin
 
@@ -293,4 +293,4 @@ More CLI security notes: [`packages/cli/README.md`](../packages/cli/README.md).
 
 ## Dev chunks
 
-While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. Published **2.3.3** does not include `live.min.js`; the chunk is in published loader **2.4.0** (npm `latest`). Pin `@2.4.0` if you need it. A jsDelivr `@2` embed is a major-range alias, not the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3. See [dev.md](./dev.md) and [Version pinning](#version-pinning).
+While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running (`stagepass dev` is unreleased, CLI 2.3.0). Never loaded without a session. Published **2.3.3** does not include `live.min.js`; the chunk is in published loader **2.4.0** (npm `latest`). `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. See [dev.md](./dev.md) and [Version pinning](#version-pinning).

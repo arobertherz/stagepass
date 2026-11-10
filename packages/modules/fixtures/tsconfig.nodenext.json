@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "lib": ["ES2020", "DOM"],
+    "types": ["@stagepass/loader", "@stagepass/modules"]
+  },
+  "files": ["nodenext-umbrella.ts"]
+}

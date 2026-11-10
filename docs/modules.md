@@ -13,7 +13,7 @@ Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.var
 
 Or the combined bundle: `all.min.js`. Prefer major pin `@2` or an exact version in production (see [loader.md](./loader.md#version-pinning)).
 
-The modules peer range includes `>=2.0.0 || >=2.3.0-beta.0`, so a 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`).
+Published modules **2.2.2** declares peer `@stagepass/loader` `>=2.0.0`. The wider peer range `>=2.0.0 || >=2.3.0-beta.0` (so a 2.3 loader prerelease satisfies it; prereleases never match a plain `>=2.0.0`) is unreleased and ships with the next modules release.
 
 ## Available Modules
 

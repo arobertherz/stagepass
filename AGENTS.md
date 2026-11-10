@@ -11,7 +11,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### 1. `packages/cli` (Node.js Environment)
 -   **Purpose:** Sets up the local environment (HTTPS, DNS, PHP).
--   **Tech:** Node 20.17+ (`engines`; development/CI: Node 22 or 24), Commander, Execa, Ora, `@inquirer/prompts`.
+-   **Tech:** Published CLI 2.2.7 requires Node 18+ (`engines.node` `>=18.0.0`); CLI 2.3.0 (unreleased) raises to Node 20.17+ (`>=20.17.0`). Development/CI: Node 22 or 24. Commander, Execa, Ora, `@inquirer/prompts`.
 -   **Platform:** macOS only for system commands. Guard in `src/lib/platform.js`; override with `STAGEPASS_SKIP_PLATFORM_CHECK=1` for tests/CI only.
 -   **Role:** The "Enabler". It creates the environment where local files are served.
 -   **Package Name:** `@stagepass/cli`
@@ -83,7 +83,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Domain Validation: Strict Whitelist
 **Decision:** Only allow `.sp` domains, `localhost`, `localhost:*`, or `debug`. Invalid domains are removed from localStorage.  
-**Rationale:** Security - prevents injection from external domains. Domain validation happens on every page load to catch stale/invalid entries.  
+**Rationale:** Security: prevents injection from external domains. Domain validation happens on every page load to catch stale/invalid entries.  
 **Function:** `isValidDomain(d)` checks: `d === 'debug' || d.endsWith('.sp') || d === 'localhost' || d.startsWith('localhost:')`
 
 ### Double Processing Prevention: data-stagepass-processed Flag
@@ -103,48 +103,48 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### Monorepo: Separation with Shared Maintenance
 **Decision:** Independent packages (`@stagepass/cli`, `@stagepass/loader`, `@stagepass/modules`) in one repository.  
-**Rationale:** CLI, Loader, and Modules are technically decoupled but logically related. Single repo enables shared versioning, unified testing, and coordinated CI/CD while maintaining clear boundaries.
+**Rationale:** CLI, Loader, and Modules are technically decoupled but logically related. Single repo enables independent package versions, unified testing, and coordinated CI/CD while maintaining clear boundaries.
 
 ## Technical Reference
 
 ### Loader: HTML Data Attributes
--   `data-stagepass` - Main attribute to mark elements for processing
--   `data-src` - For scripts (instead of `src` attribute)
--   `data-href` - For stylesheets (instead of `href` attribute)
--   `data-stagepass-path` - Optional local path (if omitted, filename is extracted from production URL)
--   `data-stagepass-version` - Optional on the loader tag; production appends `?v=<version>` to assets without a per-asset override
--   `data-stagepass-v` - Optional per asset; production appends `?v=<version>`
--   `data-stagepass-session-hours` - Optional on the loader tag; session lifetime in hours (default 12)
--   `data-stagepass-mute-console="true"` - Optional; legacy global console mute in production without a session
--   `data-stagepass-cachebust="true"` - Legacy; no longer timestamps every production page view
--   `data-stagepass-staging-hosts` - Optional comma-separated hostnames treated as staging (in addition to `*.webflow.io`)
--   `data-stagepass-alias` - Optional custom global alias (valid JS identifier; assigned only when free)
--   `data-stagepass-live-src="true"` - Opt-in zero-cost mode: assets use native `src`/`href`; swap only while a session is active
--   `data-stagepass-processed` - Internal flag set after processing (prevents double-processing)
+-   `data-stagepass`: Main attribute to mark elements for processing
+-   `data-src`: For scripts (instead of `src` attribute)
+-   `data-href`: For stylesheets (instead of `href` attribute)
+-   `data-stagepass-path`: Optional local path (if omitted, filename is extracted from production URL)
+-   `data-stagepass-version`: Optional on the loader tag; production appends `?v=<version>` to assets without a per-asset override
+-   `data-stagepass-v`: Optional per asset; production appends `?v=<version>`
+-   `data-stagepass-session-hours`: Optional on the loader tag; session lifetime in hours (default 12)
+-   `data-stagepass-mute-console="true"`: Optional; legacy global console mute in production without a session
+-   `data-stagepass-cachebust="true"`: Legacy; no longer timestamps every production page view
+-   `data-stagepass-staging-hosts`: Optional comma-separated hostnames treated as staging (in addition to `*.webflow.io`)
+-   `data-stagepass-alias`: Optional custom global alias (valid JS identifier; assigned only when free)
+-   `data-stagepass-live-src="true"`: Opt-in zero-cost mode; assets use native `src`/`href`; swap only while a session is active
+-   `data-stagepass-processed`: Internal flag set after processing (prevents double-processing)
 
 ### Loader: CSS Selectors
 -   Scripts: `script[data-stagepass]:not([data-stagepass-processed])`
 -   Stylesheets: `link[rel="stylesheet"][data-stagepass]:not([data-stagepass-processed])`
 
 ### Loader: URL Parameters
--   `?stagepass=<domain.sp>` - Activates session, stores in localStorage
--   `?stagepass=debug` - Debug mode (no asset swapping, logging only)
--   `?stagepass=off` / `?stagepass=0` / `?stagepass=false` - Deactivates session
+-   `?stagepass=<domain.sp>`: Activates session, stores in localStorage
+-   `?stagepass=debug`: Debug mode (no asset swapping, logging only)
+-   `?stagepass=off` / `?stagepass=0` / `?stagepass=false`: Deactivates session
 -   Parameters are removed from URL after processing via `window.history.replaceState()`
 
 ### Loader: localStorage Keys
--   `stagepass_domain` - JSON session `{ domain, expires }` (legacy plain strings are cleared)
+-   `stagepass_domain`: JSON session `{ domain, expires }` (legacy plain strings are cleared)
 
 ### Loader: Runtime API (stagepass / sp)
--   `stagepass.vars` - Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version` (build-time from package.json)
--   `stagepass.vars.client` - Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
--   `stagepass.env()` / `stagepass.is(name)` - Flat helpers (`local` = active `.sp` swap session; staging = `*.webflow.io` or `data-stagepass-staging-hosts`; else production). Independent of `vars.env` localhost semantics.
--   `stagepass.can(capability)` - Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`)
--   `stagepass.client(key?)` - Read `vars.client` key (or whole object)
--   `stagepass.on(event, fn)` - Subscribe (`theme`, `session`); returns unsubscribe
--   `stagepass.use(name, version, factory)` - Module registry with major-version check
--   `stagepass.log`, `stagepass.warn`, `stagepass.error` - Logging (only when session active)
--   `stagepass.resolveLocalUrl(relativePath)` - Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
+-   `stagepass.vars`: Read-only object: `isLocal`, `env`, `domain`, `timestamp`, `version` (build-time from package.json)
+-   `stagepass.vars.client`: Runtime client info: `theme`, `browser`, `os`, `device`, `viewport`, `locale`, `capabilities` (best effort)
+-   `stagepass.env()` / `stagepass.is(name)`: Flat helpers (`local` = active `.sp` swap session; staging = `*.webflow.io` or `data-stagepass-staging-hosts`; else production). Independent of `vars.env` localhost semantics.
+-   `stagepass.can(capability)`: Capability probe (`localStorage`, `sessionStorage`, `cookies`, `serviceWorker`)
+-   `stagepass.client(key?)`: Read `vars.client` key (or whole object)
+-   `stagepass.on(event, fn)`: Subscribe (`theme`, `session`); returns unsubscribe
+-   `stagepass.use(name, version, factory)`: Module registry with major-version check
+-   `stagepass.log`, `stagepass.warn`, `stagepass.error`: Logging (only when session active)
+-   `stagepass.resolveLocalUrl(relativePath)`: Builds local asset URL when session is active; returns `''` otherwise. Modules (e.g. Injector) use this to avoid duplicating URL logic.
 -   Types: `@stagepass/loader` ships `global.d.ts` (`types` field); modules extend via declaration merging.
 
 ### Modules: Loading Methods
@@ -161,21 +161,22 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   **Version pinning:** Prefer major CDN pin `@2` in production (strict semver within v2). Exact pin (e.g. `@2.3.0`) is optional for maximum control. jsDelivr may cache `@2` briefly; purge via `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See README "Version pinning".
 
 ### CLI: Commands
--   `stagepass setup` - Install dependencies and configure .sp domain
--   `stagepass link [domain]` - Link current directory to .sp domain (domain optional, defaults to folder name)
--   `stagepass unlink [domain]` - Unlink directory from .sp domain (domain optional, defaults to folder name)
--   `stagepass reload` - Reload Caddy configuration
--   `stagepass start` - Start Caddy & PHP (certs check; kickstart when autostart is on)
--   `stagepass stop` - Stop services (bootout until next login when autostart is on; `autostart off` removes permanently)
--   `stagepass doctor` - Read-only diagnostics (never sudo); `--json`; exit 1 on fail
--   `stagepass certs check` - Read-only Caddy local CA / trust / TLS checks
--   `stagepass certs trust` - Run `caddy trust` after confirmation or `--yes`
--   `stagepass certs renew` - Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)
--   `stagepass autostart on|off|status` - Login LaunchAgent (`io.github.arobertherz.stagepass`)
--   `stagepass daemon` - Foreground helper (PHP-FPM, certs log-only, `caddy run`, notifications; never sudo)
--   `stagepass new [name]` - Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP (`--php`, `--php-examples`), optional `--link`, and `npm run dev` as a watch alias.
--   `stagepass build` / `stagepass watch` - Thin wrappers around `npm run build` / `npm run watch`
--   `stagepass upgrade` - Bump `@stagepass/*` in the current package.json and print Webflow snippets
+-   `stagepass setup`: Install dependencies and configure .sp domain
+-   `stagepass link [domain]`: Link current directory to .sp domain (domain optional, defaults to folder name)
+-   `stagepass unlink [domain]`: Unlink directory from .sp domain (domain optional, defaults to folder name)
+-   `stagepass reload`: Reload Caddy configuration
+-   `stagepass start`: Start Caddy & PHP (certs check; kickstart when autostart is on)
+-   `stagepass stop`: Stop services (bootout until next login when autostart is on; `autostart off` removes permanently)
+-   `stagepass doctor`: Read-only diagnostics (never sudo); `--json`; exit 1 on fail. Unpinned CDN warnings: (unreleased, CLI 2.3.0)
+-   `stagepass certs check`: Read-only Caddy local CA / trust / TLS checks
+-   `stagepass certs trust`: Run `caddy trust` after confirmation or `--yes`
+-   `stagepass certs renew`: (unreleased, CLI 2.3.0) Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)
+-   `stagepass autostart on|off|status`: Login LaunchAgent (`io.github.arobertherz.stagepass`)
+-   `stagepass daemon`: Foreground helper (PHP-FPM, certs log-only, `caddy run`, notifications; never sudo)
+-   `stagepass new [name]`: Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP (`--php`, `--php-examples`), optional `--link` are (unreleased, CLI 2.3.0). `npm run dev` is a watch alias.
+-   `stagepass build` / `stagepass watch`: Thin wrappers around `npm run build` / `npm run watch`
+-   `stagepass dev`: (unreleased, CLI 2.3.0) Watch plus live reload SSE on the linked `.sp` domain
+-   `stagepass upgrade`: Bump `@stagepass/*` in the current package.json and print Webflow snippets
 -   All commands support `-v, --verbose` flag for detailed output where applicable
 
 ### CLI: Domain Handling
