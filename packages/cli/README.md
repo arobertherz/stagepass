@@ -21,7 +21,7 @@ npx @stagepass/cli@2 setup
 ## Requirements
 
 - **macOS** (system commands refuse other platforms with exit code 1; this is not a breaking change because those commands never worked off macOS)
-- Node.js 18+ at runtime (`engines.node`); use Node 22 or 24 for local development and CI
+- Published CLI 2.2.7: Node.js 18+ (`engines.node` `>=18.0.0`). CLI 2.3.0 (unreleased): Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
 - Homebrew
 
 `stagepass --version` and `stagepass --help` work on any platform. For tests/CI only, set `STAGEPASS_SKIP_PLATFORM_CHECK=1` to bypass the macOS guard (not for production use).
