@@ -41,6 +41,12 @@ describe('updateConfigTypes', () => {
     expect(r.status).toBe('skipped');
     expect(r.reason).toMatch(/no compilerOptions.types/);
   });
+
+  // F-11: `!json || typeof json !== 'object' || Array.isArray(json)` — null and JSON strings are not objects.
+  it.each([['null'], ['"hello"']])('[F-11] skips non-object JSON %s', (raw) => {
+    const r = updateConfigTypes(raw, [], { modulesDependency: true });
+    expect(r).toMatchObject({ status: 'skipped', reason: 'is not a JSON object' });
+  });
 });
 
 describe('declaredModules', () => {
@@ -225,7 +231,8 @@ describe('resolveUpgradeModules precedence', () => {
       { cwd: '/p', data: { origin: 's.io' }, pkg: {}, options: {} },
       base({ interactive: true, confirm: async () => true, ask: vi.fn() })
     );
-    expect(r.modules).toEqual(['cookies']);
+    // F-11: confirm yes must return `{ ok: true, ... }` (not ok: false).
+    expect(r).toMatchObject({ ok: true, modules: ['cookies'], source: 'live site s.io' });
     const ask = vi.fn().mockResolvedValueOnce('bogus').mockResolvedValueOnce('maintenance');
     r = await resolveUpgradeModules(
       { cwd: '/p', data: { origin: 's.io' }, pkg: {}, options: {} },

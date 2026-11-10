@@ -41,6 +41,16 @@ describe('normalizeSiteUrl', () => {
     expect(r.error).toMatch(re);
   });
 
+  // F-11: `url.username || url.password` must not become `&&` (either alone is enough).
+  it.each([
+    ['https://user@example.com'],
+    ['https://:pw@example.com'],
+  ])('[F-11] rejects credentials-only URL %s', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/credentials/);
+  });
+
   it.each([
     [' example.com'],
     ['example.com '],

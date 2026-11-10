@@ -192,7 +192,8 @@ describe('start autostart / certs integration', () => {
 
   it('uses launchctl kickstart when LaunchAgent is loaded', async () => {
     const calls = [];
-    await start({
+    // F-11: kickstart success path must return exactly 0 (not undefined).
+    const code = await start({
       verbose: true,
       interactive: false,
       skipHandshake: true,
@@ -214,6 +215,7 @@ describe('start autostart / certs integration', () => {
       }),
       uid: 501,
     });
+    expect(code).toBe(0);
     expect(
       calls.some(
         (c) =>

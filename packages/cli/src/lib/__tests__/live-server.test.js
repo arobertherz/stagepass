@@ -254,4 +254,20 @@ describe('createLiveServer', () => {
     expect(events[0].type).toBe('reload');
     expect(events[0].paths).toEqual(['/dist/main.js']);
   });
+
+  // F-11: first sight of a missing/unknown path must not count as a change (`return false`, not true).
+  it('[F-11] unknown missing path is not a content change and emits no SSE event', async () => {
+    const server = createLiveServer({ projectRoot: tmp, debounceMs: 20 });
+    const ghost = path.join(tmp, 'dist', 'never-seen.js');
+    expect(server._fileHashes.has(ghost)).toBe(false);
+    expect(server._hasContentChanged(ghost)).toBe(false);
+
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    await reader.read();
+    server._noteChange(ghost);
+    const events = await collectEvents(reader, 120);
+    expect(events).toEqual([]);
+  });
 });

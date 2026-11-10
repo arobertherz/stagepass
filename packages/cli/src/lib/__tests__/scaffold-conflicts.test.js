@@ -82,6 +82,23 @@ describe('assertScaffoldParentPath (INV-4)', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/Target path is a file/i);
   });
+
+  // F-11: non-file/non-dir/non-symlink target must return `{ ok: false, error: 'Target path is not a directory: ...' }`
+  it('[F-11] rejects when the target path is neither file nor directory', async () => {
+    const target = path.join(dir, 'weird');
+    const fakeFs = {
+      lstat: async () => ({
+        isSymbolicLink: () => false,
+        isFile: () => false,
+        isDirectory: () => false,
+      }),
+    };
+    const r = await assertScaffoldParentPath(target, fakeFs);
+    expect(r).toEqual({
+      ok: false,
+      error: `Target path is not a directory: ${path.resolve(target)}`,
+    });
+  });
 });
 
 describe('writeScaffoldFiles rollback (INV-4)', () => {

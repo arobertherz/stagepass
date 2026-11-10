@@ -790,6 +790,32 @@ describe('new: declared modules', () => {
     expect(logs.join('\n')).toContain('detected on shop.webflow.io');
   });
 
+  // F-11: `det.ok && det.loader` must not become `||` — ok without loader must not adopt the list.
+  it('[F-11] detection ok without loader does not adopt the module list', async () => {
+    const detectSite = vi.fn(async () => ({
+      ok: true,
+      url: 'https://shop.webflow.io/',
+      loader: null,
+      modules: [{ id: 'cookies', version: '2', cdn: 'jsdelivr' }],
+      list: ['cookies'],
+    }));
+    const logs = [];
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, site: 'https://shop.webflow.io/' },
+      {
+        isTTY: false,
+        argv: ['--yes'],
+        exec: async () => ({ stdout: '' }),
+        detectSite,
+        log: (m) => logs.push(String(m)),
+      }
+    );
+    expect(r.ok).toBe(true);
+    expect(r.config.siteModules).toEqual([]);
+    expect(logs.join('\n')).toMatch(/does not load @stagepass\/loader/);
+  });
+
   it('--site-modules wins and never fetches', async () => {
     const detectSite = vi.fn();
     const r = await resolveNewOptions(
