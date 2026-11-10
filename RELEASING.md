@@ -122,9 +122,9 @@ npm view @stagepass/cli dist-tags
 
 `latest` should point at the version you just promoted. Promoting the intended default dist-tag is a required completion step for a stable public release, not an optional later loop. The workflow only publishes as `next`. If the public tag should be `latest`, run `npm dist-tag add` for that package and version and check `npm view <pkg> dist-tags` in the same sitting. Do not treat a version as the public default while `latest` still points at the previous release, and do not wait for another approval round to notice.
 
-### Promote workflows (one-shot)
+### Promote workflows (historical)
 
-Optional GitHub Actions one-shots under `.github/workflows/` (e.g. `promote-loader-2.4.0-latest.yml`, `promote-modules-2.2.2-latest.yml`) run on `workflow_dispatch` and call `npm dist-tag add` for a fixed package+version. Their post-check `assert_tags post-tags` can fail right after a successful `npm dist-tag add` because of npm registry read lag (runs can go red even when `latest` was set). Re-check with `npm view <pkg> dist-tags` after about a minute instead of blindly re-running the workflow.
+One-shot GitHub Actions workflows that called `npm dist-tag add` for fixed loader/modules versions (`promote-loader-2.4.0-latest.yml`, `promote-modules-2.2.2-latest.yml`) were removed after they had already run successfully. History remains in git. Promote stable releases with the manual `npm dist-tag add` commands above and verify with `npm view <pkg> dist-tags`.
 
 Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg resolve a 2.x range on the CDN; that alias is not the npm `latest` dist-tag and can lag after a publish, so only approve stable stages that are ready for live sites. Prefer an exact pin when a specific build must load immediately.
 
