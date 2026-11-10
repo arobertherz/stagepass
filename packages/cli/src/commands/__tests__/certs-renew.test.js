@@ -50,23 +50,43 @@ describe('certs renew command', () => {
   });
 
   it('refuses --yes --root without i-understand flag on non-TTY', async () => {
+    const move = vi.fn(async () => ({ ok: true, authorityDir: '/ca', backupDir: '/ca.b' }));
     const code = await certsRenew({
       root: true,
       yes: true,
       interactive: false,
       confirm: undefined,
-      // force non-prompt path: no confirm/prompt and pretend non-tty by not injecting confirm
+      moveLocalCaAuthorityToBackup: move,
     });
-    // Without confirm injector and without both flags, depends on TTY; inject explicit refusal path:
-    const code2 = await certsRenew({
+    expect(code).toBe(1);
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it('refuses --yes --root without i-understand even when confirm is available (TTY)', async () => {
+    const move = vi.fn(async () => ({ ok: true, authorityDir: '/ca', backupDir: '/ca.b' }));
+    const confirm = vi.fn(async () => true);
+    const code = await certsRenew({
       root: true,
       yes: true,
-      // missing iUnderstandRootRenewal; provide confirm that returns false on first ask if TTY
-      confirm: async () => false,
-      moveLocalCaAuthorityToBackup: async () => ({ ok: true }),
+      confirm,
+      moveLocalCaAuthorityToBackup: move,
     });
-    expect(code2).toBe(1);
-    expect([0, 1]).toContain(code);
+    expect(code).toBe(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it('rejects --root together with --remove-orphans', async () => {
+    const move = vi.fn();
+    const code = await certsRenew({
+      root: true,
+      removeOrphans: true,
+      yes: true,
+      iUnderstandRootRenewal: true,
+      moveLocalCaAuthorityToBackup: move,
+    });
+    expect(code).toBe(1);
+    expect(move).not.toHaveBeenCalled();
   });
 
   it('removes orphans by SHA-1 after per-cert confirmation', async () => {

@@ -267,6 +267,15 @@ export async function certsRenew(options = {}) {
 
   // --- root renewal (move CA folder) ---
   if (options.root === true) {
+    if (options.removeOrphans === true) {
+      console.log(
+        chalk.red(
+          'certs renew --root cannot be combined with --remove-orphans. Run them as separate commands.'
+        )
+      );
+      return 1;
+    }
+
     assertDestructiveCertOpAllowed('renewRootMoveBackup');
 
     let confirmed = false;
@@ -275,6 +284,14 @@ export async function certsRenew(options = {}) {
       options.iUnderstandRootRenewal === true
     ) {
       confirmed = true;
+    } else if (options.yes === true) {
+      // AC-15: --yes alone always aborts (TTY or not); need the explicit flag too.
+      console.log(
+        chalk.red(
+          'certs renew --root with --yes also requires --i-understand-root-renewal. Or omit --yes for two interactive confirmations.'
+        )
+      );
+      return 1;
     } else if (!canPrompt) {
       console.log(
         chalk.red(
