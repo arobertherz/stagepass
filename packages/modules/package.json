@@ -19,7 +19,7 @@
     "dev": "tsup --watch",
     "test": "vitest run && npm run typecheck",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p fixtures/tsconfig.json && tsc --noEmit -p fixtures/tsconfig.cookies.json && tsc --noEmit -p fixtures/tsconfig.none.json"
+    "typecheck": "tsc --noEmit -p fixtures/tsconfig.json && tsc --noEmit -p fixtures/tsconfig.cookies.json && tsc --noEmit -p fixtures/tsconfig.none.json && tsc --noEmit -p fixtures/tsconfig.nodenext.json && tsc --noEmit -p fixtures/nodenext-cjs/tsconfig.json"
   },
   "keywords": [
     "stagepass",

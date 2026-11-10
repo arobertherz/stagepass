@@ -7,6 +7,6 @@
  * instead: `@stagepass/modules/inject`, `@stagepass/modules/cookies`,
  * `@stagepass/modules/maintenance`.
  */
-export * from './inject';
-export * from './cookies';
-export * from './maintenance';
+export * from './inject.js';
+export * from './cookies.js';
+export * from './maintenance.js';
