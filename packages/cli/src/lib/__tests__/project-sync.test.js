@@ -190,6 +190,63 @@ describe('resolveProjectOrigin', () => {
     });
     expect(await resolveProjectOrigin('/other', {}, { loadProjects, realpath: async (x) => x })).toBeNull();
   });
+
+  it('[R5 F-05] null stagepass.json data does not throw; falls back to link origin or null', async () => {
+    const loadProjects = async () => ({
+      projects: {
+        p: { root: '/proj', origins: ['linked.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/proj', null, {
+        loadProjects,
+        realpath: async (x) => x,
+      })
+    ).resolves.toEqual({ origin: 'linked.webflow.io', source: 'stagepass link' });
+    await expect(
+      resolveProjectOrigin('/other', null, {
+        loadProjects,
+        realpath: async (x) => x,
+      })
+    ).resolves.toBeNull();
+  });
+
+  it('[R5 F-05] realpath maps cwd to linked root; throw keeps resolved cwd', async () => {
+    const loadProjects = async () => ({
+      projects: {
+        p: { root: '/real/proj', origins: ['via-realpath.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/alias/proj', {}, {
+        loadProjects,
+        realpath: async (p) =>
+          p === '/alias/proj' || p.endsWith('/alias/proj')
+            ? '/real/proj'
+            : p,
+      })
+    ).resolves.toEqual({
+      origin: 'via-realpath.webflow.io',
+      source: 'stagepass link',
+    });
+
+    const loadSame = async () => ({
+      projects: {
+        p: { root: '/same', origins: ['fallback.webflow.io'] },
+      },
+    });
+    await expect(
+      resolveProjectOrigin('/same', {}, {
+        loadProjects: loadSame,
+        realpath: async () => {
+          throw new Error('ENOENT');
+        },
+      })
+    ).resolves.toEqual({
+      origin: 'fallback.webflow.io',
+      source: 'stagepass link',
+    });
+  });
 });
 
 describe('resolveUpgradeModules precedence', () => {
