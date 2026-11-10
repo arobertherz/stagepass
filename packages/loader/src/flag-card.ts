@@ -40,7 +40,7 @@ const CSS =
   '.it svg{flex:none;width:14px;height:14px}' +
   '.it.e svg{color:var(--err)}.it.w svg{color:var(--wa)}' +
   '.tx{flex:1}' +
-  '.mt{flex:none;font-size:11px;color:var(--mu)}.mt b{color:var(--ink);font-weight:600;margin-right:6px}' +
+  '.mt{flex:none;font-size:11px;color:var(--mu)}.mt b{color:var(--ink);font-weight:600}' +
   '.dt{display:grid;gap:6px;padding:0 16px 10px 53px;font-size:12px}' +
   '.dt .ms{word-break:break-word}.dt .lo{color:var(--mu);font-size:11px;word-break:break-all}' +
   '.dt pre{margin:0;padding:8px;border-radius:6px;background:var(--hv);font:11px/1.45 ui-monospace,"SF Mono",Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;overscroll-behavior:contain}' +
@@ -96,7 +96,6 @@ function mq(q: string): boolean {
 
 const PREV = 'stagepass:prev';
 const OPEN = 'stagepass:expand';
-const SP = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.sp$/;
 const ls = (k: string, v?: string | null): string | null => {
   try {
     if (v === undefined) return localStorage.getItem(k);
@@ -224,7 +223,8 @@ export function createCard(a: FlagApi): FlagCard {
   try {
     prev = prev || sessionStorage.getItem(PREV);
   } catch (_) {}
-  if (prev && !SP.test(prev)) prev = null;
+  // Same rules as session/domain via loader vd. Never debug.
+  if (prev && (prev === 'debug' || !s.vd(prev))) prev = null;
   const dbg = s.debug ? prev : 'debug';
 
   const render = () => {
@@ -305,7 +305,8 @@ export function createCard(a: FlagApi): FlagCard {
       tx.appendChild(d.createTextNode(x.text));
       const mt = el('span', b, 'mt mo');
       if (x.c > 1) el('b', mt, '', '×' + x.c);
-      mt.appendChild(d.createTextNode(x.time));
+      // Space so textContent is '×N HH:MM:SS' (F-5); CSS margin alone is visual-only.
+      mt.appendChild(d.createTextNode((x.c > 1 ? ' ' : '') + x.time));
       const dt = el('div', li, 'dt');
       el('div', dt, 'ms', x.text);
       if (x.src || x.line) {

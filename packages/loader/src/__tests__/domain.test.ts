@@ -20,6 +20,27 @@ describe('isValidDomain', () => {
     expect(isValidDomain('https://test.sp')).toBe(false);
     expect(isValidDomain('localhost:99999')).toBe(false);
   });
+
+  it('accepts localhost ports 1–65535 without leading zeros (AC-2)', () => {
+    expect(isValidDomain('localhost')).toBe(true);
+    expect(isValidDomain('localhost:1')).toBe(true);
+    expect(isValidDomain('localhost:65535')).toBe(true);
+  });
+
+  // AC-2: no source-text assertion on \d{0,4} — mutant \d{0,5} is behaviourally
+  // equivalent because +d < 65536 already rejects 6+ digit values.
+  it('rejects localhost port 0, out of range, leading zeros and non-decimal (AC-2)', () => {
+    expect(isValidDomain('localhost:0')).toBe(false);
+    expect(isValidDomain('localhost:65536')).toBe(false);
+    expect(isValidDomain('localhost:99999')).toBe(false);
+    expect(isValidDomain('localhost:080')).toBe(false);
+    expect(isValidDomain('localhost:00080')).toBe(false);
+    expect(isValidDomain('localhost:00000')).toBe(false);
+    expect(isValidDomain('localhost:')).toBe(false);
+    expect(isValidDomain('localhost:8a')).toBe(false);
+    expect(isValidDomain('localhost:+80')).toBe(false);
+    expect(isValidDomain('localhost:-1')).toBe(false);
+  });
 });
 
 describe('cleanDomain', () => {

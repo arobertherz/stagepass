@@ -73,7 +73,7 @@ declare const __STAGEPASS_VERSION__: string;
   let hasActiveSession = false;
   // Dev flag state (rendered by the lazy flag chunk once it has loaded).
   // Messages are plain text, grouped, capped to the latest 50 and truncated; the flag never parses HTML.
-  const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION } as unknown as FlagState;
+  const flagState = { n: [0, 0], m: [], f: [], swapped: 0, v: PKG_VERSION, vd: isValidDomain } as unknown as FlagState;
   let renderFlag: (() => void) | null = null;
   const draw = () => renderFlag && renderFlag();
   const time = () => new Date().toTimeString().slice(0, 8);

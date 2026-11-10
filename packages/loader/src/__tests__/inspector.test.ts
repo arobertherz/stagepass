@@ -220,6 +220,101 @@ describe('dev flag inspector', () => {
     expect(c.querySelector('.hn')?.textContent).toMatch(/No local session to return to: open the page with \?stagepass=<project>\.sp/);
   });
 
+  it('Back to local returns to localhost and localhost:port (AC-1)', async () => {
+    for (const domain of ['localhost', 'localhost:3000', 'localhost:65535', 'My-Project.SP']) {
+      localStorage.clear();
+      sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession(domain === 'My-Project.SP' ? 'my-project.sp' : domain);
+      await boot();
+      let db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.textContent).toBe('Debug mode');
+      db.click();
+      expect(localStorage.getItem('stagepass:prev')).toBe(domain === 'My-Project.SP' ? 'my-project.sp' : domain);
+
+      // Simulate a stored prev that isValidDomain accepts but the old .sp-only regex rejected.
+      if (domain === 'My-Project.SP') localStorage.setItem('stagepass:prev', 'My-Project.SP');
+      sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      await boot();
+      const c = (await openCard()).card!;
+      db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled).toBe(false);
+      expect(db.textContent).toBe('Back to local');
+      const expectPrev = domain === 'My-Project.SP' ? 'My-Project.SP' : domain;
+      expect(c.querySelector('.hn')?.textContent).toContain(expectPrev);
+      db.click();
+      // searchParams encodes ':' in localhost:port as %3A; decode for the assertion.
+      expect(decodeURIComponent(String(loc.href))).toBe(
+        'https://wlncw02.webflow.io/?stagepass=' + expectPrev
+      );
+    }
+  });
+
+  it('Back to local rejects unsafe or non-local prev values (F-1)', async () => {
+    for (const bad of [
+      'evil.com',
+      'javascript:alert(1)',
+      'localhost:99999',
+      'user:pass@host',
+      'https://localhost',
+      'debug',
+      '"><img>.sp',
+    ]) {
+      localStorage.clear();
+      sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      localStorage.setItem('stagepass:prev', bad);
+      await boot();
+      const db = (await openCard()).card!.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled, bad).toBe(true);
+      expect(db.title).toBe('No local session to return to');
+    }
+  });
+
+  it('Back to local stays disabled for localhost:0 and localhost:080 with hint (AC-2)', async () => {
+    for (const bad of ['localhost:0', 'localhost:080']) {
+      localStorage.clear();
+      sessionStorage.clear();
+      delete (window as any).stagepass;
+      delete (window as any).sp;
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
+      loc.href = 'https://wlncw02.webflow.io/';
+      startSession('debug');
+      localStorage.setItem('stagepass:prev', bad);
+      await boot();
+      const c = (await openCard()).card!;
+      const db = c.querySelectorAll<HTMLButtonElement>('.ft button')[1];
+      expect(db.disabled, bad).toBe(true);
+      expect(db.title).toBe('No local session to return to');
+      expect(c.querySelector('.hn')?.textContent).toMatch(/No local session to return to/);
+    }
+  });
+
+  it('URL mode ?stagepass=localhost:0 does not start a session (AC-2)', async () => {
+    loc.search = '?stagepass=localhost:0';
+    loc.href = 'https://wlncw02.webflow.io/?stagepass=localhost:0';
+    await boot();
+    expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(document.getElementById('stagepass-flag')).toBeNull();
+    expect((window as any).sp.vars.isLocal).toBe(false);
+  });
+
   it('Debug toggle keeps its nodes across renders', async () => {
     startSession('my-project.sp');
     await boot();
@@ -283,11 +378,29 @@ describe('dev flag inspector', () => {
     const { card, q } = await openCard();
     const items = Array.from(card!.querySelectorAll('.it'));
     expect(items.length).toBe(2);
-    expect(items[1].querySelector('.mt')?.textContent).toMatch(/^×3\d\d:\d\d:\d\d$/);
+    // F-5: ×N and the time must be separated by a space for screen readers and tests.
+    expect(items[1].querySelector('.mt')?.textContent).toMatch(/^×3 \d\d:\d\d:\d\d$/);
     expect(q('.lh .ct')?.textContent).toBe('3 errors · 1 warning');
     boom();
     expect(card!.querySelector('.it .tx')?.textContent).toBe('Error: boom');
     expect(card!.querySelector('.it .mt b')?.textContent).toBe('×4');
+    expect(card!.querySelector('.it .mt')?.textContent).toMatch(/^×4 \d\d:\d\d:\d\d$/);
+  });
+
+  it('message meta keeps a space between ×N and the time (AC-4)', async () => {
+    startSession('my-project.sp');
+    await boot();
+    const boom = () =>
+      window.dispatchEvent(
+        new ErrorEvent('error', { message: 'space', filename: 'https://x.test/a.js', lineno: 1, colno: 1 })
+      );
+    boom();
+    boom();
+    const { card } = await openCard();
+    const mt = card!.querySelector('.it .mt')!;
+    expect(mt.querySelector('b')?.textContent).toBe('×2');
+    expect(mt.textContent).toMatch(/^×2 \d\d:\d\d:\d\d$/);
+    expect(mt.textContent).not.toMatch(/×\d\d:/); // no digit of the count glued to HH
   });
 
   it('captures console.warn/error (original still runs), errors with stack, no recursion', async () => {
