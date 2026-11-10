@@ -11,6 +11,13 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+### `@stagepass/cli`
+
+#### Fixed
+
+- Aborting (Ctrl+C or EOF) at any confirmation prompt now ends with a single `Aborted.` line instead of an `ExitPromptError` stack trace, exiting 130 for SIGINT and 1 for EOF/closed stdin (N-1).
+- `stagepass start` no longer prints `Certificates: ok` when site TLS checks were skipped because Caddy was not yet serving `:443`; it now reports that site TLS was not checkable (N-2).
+
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
