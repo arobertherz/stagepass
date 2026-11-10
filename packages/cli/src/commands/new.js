@@ -68,7 +68,8 @@ export function resolveBoolFlag(_options, key, argv, defaultValue) {
  * @returns {{ ok: true, value: string } | { ok: true, value: '' } | { ok: false, error: string }}
  */
 export function parseOriginFlag(raw, label) {
-  if (raw == null || String(raw).trim() === '') {
+  // Empty means "not set". Whitespace-only must fail via validateOriginEntry (AC-10).
+  if (raw == null || String(raw) === '') {
     return { ok: true, value: '' };
   }
   const check = validateOriginEntry(String(raw));
@@ -182,14 +183,10 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   /** @type {boolean} */
   let productionSkipped = false;
 
-  const siteFlag =
-    options.site != null && String(options.site).trim() !== ''
-      ? String(options.site).trim()
-      : '';
+  // Pass raw flag values (no trim): whitespace/controls must abort before write/network.
+  const siteFlag = options.site != null && String(options.site) !== '' ? String(options.site) : '';
   const stagingFlag =
-    options.staging != null && String(options.staging).trim() !== ''
-      ? String(options.staging).trim()
-      : '';
+    options.staging != null && String(options.staging) !== '' ? String(options.staging) : '';
 
   if (siteFlag) {
     const check = normalizeSiteUrl(siteFlag);
@@ -207,7 +204,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
     }
     origin = check.value;
   }
-  if (options.production != null && String(options.production).trim() !== '') {
+  if (options.production != null && String(options.production) !== '') {
     const check = parseOriginFlag(String(options.production), 'production');
     if (!check.ok) return check;
     production = check.value;

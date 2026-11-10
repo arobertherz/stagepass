@@ -6,7 +6,7 @@
  * <script src> values and is never executed.
  */
 
-import { validateOriginEntry } from './origins.js';
+import { HOST_WHITESPACE_ERROR, rejectWhitespaceOrControls, validateOriginEntry } from './origins.js';
 import { MODULE_CHOICES, normalizeModulesList } from './project-modules.js';
 
 export const DETECT_TIMEOUT_MS = 5000;
@@ -14,6 +14,7 @@ export const DETECT_MAX_BYTES = 2 * 1024 * 1024;
 export const DETECT_MAX_REDIRECTS = 3;
 export const SITE_PORT_ERROR =
   'Site URL must not contain a port, also not :443. Use the host only, e.g. my-site.webflow.io.';
+export { HOST_WHITESPACE_ERROR };
 
 // Bounded attribute run keeps the scan linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
@@ -34,14 +35,12 @@ const SAFE_VERSION_RE = /^[0-9A-Za-z][0-9A-Za-z.^~_-]*$/;
 /**
  * True when the raw URL names a port (`:443`/`:0443` included).
  * new URL drops default ports; read authority from the raw string before new URL.
+ * Caller must already reject whitespace/controls; do not strip them here.
  * @param {string} input
  * @returns {boolean}
  */
 function hasExplicitPort(input) {
-  const s = String(input == null ? '' : input)
-    .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '')
-    .replace(/[\t\n\r]/g, '')
-    .replace(/\\/g, '/');
+  const s = String(input == null ? '' : input).replace(/\\/g, '/');
   const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(s);
   const rest = scheme ? s.slice(scheme[0].length) : s;
   // No authority without `//`.
@@ -57,14 +56,17 @@ function hasExplicitPort(input) {
 
 /**
  * Normalize a live site input (host or https URL) to an https URL.
- * Rejects http, wildcards, credentials, and invalid hosts.
+ * Rejects http, wildcards, credentials, whitespace/controls, and invalid hosts.
  *
  * @param {string} input
  * @returns {{ ok: true, url: string, host: string } | { ok: false, error: string }}
  */
 export function normalizeSiteUrl(input) {
-  const raw = String(input == null ? '' : input).trim();
+  const raw = String(input == null ? '' : input);
   if (!raw) return { ok: false, error: 'No live site given.' };
+  // Reject before trim / new URL (WHATWG would drop tab/LF/CR in the host).
+  const ws = rejectWhitespaceOrControls(raw, 'Site URL');
+  if (!ws.ok) return { ok: false, error: HOST_WHITESPACE_ERROR };
   const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   // Port check on raw string before new URL (default ports would be dropped).
   if (hasExplicitPort(candidate)) {

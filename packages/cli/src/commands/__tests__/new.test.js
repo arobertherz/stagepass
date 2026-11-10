@@ -684,6 +684,38 @@ describe('new: origins, php, preflight', () => {
     expect(withPort.ok).toBe(false);
   });
 
+  it.each([
+    ['site', ' example.com'],
+    ['site', 'example.com '],
+    ['site', 'example.com\n'],
+    ['site', 'example.com\t'],
+    ['site', 'exa\tmple.com'],
+    ['site', 'exa\nmple.com'],
+    ['site', '\u0000example.com'],
+    ['staging', ' example.com'],
+    ['staging', 'example.com '],
+    ['staging', 'example.com\n'],
+    ['staging', 'example.com\t'],
+    ['staging', 'exa\tmple.com'],
+    ['staging', 'exa\nmple.com'],
+    ['production', ' example.com'],
+    ['production', 'example.com '],
+    ['production', 'example.com\n'],
+    ['production', 'example.com\t'],
+    ['production', 'exa\tmple.com'],
+    ['production', 'exa\nmple.com'],
+  ])('rejects whitespace/controls on --%s %j before write/network (AC-10)', async (flag, value) => {
+    const detectSite = vi.fn();
+    const r = await resolveNewOptions(
+      'shop',
+      { yes: true, siteModules: 'none', [flag]: value },
+      { isTTY: false, argv: ['--yes'], exec: async () => ({ stdout: '' }), detectSite, log: () => {} }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/whitespace|control|Invalid/i);
+    expect(detectSite).not.toHaveBeenCalled();
+  });
+
   it('rejects --php-examples without --php', async () => {
     const r = await resolveNewOptions(
       'shop',

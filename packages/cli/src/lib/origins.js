@@ -11,6 +11,29 @@
 
 const UNSAFE_ORIGIN_RE = /[\s#"'{}$\\;()[\],<>|/]/;
 const HOSTNAME_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** Whitespace (incl. Unicode) or C0/DEL controls; reject on the raw CLI string before trim/URL parse. */
+const HOST_WHITESPACE_OR_CONTROL_RE = /[\s\x00-\x1f\x7f]/;
+export const HOST_WHITESPACE_ERROR =
+  'Host must not contain whitespace or control characters.';
+
+/**
+ * Reject hosts / site inputs that contain whitespace or control characters.
+ * Call on the raw string before any trim or `new URL()`.
+ *
+ * @param {unknown} input
+ * @param {string} [label]
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function rejectWhitespaceOrControls(input, label = 'Host') {
+  const raw = String(input == null ? '' : input);
+  if (HOST_WHITESPACE_OR_CONTROL_RE.test(raw)) {
+    return {
+      ok: false,
+      error: `${label} must not contain whitespace or control characters.`,
+    };
+  }
+  return { ok: true };
+}
 
 /** Built-in Origin regex alternatives (without leading ^ / trailing $ / (?i)). */
 export const DEFAULT_ORIGIN_ALTERNATIVES = Object.freeze([
@@ -40,15 +63,14 @@ export function isBroadWebflowWildcard(entry) {
  * @returns {{ ok: true, value: string } | { ok: false, error: string }}
  */
 export function validateOriginEntry(input) {
-  if (typeof input !== 'string' || input.trim() === '') {
+  if (typeof input !== 'string' || input === '') {
     return { ok: false, error: 'Origin entry is empty.' };
   }
 
-  let raw = input.trim().toLowerCase();
+  const ws = rejectWhitespaceOrControls(input, 'Origin');
+  if (!ws.ok) return ws;
 
-  if (/[\x00-\x1f\x7f]/.test(raw)) {
-    return { ok: false, error: 'Origin contains control characters.' };
-  }
+  let raw = input.toLowerCase();
 
   // Optional https:// only (http reserved for localhost defaults)
   if (raw.startsWith('http://')) {

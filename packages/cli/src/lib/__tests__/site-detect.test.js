@@ -40,6 +40,24 @@ describe('normalizeSiteUrl', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(re);
   });
+
+  it.each([
+    [' example.com'],
+    ['example.com '],
+    ['example.com\n'],
+    ['example.com\t'],
+    ['exa\tmple.com'],
+    ['exa\nmple.com'],
+    ['exa\rmple.com'],
+    ['example.com\r'],
+    ['\u0000example.com'],
+    ['example.com\u0000'],
+    ['https://exa\tmple.com'],
+  ])('rejects whitespace/controls in %j before any fetch (AC-10)', (input) => {
+    const r = normalizeSiteUrl(input);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/whitespace|control/i);
+  });
 });
 
 describe('parseStagepassScripts (hostile input)', () => {

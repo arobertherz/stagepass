@@ -376,6 +376,37 @@ describe('upgrade: --site before registry', () => {
     expect(logs.join('\n')).toMatch(/must not contain a port/i);
     expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
   });
+
+  it.each([
+    [' example.com'],
+    ['example.com '],
+    ['example.com\n'],
+    ['example.com\t'],
+    ['exa\tmple.com'],
+    ['exa\nmple.com'],
+    ['\u0000example.com'],
+  ])('rejects whitespace/controls in --site %j before registry (AC-10)', async (site) => {
+    const before = await fsx.readFile(path.join(dir, 'package.json'), 'utf8');
+    const logs = [];
+    const fetchPublished = vi.fn(async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.2.0'] }));
+    const detectSite = vi.fn();
+    const code = await upgrade(
+      { site },
+      {
+        cwd: dir,
+        fetchPublished,
+        log: (m) => logs.push(String(m ?? '')),
+        isTTY: false,
+        loadProjects: async () => ({ projects: {} }),
+        detectSite,
+      }
+    );
+    expect(code).toBe(1);
+    expect(fetchPublished).not.toHaveBeenCalled();
+    expect(detectSite).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toMatch(/whitespace|control/i);
+    expect(await fsx.readFile(path.join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
 });
 
 describe('upgrade: snippet version pin (AC-7 / AC-14)', () => {
