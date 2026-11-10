@@ -33,6 +33,64 @@ describe('runProjectSiteChecks', () => {
     expect(checks[1].message).toBe('Live site s.webflow.io loads @stagepass/loader@2');
   });
 
+  it('[P-4][AC-3] self-hosted vs CDN vs empty loader messages differ', async () => {
+    await write({ modules: [], origin: 's.webflow.io' });
+    const cdn = await runProjectSiteChecks({
+      cwd: dir,
+      detectSite: live([], '2.3.0'),
+      loadProjects: noProjects,
+    });
+    const cdnMsg = cdn.find((c) => c.id === 'project.site').message;
+    expect(cdnMsg).toBe('Live site s.webflow.io loads @stagepass/loader@2.3.0');
+    expect(cdnMsg).not.toMatch(/self-hosted/);
+
+    const selfDetect = vi.fn(async () => ({
+      ok: true,
+      url: 'https://s.webflow.io/',
+      loader: { version: 'latest', cdn: 'self' },
+      modules: [],
+      list: [],
+    }));
+    const selfChecks = await runProjectSiteChecks({
+      cwd: dir,
+      detectSite: selfDetect,
+      loadProjects: noProjects,
+    });
+    const selfMsg = selfChecks.find((c) => c.id === 'project.site').message;
+    expect(selfMsg).toBe('Live site s.webflow.io loads a self-hosted @stagepass/loader');
+    expect(selfMsg).toMatch(/self-hosted/);
+    expect(selfMsg).not.toMatch(/version/);
+
+    const selfVer = vi.fn(async () => ({
+      ok: true,
+      url: 'https://s.webflow.io/',
+      loader: { version: '2.1.0', cdn: 'self' },
+      modules: [],
+      list: [],
+    }));
+    const selfVerMsg = (
+      await runProjectSiteChecks({ cwd: dir, detectSite: selfVer, loadProjects: noProjects })
+    ).find((c) => c.id === 'project.site').message;
+    expect(selfVerMsg).toBe(
+      'Live site s.webflow.io loads a self-hosted @stagepass/loader (version 2.1.0)'
+    );
+
+    const empty = await runProjectSiteChecks({
+      cwd: dir,
+      detectSite: vi.fn(async () => ({
+        ok: true,
+        url: 'https://s.webflow.io/',
+        loader: null,
+        modules: [],
+        list: [],
+      })),
+      loadProjects: noProjects,
+    });
+    expect(empty.find((c) => c.id === 'project.site').message).toMatch(/does not load/);
+    expect(cdnMsg).not.toEqual(selfMsg);
+    expect(selfMsg).not.toEqual(empty.find((c) => c.id === 'project.site').message);
+  });
+
   it('warns on a mismatch', async () => {
     await write({ modules: [], origin: 's.webflow.io' });
     const checks = await runProjectSiteChecks({ cwd: dir, detectSite: live(['all'], '2.0.0'), loadProjects: noProjects });
