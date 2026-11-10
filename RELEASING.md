@@ -64,7 +64,7 @@ npm stage list @stagepass/loader
 npm stage list @stagepass/cli
 ```
 
-Approve **the stage id of the package that this tag or workflow run staged**. `npm stage approve` always refers to that one stage ID. If you released more than one package, you did so with separate tags (or `workflow_dispatch` refs) and therefore have separate stage IDs — approve each independently. There is no required approval order and no implied same-version or single-run rule; a sequence such as modules → loader → cli is not a release policy:
+Approve **the stage id of the package that this tag or workflow run staged**. `npm stage approve` always refers to that one stage ID. If you released more than one package, you did so with separate tags (or `workflow_dispatch` refs) and therefore have separate stage IDs: approve each independently. There is no required approval order and no implied same-version or single-run rule; a sequence such as modules → loader → cli is not a release policy:
 
 ```bash
 npm stage approve <stage-id>
@@ -89,7 +89,7 @@ Test on a generic Webflow staging host such as `my-project.webflow.io` (never a 
 
 After the beta looks good:
 
-1. Bump **only the package you are releasing** to its final version (e.g. modules `2.2.2`). Do not bump the other packages unless they are themselves part of this intended release — and even then each package still gets its own tag and its own workflow run.
+1. Bump **only the package you are releasing** to its final version (e.g. modules `2.2.2`). Do not bump the other packages unless they are themselves part of this intended release, and even then each package still gets its own tag and its own workflow run.
 2. Update `CHANGELOG.md`. Commit.
 3. Tag and push:
 
@@ -100,7 +100,7 @@ git push origin modules-v2.2.0
 
 Repeat the tag (or `workflow_dispatch`) once per package you intend to stage. CI stages with `--tag next` (as for prereleases). Approve each stage id with 2FA as above.
 
-Note: generated projects depend on `^<major>.<minor>.0` of loader/modules (e.g. `^2.2.0`). That is a **dependency** constraint, not a same-version or single-workflow rule. If a newly scaffolded project needs a loader or modules version that is not yet approved, `npm install` can fail with `ETARGET`. Stage and approve those packages separately (own bump, own tag, own run, own stage ID) before relying on the scaffold — do not treat this as “always bump and approve all three together”.
+Note: generated projects depend on `^2` for loader/modules (`PACKAGES_MAJOR_RANGE` in `packages/cli/src/lib/registry.js`), the same major as the CDN pin `@2`. That is a **dependency** constraint, not a same-version or single-workflow rule. If a newly scaffolded project needs a loader or modules version that is not yet approved, `npm install` can fail with `ETARGET`. Stage and approve those packages separately (own bump, own tag, own run, own stage ID) before relying on the scaffold; do not treat this as “always bump and approve all three together”.
 
 ## 3. Promote to `latest` (2FA)
 
@@ -121,6 +121,10 @@ npm view @stagepass/cli dist-tags
 ```
 
 `latest` should point at the version you just promoted. Promoting the intended default dist-tag is a required completion step for a stable public release, not an optional later loop. The workflow only publishes as `next`. If the public tag should be `latest`, run `npm dist-tag add` for that package and version and check `npm view <pkg> dist-tags` in the same sitting. Do not treat a version as the public default while `latest` still points at the previous release, and do not wait for another approval round to notice.
+
+### Promote workflows (one-shot)
+
+Optional GitHub Actions one-shots under `.github/workflows/` (e.g. `promote-loader-2.4.0-latest.yml`, `promote-modules-2.2.2-latest.yml`) run on `workflow_dispatch` and call `npm dist-tag add` for a fixed package+version. Their post-check `assert_tags post-tags` can fail right after a successful `npm dist-tag add` because of npm registry read lag (runs can go red even when `latest` was set). Re-check with `npm view <pkg> dist-tags` after about a minute instead of blindly re-running the workflow.
 
 Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg resolve a 2.x range on the CDN; that alias is not the npm `latest` dist-tag and can lag after a publish, so only approve stable stages that are ready for live sites. Prefer an exact pin when a specific build must load immediately.
 

@@ -25,11 +25,11 @@ unpkg serves the same paths if you need an alternative CDN. Always embed the ful
 
 ## Known limits (scoped acceptance)
 
-Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is not proof of the full default `setup` / `start` / `stop` path, System Trust / `certs renew`, autostart / login / boot / OS-crash recovery, or a real `.sp` resolver + production Webflow origin path.
+Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is not proof of the full default `setup` / `start` / `stop` path, System Trust / `certs renew` (unreleased, CLI 2.3.0), autostart / login / boot / OS-crash recovery, or a real `.sp` resolver + production Webflow origin path.
 
 A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
 
-`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session). Pin `@2.4.0` to load it (npm `latest` is **2.4.0**). A jsDelivr `@2` embed is a major-range alias, not the npm `latest` dist-tag. After a publish the CDN can keep serving an older 2.x build until it refreshes. Do not treat `@2` as identical to `latest`, and do not assume it will keep serving 2.3.3.
+`live.min.js` is the published loader **2.4.0** chunk (lazy-loaded during an active swap session; not in **2.3.3**). Pin `@2.4.0` to load it (npm `latest` is **2.4.0**). `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load.
 
 See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 

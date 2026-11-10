@@ -48,6 +48,67 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.2.7] - 2026-11-08
+
+Patch release of the CLI only. `@stagepass/loader` stays at **2.4.0**; `@stagepass/modules` latest **2.2.0** / next **2.2.2** are unchanged. `engines.node` remains `>=18.0.0`. No dependency major bumps.
+
+#### Fixed
+
+- LaunchAgent autostart embeds a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel. PATH shims must live in `prefix/bin` or `prefix/sbin`; Cellar realpaths under the same prefix are accepted. Prerequisites are validated before the plist is written.
+- Ora spinners no longer treat TTY width `0` / invalid / live resize-to-zero as usable geometry (avoids runaway ANSI clears).
+- `stagepass start` closes the parent logfile FD after `caddy start` (execa@8 does not hang when a daemon grandchild inherits the log handles).
+- `stagepass start` no longer runs unconditional `sudo -v` or a `sudo lsof | …` shell pipeline. Port 443 is inspected with argv `lsof` (no sudo). Conflicting listeners are signalled only after confirmation: **SIGTERM** first, **SIGKILL** only after a separate confirm if still listening. Non-interactive runs refuse to signal. Privilege (`sudo kill` / `apachectl`) is used only when the confirmed operation needs it.
+- When a LaunchAgent plist is installed, `start` bootstraps if needed then `launchctl kickstart` (falls back to direct `caddy start`). `stop` `launchctl bootout`s first (until next login) before stopping Caddy/PHP. PHP `brew services` behaviour is unchanged.
+
+#### Docs
+
+- Autostart / Homebrew PATH / start/stop LaunchAgent contract; macOS permissions split into system CA trust, browser Local Network Access, and Node folder TCC (e.g. Desktop), not conflated with firewall/FDA. Stable global install vs temporary Desktop test packs; LaunchAgent absolute paths need deliberate `autostart off`/`on` after CLI moves (upgrade does not auto-migrate). `RELEASING.md` single-package `cli-v*` → stage `next` → 2FA approve → explicit `latest`. Bundled offline snippet constant stays lockstep with this release line (`2.2.2`); `new`/`upgrade` still resolve live loader pins from the registry (currently 2.4.0).
+
+#### Verified on macOS (compatible 2.2.7 artifact; not a cold-boot claim)
+
+Interactive accept of the compatible CLI build (product tree `bb07d46`): normal start ~2.1s, verbose ~1.8s, direct stop, `autostart on`/bootstrap, verbose kickstart ~10.6s, agent stop/bootout, normal bootstrap start ~10.6s, off/on retained; 14 TLS checks (12 HTTP 404 + 2 HTTP 200); CA/config/backup hashes unchanged. Global `@stagepass/cli@2.2.6` left installed for rollback. **Cold-boot/login LaunchAgent PASS remains scoped to the earlier `dc927de` observation only**: do not treat it as proven for published 2.2.7. Remaining open limits: full P1 negatives, fresh demo, `.sp`/Webflow scoped cases, and a dedicated cold boot of the 2.2.7 artifact.
+
+### [2.2.6] - 2026-11-06
+
+Patch release of the CLI only. At publish time `@stagepass/loader` and `@stagepass/modules` were 2.2.0; `STAGEPASS_PACKAGES_VERSION` later tracks 2.2.2 without a CLI version bump.
+
+#### Fixed
+
+- Registry and `node_modules` version strings with leading or trailing whitespace are no longer treated as stable semver. `parseSemver` checks the raw value; padded entries are ignored so snippets and `upgrade` ranges stay clean `X.Y.Z` / `^X.Y.Z`.
+
+### [2.2.5] - 2026-11-05 (not published to npm; changes shipped in 2.2.6/2.2.7)
+
+CLI-only notes that were never published as their own npm version. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0. The fix below shipped in published 2.2.6/2.2.7.
+
+#### Fixed
+
+- `stagepass upgrade --version`: the loader pin is resolved before any file is written. If it cannot be resolved (version not published for the loader, registry offline), the command exits 1 and leaves `package.json` and project files unchanged.
+
+### [2.2.4] - 2026-11-05 (not published to npm; changes shipped in 2.2.6/2.2.7)
+
+CLI-only notes that were never published as their own npm version. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0. The fix below shipped in published 2.2.6/2.2.7.
+
+#### Fixed
+
+- `stagepass upgrade --version <v>` now pins the Webflow snippet (`data-stagepass-version` and the exact-pin hint) to that loader version even when `package.json` lists only `@stagepass/modules`.
+
+### [2.2.3] - 2026-11-05 (not published to npm; changes shipped in 2.2.6/2.2.7)
+
+CLI-only notes that were never published as their own npm version. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0. 2.2.2 was also never published; its changes and the notes below shipped in published 2.2.6/2.2.7.
+
+#### Fixed
+
+- Live site detection no longer follows a redirect to a URL with an explicit port. `:443`, `:0443` and an empty port are rejected too; the check reads the raw `Location` value, because URL parsing drops the default port.
+- `--site` for `stagepass new` and `stagepass upgrade` (and a stored `origin`) rejects every explicit port, including `:443` and `:0443`, before any network access or file write. The error no longer echoes the input.
+- Webflow snippets printed by `stagepass new` and `stagepass upgrade` set `data-stagepass-version` to the newest published 2.x `@stagepass/loader`. Offline they use the installed stable 2.x loader, otherwise the bundled loader version (2.2.0), never the CLI version. An explicit `upgrade --version` pin on 2.x is used as is.
+- `stagepass upgrade --site <x>` validates the site before any registry query, exec or file write; an invalid value (for example with a port) ends without network access.
+- Loader versions from the registry or `node_modules` are accepted for snippets only as strict stable `X.Y.Z`: build metadata (`+…`), prereleases and leading zeros are ignored, so values like `2.9.0+meta` never reach `data-stagepass-version`, the README or the pin hint.
+- A stored `origin` in `stagepass.json` or a linked origin that contains a port is still skipped, but now with a warning that names the source; the stored value is not echoed.
+
+#### Changed
+
+- Shorter source comments keep the shipped CLI code no larger than 2.2.1.
+
 ### [2.2.1] - 2026-11-02
 
 Patch release of the CLI only. `@stagepass/loader` and `@stagepass/modules` stay at 2.2.0.
@@ -204,7 +265,21 @@ Loader-only release (`loader-v2.4.0`, `cddec72`). Published on npm and jsDelivr 
 
 #### Fixed
 
-- Retains published 2.3.3 guards: localhost ports 1–65535 without leading zeros; shared `isValidDomain` via `FlagState.vd`; ×N and time separated by a real space.
+- Retains published 2.3.3 guards: localhost ports 1 to 65535 without leading zeros; shared `isValidDomain` via `FlagState.vd`; ×N and time separated by a real space.
+
+### [2.3.3] - 2026-11-05
+
+Patch release of the loader only. CLI and modules are unchanged. 2.3.2 was not published; its changes ship in 2.3.3.
+
+#### Fixed
+
+- "Back to local" in the session card also returns to a previous session on `localhost` or `localhost:<port>`, not only `*.sp`.
+- Valid ports for `localhost:<port>` (session domain, URL mode and return target) are exactly 1 to 65535 without leading zeros; `localhost:0`, `localhost:080`, an empty port and 65536+ are rejected and keep the button disabled.
+- The message meta shows a real space between `×N` and the time (text, not only CSS).
+
+#### Changed
+
+- Size: `SFMono-Regular` was removed from the card's monospace font stack on purpose to save bytes (the stack falls back to the next monospace fonts); no shipped file is larger than in 2.3.1. `loader.min.js`: 13768 B / 6254 B gzip / 5575 B brotli; `flag-card.min.js`: 11852 B (2.3.1: 13798 / 6257 / 5588 and 11894).
 
 ### [2.3.1] - 2026-11-02
 
@@ -322,6 +397,10 @@ Non-breaking minor prerelease of the loader only. `@stagepass/cli` (2.2.1) and `
 - The flag renders in a Shadow DOM, uses DOM APIs only and respects `prefers-reduced-motion`.
 - Size budget test in CI for `loader.min.js` and `flag.min.js`.
 
+### [2.2.2] - 2026-11-07
+
+Republish of the 2.2 line from tag `v2.2.2` / commit `d531d30` alongside `@stagepass/modules` 2.2.2. Diff versus `v2.2.0` is only `packages/loader/package.json` version `2.2.0` → `2.2.2`; no functional loader changes.
+
 ### [2.2.0] - 2026-11-02
 
 Non-breaking minor release. No runtime behaviour change (only the embedded version string).
@@ -430,9 +509,9 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/modules`
 
-### [2.2.2] - 2026-11-06
+### [2.2.2] - 2026-11-07
 
-Already on npm dist-tag `next` since 2026-11-06; promoting to `latest` on 2026-11-09. No republish, tag, or version bump.
+Published on npm 2026-11-07T13:48Z. Already on dist-tag `next` before promotion to `latest`. No further republish, tag, or version bump for the promotion. 2.2.1 was never published; its changes shipped in 2.2.2.
 
 ### [2.2.0] - 2026-11-02
 
