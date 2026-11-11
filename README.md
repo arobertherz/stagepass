@@ -15,14 +15,16 @@ Stagepass bridges your local IDE and live Webflow (or any production) sites. The
 npm install -g @stagepass/cli@2
 ```
 
-macOS is required for system commands. See [docs/getting-started.md](docs/getting-started.md).
+macOS is required for system commands. Published CLI 2.3.0 needs Node.js `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. See [docs/getting-started.md](docs/getting-started.md).
 
 ## Minimal example
 
 ```bash
 stagepass setup && stagepass start
-stagepass new demo --yes --site demo.webflow.io
-cd demo && stagepass link --origin demo.webflow.io
+stagepass new demo --yes --staging demo.webflow.io --link
+cd demo
+stagepass build
+stagepass dev
 ```
 
 In Webflow head code (prefer major pin `@2`; exact pin optional; `data-stagepass-version` is optional cache-bust metadata):
@@ -49,7 +51,7 @@ Open `https://your-site/?stagepass=demo.sp`. Details: [docs/getting-started.md](
 | [CLI](docs/cli.md) | Commands, flags, AGENTS.md templates |
 | [Loader](docs/loader.md) | Version pinning, attributes, Runtime API, security |
 | [Modules](docs/modules.md) | inject, cookies, maintenance |
-| [Live reload](docs/dev.md) | Guide for `stagepass dev` / `watch` (unreleased, CLI 2.3.0; running check #40); client chunk `live.min.js` belongs to published loader 2.4.0 (npm `latest`) |
+| [Live reload](docs/dev.md) | Guide for `stagepass dev` / `watch` (running check #40); client chunk `live.min.js` belongs to published loader 2.4.0 (npm `latest`) |
 | [Migration](docs/migration.md) | 1.x → 2.x ([full guide](MIGRATION.md)) |
 | [Troubleshooting](docs/troubleshooting.md) | Common fixes |
 

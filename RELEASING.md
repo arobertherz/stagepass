@@ -58,7 +58,7 @@ npm stage publish --tag <dist_tag> --access public
 
 **Provenance:** `--provenance` is **not** used. npm provenance requires a supported cloud CI OIDC environment; the self-hosted runner is not supported.
 
-### 1d. Maintainer promotes (2FA)
+### 1d. Maintainer approves the staged package (2FA)
 
 On a trusted machine, list the package you just staged (the other two commands are independent examples, not a required trio):
 
