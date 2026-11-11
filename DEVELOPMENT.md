@@ -165,7 +165,7 @@ npm run dev
 
 ## Publishing
 
-Do **not** run `npm publish` from a developer machine. Releases use the tag → `npm stage publish` flow documented in **[RELEASING.md](RELEASING.md)** (every version is staged on `next`, maintainer 2FA approval, then an explicit `npm dist-tag add … latest`).
+Do **not** run `npm publish` from a developer machine. Releases use the tag → `npm stage publish` flow documented in **[RELEASING.md](RELEASING.md)** (prereleases stage on `next`; stable releases stage on `latest`, so one 2FA approval publishes them with no separate promotion).
 
 ## Unlinking
 

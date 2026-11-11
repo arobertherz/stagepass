@@ -73,9 +73,19 @@ describe('check-release-version', () => {
     expect(parseReleaseTag('cli-v2.2.6')).toEqual({ dir: 'cli', version: '2.2.6' });
   });
 
-  it('always uses next as the staging dist-tag', () => {
+  it('stages a stable cli tag on latest (cli-v2.3.0)', () => {
+    expect(parseReleaseTag('cli-v2.3.0')).toEqual({ dir: 'cli', version: '2.3.0' });
+    expect(distTagForVersion('2.3.0')).toBe('latest');
+    expect(distTagForVersion('2.2.0')).toBe('latest');
+  });
+
+  it('stages a prerelease cli tag on next (cli-v2.3.0-beta.1)', () => {
+    expect(parseReleaseTag('cli-v2.3.0-beta.1')).toEqual({
+      dir: 'cli',
+      version: '2.3.0-beta.1',
+    });
+    expect(distTagForVersion('2.3.0-beta.1')).toBe('next');
     expect(distTagForVersion('2.0.0-beta.1')).toBe('next');
-    expect(distTagForVersion('2.2.0')).toBe('next');
   });
 
   it('stages only the named package when its version matches the tag', () => {
@@ -139,27 +149,26 @@ describe('check-release-version process (main)', () => {
   const modules = packages.find((pkg) => pkg.dir === 'modules');
   const modulesRef = `modules-v${modules.version}`;
 
-  it('writes stage_dir and dist_tag=next and exits 0 for a matching package tag', () => {
+  it('writes stage_dir and dist_tag=latest and exits 0 for a matching stable package tag', () => {
+    expect(modules.version).not.toContain('-');
     const result = runMain([modulesRef]);
     expect(result.status).toBe(0);
-    expect(result.fileOut).toBe('stage_dir=modules\ndist_tag=next\n');
-    expect(result.fileOut).not.toMatch(/latest/);
+    expect(result.fileOut).toBe('stage_dir=modules\ndist_tag=latest\n');
     const found = tokens(`${result.stdout}\n${result.fileOut}`);
-    expect(found).toContain('next');
-    expect(found).not.toContain('latest');
+    expect(found).toContain('latest');
+    expect(found).not.toContain('next');
   });
 
   it('prints only the selected package on stdout in the contracted two-line form', () => {
     for (const pkg of packages) {
       const result = runMain([`${pkg.dir}-v${pkg.version}`]);
       expect(result.status).toBe(0);
-      const kind = pkg.version.includes('-')
-        ? 'prerelease'
-        : 'stable; promote after verification';
+      const distTag = pkg.version.includes('-') ? 'next' : 'latest';
+      const kind = pkg.version.includes('-') ? 'prerelease' : 'stable';
       expect(result.stdout).toBe(
-        `✅ Stage ${pkg.name}@${pkg.version}\n   dist_tag: next (${kind})\n`
+        `✅ Stage ${pkg.name}@${pkg.version}\n   dist_tag: ${distTag} (${kind})\n`
       );
-      expect(result.fileOut).toBe(`stage_dir=${pkg.dir}\ndist_tag=next\n`);
+      expect(result.fileOut).toBe(`stage_dir=${pkg.dir}\ndist_tag=${distTag}\n`);
       expect(result.stdout).not.toMatch(/\bskip\b/);
       for (const other of packages) {
         if (other.dir === pkg.dir) continue;
@@ -180,14 +189,14 @@ describe('check-release-version process (main)', () => {
     const result = runMain([], { RELEASE_REF: modulesRef });
     expect(result.status).toBe(0);
     expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
-    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+    expect(result.fileOut).toMatch(/^dist_tag=latest$/m);
   });
 
   it('uses GITHUB_REF_NAME when the CLI argument and RELEASE_REF are omitted', () => {
     const result = runMain([], { GITHUB_REF_NAME: modulesRef });
     expect(result.status).toBe(0);
     expect(result.fileOut).toMatch(/^stage_dir=modules$/m);
-    expect(result.fileOut).toMatch(/^dist_tag=next$/m);
+    expect(result.fileOut).toMatch(/^dist_tag=latest$/m);
   });
 
   it('does not fall back to a valid env value when the CLI argument is empty', () => {
@@ -222,13 +231,16 @@ describe('check-release-version process (main)', () => {
     assertFailedWithoutSelection(runMain(['modules-v0.0.0-never']));
   });
 
-  it('stages each matching package through main and always emits next', () => {
+  it('stages each matching package on latest when stable and next when a prerelease', () => {
     for (const pkg of packages) {
       const result = runMain([`${pkg.dir}-v${pkg.version}`]);
+      const distTag = pkg.version.includes('-') ? 'next' : 'latest';
       expect(result.status).toBe(0);
       expect(result.fileOut).toMatch(new RegExp(`^stage_dir=${pkg.dir}$`, 'm'));
-      expect(result.fileOut).toMatch(/^dist_tag=next$/m);
-      expect(tokens(`${result.stdout}\n${result.fileOut}`)).not.toContain('latest');
+      expect(result.fileOut).toMatch(new RegExp(`^dist_tag=${distTag}$`, 'm'));
+      const found = tokens(`${result.stdout}\n${result.fileOut}`);
+      expect(found).toContain(distTag);
+      expect(found).not.toContain(distTag === 'latest' ? 'next' : 'latest');
     }
   });
 });
