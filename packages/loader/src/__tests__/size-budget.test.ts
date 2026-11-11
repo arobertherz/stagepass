@@ -15,13 +15,9 @@ import { fileURLToPath } from 'url';
  * core (must run before the parser prepares a script). Measured loader.min.js
  * 14882 / 6566 / 5866; flag.min.js 7404 / 3216 / 2802; flag-card 11894 / 4936 / 4341;
  * live.min.js 1485 / 811 / 703. Budgets = measured + at most 64 B headroom.
- * Unreleased (data-stagepass-nocache, per-asset permanent cache bust): resolveAssetUrl
- * gained one attribute check + appendQueryParam call. Measured loader.min.js
- * 15006 / 6621 / 5910 (+154 / +59 / +54 vs. the prior budget's measured values).
- * flag.min.js / flag-card.min.js / live.min.js are unchanged.
  */
 const BUDGET = {
-  'loader.min.js': { min: 15070, gzip: 6685, br: 5974 },
+  'loader.min.js': { min: 14946, gzip: 6630, br: 5930 },
   // Dev-only chunks, fetched only while a Stagepass session is active
   'flag.min.js': { min: 7468, gzip: 3280, br: 2866 },
   // Fetched by the flag on the first expand

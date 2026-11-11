@@ -17,11 +17,13 @@ Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict se
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.5.0"
+  data-stagepass-version="2.4.0"
 ></script>
 ```
 
 unpkg serves the same paths if you need an alternative CDN. Always embed the full `/dist/loader.min.js` path (not a short package URL that redirects); otherwise session chunks resolve from the wrong folder. Or set `data-stagepass-flag-base`.
+
+See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 
 ## Known limits (scoped acceptance)
 
@@ -29,9 +31,7 @@ Acceptance for `live.min.js` / live reload is **scoped localhost only**. It is n
 
 A `localhost` / `localhost:<port>` session still reports `sp.env() === 'production'` (unchanged since 2.3.1 / 2.3.3). Only an active `*.sp` swap session is `local`. That is expected behaviour, not a live-reload failure.
 
-`live.min.js` ships since loader **2.4.0** (lazy-loaded during an active swap session; not in **2.3.3**). `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load.
-
-See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
+This scoped OSS exception does **not** close GitHub issue #8 or mark P1 overall PASS.
 
 ## What it does
 
@@ -41,7 +41,6 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Inserts the new element before the original, then removes the original (`data-stagepass-processed` prevents double work).
 - Local session: cache-bust with a single `?_cb=<timestamp>` per page load.
 - Production: version bust with `data-stagepass-version` (loader tag) and/or `data-stagepass-v` (per asset) → `?v=<version>` (URL-encoded; existing query/hash preserved).
-- Production, per asset: `data-stagepass-nocache` on a `data-src` / `data-href` asset appends a fresh `?_cb=<timestamp>` on **every** page view, for every visitor (not just during a Stagepass session). `?v=` is applied first when present, so both combine as `?v=<version>&_cb=<timestamp>`. Existing query/hash stay preserved.
 - `data-stagepass-cachebust="true"` is legacy and **does not** timestamp every production view in v2.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
@@ -68,7 +67,6 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-src` / `data-href` | Production URL for legacy mode (default). Required unless live-src opt-in uses native `src` / `href`. |
 | `data-stagepass-path` | Local path under the linked project root (optional). |
 | `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
-| `data-stagepass-nocache` | Requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). Boolean (present, or `="true"`; `="false"` turns it off). Production only: appends a fresh `?_cb=<timestamp>` to **this asset's** URL on every page view, for every visitor. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
 | `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
 | `data-stagepass-processed` | Internal; set after processing. |
 
@@ -102,44 +100,19 @@ Shown only while a session is active (including debug).
 - Errors: `sp.error`, `sp.log('error', …)`, `console.error`, uncaught errors (with stack), failed resource loads, unhandled rejections (with stack). Local files report "Local file not found (404)" or "Local server not reachable … Run stagepass doctor". Sanitized errors from other origins show as "Error in a cross-origin script (details only in DevTools console)".
 - Accessibility: the pill is a button with `aria-expanded`, the card a `role="dialog"`; focus moves into the card and back to the pill; reduced motion makes all changes instant.
 - Rendered in an open Shadow DOM (`#stagepass-flag`) with DOM APIs only (no `innerHTML`, no `eval`, constructable stylesheet with a `<style>` fallback). No shadows, glow or filters.
-- The UI lives in `dist/flag.min.js` (about 3.2 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). Both are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the flag files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
-- Loader **2.4.0** and later: during a swap session the flag chunk also bootstraps `live.min.js` (lazy EventSource client). Published **2.3.3** does not ship that chunk.
+- The UI lives in `dist/flag.min.js` (about 3.2 KB gzip) and `dist/flag-card.min.js` (about 4.8 KB gzip, fetched on first expand). The flag chunk also bootstraps `live.min.js` during a swap session. All three are fetched only during a session, from the folder of the loader's script URL under any file name (self-hosted or copied from `node_modules`: keep the three files together). Inlined or bundled: set `data-stagepass-flag-base`; without a script URL and without the option they come from jsDelivr at the same version (debug sessions warn). Allow that origin in `script-src` if the site uses a strict CSP.
 
 ## Zero-cost production mode
 
-Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0** and later). Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See [Zero-cost production mode](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#zero-cost-production-mode) for migration, SRI, and limitations.
-
-## Permanent per-asset cache busting
-
-`data-stagepass-nocache` requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). It is for the rare asset that must be fetched fresh on every page view, for every production visitor, not just during a Stagepass session. Typical case: a script that embeds third-party forms via iframes, where a stale cached copy breaks the embed.
-
-```html
-<script
-  data-stagepass
-  data-src="https://cdn.example.com/js/forms-embed.js"
-  data-stagepass-nocache
-></script>
-```
-
-- Boolean attribute: present (any value, including empty) or `="true"` turns it on; `="false"` turns it off (same as omitting it).
-- Scoped to exactly that asset. All other `data-stagepass` assets keep the existing version-only cache strategy.
-- Appends `?_cb=<Date.now()>` after any `?v=<version>` from `data-stagepass-v` / `data-stagepass-version`, preserving existing query strings and hash fragments.
-- Production only. During an active local/dev swap session the asset resolves to the local `.sp` URL as usual (single `?_cb=<timestamp>` per page load, same as every other swapped file). `data-stagepass-nocache` has no extra effect there.
-- Not applied to `data-stagepass-live-src="true"` assets: that mode is intentionally zero-cost (untouched by the loader in production), so pair an asset that needs permanent busting with the default `data-src` / `data-href` mode instead.
-- `data-stagepass-cachebust` remains legacy and unrelated: it no longer timestamps every production view (see above) and is not a per-asset opt-in.
+Opt-in with `data-stagepass-live-src="true"` on the loader tag. Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See the root README section “Zero-cost production mode” for migration, SRI, and limitations.
 
 ## Runtime API
 
 Preferred global is `sp` (aliases: `stagepass`, `window.stagepass`; both always assigned in 2.x). Optional custom alias via `data-stagepass-alias` when free. Types ship in `global.d.ts` (complete `sp` API with JSDoc and examples, typed `sp.on(...)` events). Add `"@stagepass/loader"` to `compilerOptions.types` (or `/// <reference types="@stagepass/loader" />`). In debug mode, after the flag chunk loads, reading `sp.vars` once hints toward the flat helpers (reads before the chunk has loaded do not hint).
 
-Two layers (do not conflate):
-
-1. **Endpoint / session choice:** `*.sp` vs `localhost` / `localhost:<port>` vs `debug`.
-2. **`sp.env()`:** `local` only for an active `*.sp` swap session; a `localhost` / `localhost:<port>` session is `production` (since 2.3.1 / 2.3.3). `sp.vars.isLocal` remains “swap active **or** page on localhost” and is not the same question as `sp.env()`.
-
 ```js
-sp.vars.isLocal     // boolean: session swap active or page on localhost (≠ sp.env())
-sp.vars.env         // 'local' | 'staging' | 'production' (page/host heuristic; not sp.env())
+sp.vars.isLocal     // boolean: session swap active or page on localhost
+sp.vars.env         // 'local' | 'staging' | 'production' (localhost counts as local)
 sp.vars.domain      // active .sp domain, or page hostname when no swap
 sp.vars.timestamp   // session start ms while swapping; otherwise 0
 sp.vars.version     // package version (build-time)
@@ -147,9 +120,8 @@ sp.vars.client      // theme / browser / os / device / viewport / locale / capab
 
 // Flat helpers (additive)
 sp.env()            // 'local' | 'staging' | 'production'
-                    // local = active swap to a .sp domain only
+                    // local = active swap to a .sp domain
                     // staging = *.webflow.io or data-stagepass-staging-hosts
-                    // else production (a localhost session is production)
 sp.is('staging')
 sp.can('localStorage') // also: sessionStorage, cookies, serviceWorker
 sp.client('theme')     // or sp.client() for the whole object

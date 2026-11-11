@@ -8,7 +8,7 @@ import {
 } from './session.js';
 import { appendQueryParam, buildLocalAssetUrl } from './url.js';
 import { lnaHintMessage, queryLoopbackPermission } from './lna.js';
-import { applyScriptLoadOrder, isNoCacheEnabled, NOCACHE_ATTR } from './script-attrs.js';
+import { applyScriptLoadOrder } from './script-attrs.js';
 import { detectRuntimeEnv, parseStagingHosts } from './env.js';
 import { isGlobalFree, isValidJsIdentifier } from './alias.js';
 import { canCapability, getClientInfo, getThemeInfo } from './client.js';
@@ -438,10 +438,7 @@ declare const __STAGEPASS_VERSION__: string;
     if (swap && localPath && dom) return buildLocalAssetUrl(dom, localPath, now);
     const version = el.getAttribute('data-stagepass-v') || loaderVersionAttr;
     // data-stagepass-cachebust no longer timestamps every production view
-    let url = version ? appendQueryParam(productionSrc, 'v', version) : productionSrc;
-    // data-stagepass-nocache: permanent per-asset cache bust, every visitor, every view
-    if (isNoCacheEnabled(el)) url = appendQueryParam(url, '_cb', String(Date.now()));
-    return url;
+    return version ? appendQueryParam(productionSrc, 'v', version) : productionSrc;
   }
 
   function extractLocalFilename(ps: string): string | null {
@@ -507,7 +504,6 @@ declare const __STAGEPASS_VERSION__: string;
     'data-stagepass-path',
     'data-stagepass-cachebust',
     'data-stagepass-v',
-    NOCACHE_ATTR,
   ];
 
   // live-src tags: native src/href, not legacy data-src/data-href, not processed yet

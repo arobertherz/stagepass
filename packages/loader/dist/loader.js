@@ -108,11 +108,6 @@ var Stagepass = (() => {
       }
     }
   }
-  var NOCACHE_ATTR = "data-stagepass-nocache";
-  function isNoCacheEnabled(el) {
-    if (!el.hasAttribute(NOCACHE_ATTR)) return false;
-    return el.getAttribute(NOCACHE_ATTR) !== "false";
-  }
 
   // src/env.ts
   function parseStagingHosts(value) {
@@ -291,7 +286,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.5.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.4.0" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function flagBase(v, file) {
       if (typeof v !== "string" || !(v = v.trim())) return null;
@@ -635,9 +630,7 @@ var Stagepass = (() => {
     function resolveAssetUrl(el, productionSrc, localPath) {
       if (swap && localPath && dom) return buildLocalAssetUrl(dom, localPath, now);
       const version = el.getAttribute("data-stagepass-v") || loaderVersionAttr;
-      let url = version ? appendQueryParam(productionSrc, "v", version) : productionSrc;
-      if (isNoCacheEnabled(el)) url = appendQueryParam(url, "_cb", String(Date.now()));
-      return url;
+      return version ? appendQueryParam(productionSrc, "v", version) : productionSrc;
     }
     function extractLocalFilename(ps) {
       try {
@@ -686,8 +679,7 @@ var Stagepass = (() => {
       "data-stagepass",
       "data-stagepass-path",
       "data-stagepass-cachebust",
-      "data-stagepass-v",
-      NOCACHE_ATTR
+      "data-stagepass-v"
     ];
     const LS = 'script[data-stagepass][src]:not([data-src]):not([data-stagepass-processed]),link[rel="stylesheet" i][data-stagepass][href]:not([data-href]):not([data-stagepass-processed])';
     const ff = "onbeforescriptexecute" in d;
