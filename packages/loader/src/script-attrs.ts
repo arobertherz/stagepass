@@ -24,3 +24,21 @@ export function applyScriptLoadOrder(
     }
   }
 }
+
+export const NOCACHE_ATTR = 'data-stagepass-nocache';
+
+/**
+ * Per-asset permanent cache busting (opt-in, production only): a fresh `?_cb=<ts>`
+ * is appended on every page view, for every visitor (not just during a Stagepass
+ * session). Unlike `data-stagepass-cachebust` (legacy, no-op in production), this
+ * is scoped to exactly the tagged element.
+ *
+ * Boolean attribute semantics: present (any value, including `""`) = on;
+ * explicit `="false"` = off. `="true"` also reads as on.
+ *
+ * @param el - Asset element (`script[data-src]` / `link[data-href]`)
+ */
+export function isNoCacheEnabled(el: Element): boolean {
+  if (!el.hasAttribute(NOCACHE_ATTR)) return false;
+  return el.getAttribute(NOCACHE_ATTR) !== 'false';
+}
