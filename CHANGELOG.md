@@ -11,13 +11,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### `@stagepass/cli`
-
-#### Fixed
-
-- Aborting (Ctrl+C or EOF) at any confirmation prompt now ends with a single `Aborted.` line instead of an `ExitPromptError` stack trace, exiting 130 for SIGINT and 1 for EOF/closed stdin (N-1).
-- `stagepass start` no longer prints `Certificates: ok` when site TLS checks were skipped because Caddy was not yet serving `:443`; it now reports that site TLS was not checkable (N-2).
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -37,9 +30,68 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
+### [2.3.0] - 2026-11-11
+
+Stable release of the CLI 2.3 line, on top of `2.3.0-beta.1` (published npm dist-tag `next` on 10 November 2026, shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`) plus two fixes that landed after the beta published (N-1, N-2); no other behaviour change. This PR only bumps the version and the changelog — tag, stage, 2FA approval and the `latest` promotion follow per `RELEASING.md` and are **not** part of this PR. The monorepo `packages/loader` and `packages/modules` package.json files remain at the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
+
+#### Changed interfaces / Notes for upgraders
+
+- **Node engine:** `>=18.0.0` -> `>=20.17.0` (required by `@inquirer/prompts@8`). Node 18 is no longer supported for this CLI.
+- **Dependency majors:** `commander` 11 -> 14, `execa` 8 -> 9, `ora` 7 -> 9, `inquirer` -> `@inquirer/prompts`. Minors: `fs-extra` 11.2.0 -> 11.4.1, `vitest` 5.0.5 -> 5.1.0 (dev).
+- **start:** Certificate check with repair offer (`certs trust` / site `renew`); PHP-FPM ensure (`brew services start php`, then `restart`); stale `devPort` cleanup; privilege-scoped port-443 handling (no standby `sudo -v`; `sudo kill` only on EPERM; ESRCH = already exited); help text for start/stop/daemon updated.
+- **httpd:** port-443 handling still uses `sudo apachectl stop` after the SIGTERM confirmation, unchanged from 2.2.7.
+- **doctor:** unpinned-CDN warnings; project/PHP checks; self-hosted loader display.
+- **daemon:** PHP-FPM safeguard and macOS notifications via `osascript`.
+- **new:** Doctor preflight after input validation (never on `--dry-run`); optional `--staging` / `--production` / `--php` / `--link`.
+- **prepack / release:** `scripts/sync-cli-versions.mjs --check` verifies `package-versions.js` against loader/modules versions and writes nothing (exit 1 on drift).
+- **certs renew:** `--root` needs two interactive confirmations, or `--yes --i-understand-root-renewal` (`--yes` alone always aborts). Do not combine `--root` with `--remove-orphans`.
+
+#### Notable
+
+- **Node engine:** `engines.node` is now `>=20.17.0` (required by `@inquirer/prompts@8`). Node 18 is no longer supported for this CLI.
+
+#### Added
+
+- `stagepass watch` / `stagepass dev` check whether Stagepass is running before starting (#40). Interactive TTY asks to start (same in-process path as `stagepass start`); non-TTY / CI prints a `stagepass start` hint and continues. `watch` also warns with `stagepass link` when the cwd is not linked; `dev` keeps the existing hard error for unlinked projects.
+- Live site detection (#31): also recognise jsDelivr/unpkg package-root URLs (`…/@stagepass/loader@2`, `…/@stagepass/modules@2`, trailing slash / query; modules root → `all` via `main`) and self-hosted embeds (Stagepass build filenames under a `stagepass` / `@stagepass` path, or with a `data-stagepass-*` hint; renamed loader via loader-config attributes). Result `cdn: "self"` is display-only; `upgrade` does not rewrite self-hosted tags to CDN. Bare `loader.js` / `all.min.js` without a Stagepass hint stay unmatched.
+- Live reload: content-based change detection in `live-server` (sha256 per file under `outDir`). Identical rewrites are ignored; `manifest.json` is ignored; CSS-only real changes emit `{type:"css"}`, other real changes emit `{type:"reload"}`.
+- Scaffold `scripts/build.mjs --watch`: rebuild only the affected part (JS entry/imports via esbuild watch, CSS entry separately); write dist files and `manifest.json` only when bytes change, so CSS-only edits do not rewrite `main.js` and do not force a full page reload.
+- `LOADER_VERSION` / `MODULES_VERSION` are generated into `package-versions.js` from the monorepo package.json files (`scripts/sync-cli-versions.mjs`; CLI `prepack` + release workflow). Online snippets prefer the newest published stable 2.x loader from the registry; offline they fall back to installed then bundled. `STAGEPASS_PACKAGES_VERSION` remains a deprecated alias of `LOADER_VERSION`. Drift test fails if the generated file is stale.
+- `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version) in recommended snippets and in the current project's `README.md`, `stagepass.json`, and `*.html` files directly in the project root and in `snippets/` (non-recursive; regular files ≤ 1 MB; symlinks skipped).
+- `stagepass certs renew`: scoped repair of failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`); `renew --root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`; `renew --remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`).
+- `stagepass start` runs a read-only `certs check` and, when interactive, can offer `certs trust` / site `renew`. Non-interactive prints findings and a hint. Sudo is requested only when a confirmed port conflict kill (or orphan delete) needs it. Port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation.
+- When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently). LaunchAgent plists embed a validated Homebrew `PATH` (`brew --prefix` bin/sbin + launchd minimal dirs) so login/`daemon` can resolve `caddy` on Apple Silicon and Intel.
+- `stagepass daemon` ensures PHP-FPM (never sudo) and reports problems via macOS notifications (`osascript` with argv-safe AppleScript).
+- `stagepass new`: staging / production origins (`--staging`, `--production`; wizard suggests `<name>.webflow.io`), written to `stagepass.json` as `origin` / `production`. Skipping production prints a short `stagepass link --origin` hint. `stagepass link` with no `--origin` flags uses those hosts. `--site` still works and must match `--staging` when both are set.
+- `stagepass new`: optional PHP (`--php` / `--no-php`, default off). PHP on creates `api/`, stores `"php": true`, and omits `php_fastcgi` when false. Existing linked projects without a `php` setting keep PHP on (non-breaking). Optional `--php-examples` adds secure samples under `examples/php/`.
+- `stagepass new`: interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY). Optional `link` at the end (`--link` or interactive ask, macOS only).
+- Generated projects: `npm run dev` aliases `watch`; `scripts/build.mjs` writes SRI `integrity` (sha384) per file in `dist/manifest.json`.
+- `stagepass doctor`: project-level PHP check when `stagepass.json` has `"php": true|false`.
+- `stagepass dev` (#11): project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (no Vite). Caddy `reverse_proxy` with `flush_interval -1`, same CORS / LNA policy as assets; `devPort` stored in `projects.json` only while running and cleared when the PID is dead.
+
+#### Changed
+
+- Dependencies: `inquirer` replaced with `@inquirer/prompts@^8`; `commander@^14`, `execa@^9`, `ora@^9`. Ora spinners use a safe TTY geometry wrapper (width `0` / invalid / resize-to-zero no longer runaway). Chalk 6 / Commander 15 / Execa 10 / Ora 10 were not taken (they require Node 22+).
+
+#### Fixed
+
+- Site TLS handshakes run only when Caddy is serving `:443`; otherwise domains are marked not checkable (no false TLS fail, renew offer, cert deletion, or `caddy reload` while Caddy is down) (M-1).
+- Short-lived Caddy leaf certificates no longer warn against the 90-day root threshold; leaves fail only when expired, not yet valid, unparseable, or SAN-mismatched (M-2).
+- Forward-ported from published CLI 2.2.3–2.2.7: strict snippet/registry semver (reject whitespace padding, leading zeros, build metadata); live-site / `--site` / stored-origin port checks including `:443`; `upgrade --version` resolves the loader pin before any write and honors the pin when `package.json` lists only `@stagepass/modules`; `start` closes the parent logfile FD after `caddy start`.
+- Restored the 2.2.3 guarantee: `stagepass upgrade --site` validates the site host (including rejecting ports such as `:443`) before any npm registry lookup, so a bad `--site` does not touch the network.
+- The CLI bin prints a clear Node engine error and exits 1 when Node is older than `>=20.17.0`, instead of crashing later inside a dependency (`string-width` / `@inquirer`).
+- Privilege-scoped `start` / port conflict resolution (F-04): no standby `sudo -v`; signal own processes without elevated rights first; `sudo kill` only after unprivileged failure; nginx tries `valet stop` before any sudo; re-export `isSafePid`. Keeps 2.3 cert repair offers, `ensurePhpFpm` (start then restart), stale dev-port cleanup, and autostart kickstart/bootout. `defaultExec` uses spawn-wait for custom stdio so logfile FD inheritance does not hang `caddy start`.
+- `link` / `unlink` / `start` now set a non-zero `process.exitCode` on validation and write failures (invalid domain, path traversal, home-directory root, bad `--origin`, unlink write failure). Reload-warning paths stay exit 0 (P-1 / INV-1, INV-3, INV-5).
+- `upgrade` / project-sync refuse writes through symlinks: plan skips symlink targets with a note; apply rolls back if a target is a symlink or its parent resolves outside the project; symlinked `package.json` exits 1 with nothing written (P-2 / INV-3).
+- `stagepass dev` registers `SIGINT` / `SIGTERM` / `SIGHUP` before storing `devPort`, forwards `SIGHUP` to the watch child, returns `128+signo` when signaled before spawn, and `SIGKILL`s a child that ignores the stop signal after a short grace period so `devPort` is always cleared (P-3 / AC-7 / F-08).
+- Doctor live-site check: self-hosted loader (`cdn: "self"`) is reported as self-hosted instead of `@stagepass/loader@latest`; a concrete version is appended only when known (P-4 / AC-3).
+- Doctor unpinned-CDN scan also covers `*.html` in the project root and `snippets/` (non-recursive; regular files ≤ 1 MB; symlinks skipped) (P-5 / AC-18).
+- Aborting (Ctrl+C or EOF) at any confirmation prompt now ends with a single `Aborted.` line instead of an `ExitPromptError` stack trace, exiting 130 for SIGINT and 1 for EOF/closed stdin (N-1).
+- `stagepass start` no longer prints `Certificates: ok` when site TLS checks were skipped because Caddy was not yet serving `:443`; it now reports that site TLS was not checkable (N-2).
+
 ### [2.3.0-beta.1] - 2026-11-10 (prerelease, npm `next`)
 
-Prerelease of the CLI only. First 2.3.0 line candidate. Published on npm as `@stagepass/cli@2.3.0-beta.1` on 10 November 2026, 20:09 Europe/Berlin, dist-tag `next` only; `latest` stays on 2.2.7. Source tag `cli-v2.3.0-beta.1` (`81a7e80`), npm shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`. The monorepo `packages/loader` and `packages/modules` package.json files already sit on the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
+Prerelease of the CLI only. First 2.3.0 line candidate. Published on npm as `@stagepass/cli@2.3.0-beta.1` on 10 November 2026, 20:09 Europe/Berlin, dist-tag `next` only; `latest` stays on 2.2.7. Source tag `cli-v2.3.0-beta.1` (`81a7e80`), npm shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`. The monorepo `packages/loader` and `packages/modules` package.json files already sit on the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled). Superseded by the stable `[2.3.0]` entry above, which adds N-1 and N-2 on top of everything below.
 
 #### Changed interfaces / Notes for upgraders
 
