@@ -11,12 +11,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### `@stagepass/loader`
-
-#### Added
-
-- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view (`?_cb=<timestamp>`), not just during a Stagepass session. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>` (existing query/hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -356,6 +350,18 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 ---
 
 ## `@stagepass/loader`
+
+### [2.5.0] - 2026-11-11
+
+Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the visitor path without that attribute is unchanged; CLI and modules are not part of this release; not yet published on npm. The CLI's bundled `LOADER_VERSION` snapshot moves to 2.5.0 only in this repo and ships with the next CLI release.
+
+#### Added
+
+- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view (`?_cb=<timestamp>`), not just during a Stagepass session. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>` (existing query/hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
+
+#### Changed
+
+- Measured `loader.min.js`: 15006 / 6621 / 5910 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
 
 ### [2.4.0] - 2026-11-08
 
