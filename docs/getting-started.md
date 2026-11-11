@@ -50,12 +50,12 @@ Stagepass enables **instant local development** on live Webflow sites without to
 * **Lean Architecture:** Powered by **Caddy** and native Node.js. No Docker bloat, no heavy virtual machines.
 * **Legacy Support:** Works with modern bundlers (Vite/Webpack) and legacy PHP setups.
 * **Security First:** Strict origin whitelisting ensures only *your* local machine can inject code.
-* **Live reload:** `stagepass dev` (unreleased, CLI 2.3.0; preview or repository CLI) watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain; it checks whether Stagepass is running first (see [dev.md](./dev.md)).
+* **Live reload:** `stagepass dev` watches `dist/` and pushes CSS swaps / full reloads over SSE on the linked `.sp` domain; it checks whether Stagepass is running first (see [dev.md](./dev.md)).
 * **Zero-cost production mode:** Opt-in `data-stagepass-live-src` so visitors load normal `src` / `href` without depending on the loader (see [loader.md](./loader.md#zero-cost-production-mode)).
 
 ## Installation
 
-Stagepass CLI is distributed via npm. Published CLI 2.2.7 requires Node `>=18.0.0`; CLI 2.3.0 (unreleased) raises `engines.node` to `>=20.17.0`. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
+Stagepass CLI is distributed via npm. Published CLI 2.3.0 requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -69,8 +69,8 @@ npx @stagepass/cli@2 setup
 
 ### System Requirements
 
-* **macOS only** (Homebrew-based setup). System commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`; `dev` is unreleased, CLI 2.3.0) refuse to run on other platforms with a clear error. This is not a breaking change: those commands never worked off macOS. `stagepass --version` and `--help` still work everywhere.
-* Node.js `>=18.0.0` at runtime for the published CLI (`engines.node`). CLI 2.3.0 (unreleased) raises the floor to `>=20.17.0`. Development and CI use Node 22 or 24 (see [DEVELOPMENT.md](../DEVELOPMENT.md)).
+* **macOS only** (Homebrew-based setup). System commands (`setup`, `start`, `stop`, `reload`, `link`, `unlink`, `dev`) refuse to run on other platforms with a clear error. This is not a breaking change: those commands never worked off macOS. `stagepass --version` and `--help` still work everywhere.
+* Node.js `>=20.17.0` at runtime for the published CLI (`engines.node`). Development and CI use Node 22 or 24 (see [DEVELOPMENT.md](../DEVELOPMENT.md)).
 * Homebrew (for Caddy, PHP, Dnsmasq)
 
 ## Quick Start
@@ -84,20 +84,20 @@ stagepass setup
 stagepass start
 ```
 
-`start` runs a read-only certs check and, when interactive, can offer `certs trust` (site `renew` is unreleased, CLI 2.3.0). When the login LaunchAgent is installed, `start` uses `launchctl kickstart`.
+`start` runs a read-only certs check and, when interactive, can offer `certs trust` or site `certs renew`. When the login LaunchAgent is installed, `start` uses `launchctl kickstart`.
 
 ### 2. Scaffold or link a project
 
 **Option A: scaffold with `stagepass new`**
 
 ```bash
-stagepass new my-project --yes --site my-project.webflow.io
+stagepass new my-project --yes --staging my-project.webflow.io --link
 cd my-project
-stagepass link --origin my-project.webflow.io
-npm run build
+stagepass build
+stagepass dev
 ```
 
-Published CLI 2.2.7 supports `--site` for live-module detection. Flags `--staging` / `--production`, `--php` / `--php-examples`, and `--link` are **(unreleased, CLI 2.3.0)**; on that release staging / production hosts are written to `stagepass.json` as `origin` / `production` and `link` without `--origin` flags uses those hosts. See [cli.md](./cli.md#new).
+`--staging` / `--production` are written to `stagepass.json` as `origin` / `production`, and `link` without `--origin` flags uses those hosts. `--site` still works for live-module detection and must match `--staging` when both are set. Optional `--php` / `--php-examples` add PHP. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` over calling the npm scripts directly. See [cli.md](./cli.md#new).
 
 **Option B: link an existing folder**
 
@@ -216,7 +216,7 @@ Go to your live Webflow URL and append the parameter:
 
 **Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` from a preview or repository CLI build in the linked project **(unreleased, CLI 2.3.0)**. Live reload / `live.min.js` is in published loader **2.4.0** (npm `latest`; pin `@2.4.0`). Published **2.3.3** does not include it. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load (see [dev.md](./dev.md)).
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project (CLI 2.3.0). Live reload / `live.min.js` is in published loader **2.4.0** (npm `latest`; pin `@2.4.0`). Published **2.3.3** does not include it. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load (see [dev.md](./dev.md)).
 
 ## Session modes
 

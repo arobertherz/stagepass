@@ -39,7 +39,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### [2.3.0] - 2026-11-11
 
-Stable release of the CLI 2.3 line, on top of `2.3.0-beta.1` (published npm dist-tag `next` on 10 November 2026, shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`) plus two fixes that landed after the beta published (N-1, N-2); no other behaviour change. This PR only bumps the version and the changelog — tag, stage, 2FA approval and the `latest` promotion follow per `RELEASING.md` and are **not** part of this PR. The monorepo `packages/loader` and `packages/modules` package.json files remain at the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
+Stable release of the CLI 2.3 line, on top of `2.3.0-beta.1` (published npm dist-tag `next` on 10 November 2026, shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`) plus two fixes that landed after the beta published (N-1, N-2); no other behaviour change. Published on npm as `@stagepass/cli@2.3.0` on 11 November 2026, 10:47 Europe/Berlin, dist-tag `latest`. Source tag `cli-v2.3.0` (`89665d1`), npm shasum `db4042723d9c7becde90fd6afdbbaaaea974327c`. The monorepo `packages/loader` and `packages/modules` package.json files remain at the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
 
 #### Changed interfaces / Notes for upgraders
 

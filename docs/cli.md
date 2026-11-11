@@ -2,11 +2,9 @@
 
 Package: `@stagepass/cli`. System commands require macOS (platform guard in `src/lib/platform.js`). Override for tests only: `STAGEPASS_SKIP_PLATFORM_CHECK=1`. `--version` and `--help` work everywhere.
 
-**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI (`@stagepass/cli@2.2.7`) `engines.node` is `>=18.0.0`. CLI 2.3.0 (unreleased) raises the floor to `>=20.17.0`. Contributors develop and test on Node 22 or 24.
+**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI 2.3.0 (`@stagepass/cli`) `engines.node` is `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Contributors develop and test on Node 22 or 24.
 
-Typical order: `setup` → `start` → `link` (then `watch` / `reload` / `unlink` / `stop` as needed; `dev` is unreleased, CLI 2.3.0). Most commands support `-v, --verbose`.
-
-Features marked **(unreleased, CLI 2.3.0)** exist on master and ship with the upcoming CLI 2.3.0. They are not in published npm `latest` (`2.2.7`).
+Typical order: `setup` → `start` → `link`, then `stagepass build` / `stagepass watch` / `stagepass dev` (then `reload` / `unlink` / `stop` as needed). Most commands support `-v, --verbose`.
 
 ## Commands
 
@@ -18,16 +16,16 @@ Features marked **(unreleased, CLI 2.3.0)** exist on master and ship with the up
 | `stagepass link [domain]` | Link the current directory to a `.sp` domain and reload Caddy. |
 | `stagepass unlink [domain]` | Remove the link (and `projects.json` entry) for that domain. |
 | `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). |
-| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus project modules vs. live site, project PHP when `stagepass.json` has `"php": true\|false`. Unpinned CDN warnings (`@latest`, bare major `@1`, or bare package) in recommended snippets and project files: **(unreleased, CLI 2.3.0)**. `--json`, `--skip-site`. Exit `1` on any fail. |
+| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus project modules vs. live site, project PHP when `stagepass.json` has `"php": true\|false`. Unpinned CDN warnings (`@latest`, bare major `@1`, or bare package) in recommended snippets and project files. `--json`, `--skip-site`. Exit `1` on any fail. |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
-| `stagepass certs renew` | **(unreleased, CLI 2.3.0)** Repair failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`). `--root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`. `--remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`). |
+| `stagepass certs renew` | Repair failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`). `--root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`. `--remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications via `osascript`); never sudo. |
-| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (published flags include `--site` / `--site-modules`; `--staging` / `--production`, `--php` / `--php-examples`, `--link` are **(unreleased, CLI 2.3.0)**; `--yes` for non-interactive). |
+| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (`--site` / `--site-modules`, `--staging` / `--production`, `--php` / `--php-examples`, `--link`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
-| `stagepass dev` | **(unreleased, CLI 2.3.0)** Run project `npm run watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain. Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
+| `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
 | `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).
@@ -59,7 +57,7 @@ From that list the CLI generates the `sp` API reference in `AGENTS.md` (managed 
 
 Omitting both allow-all flags keeps the stored / seeded setting. New links default to allowlist mode (`allowAllOrigins: false`).
 
-Published CLI 2.2.7 still needs explicit `link --origin` for CORS. `link` using `origin` / `production` from `stagepass.json` when no `--origin` flags are passed is **(unreleased, CLI 2.3.0)**.
+`link` uses `origin` / `production` from `stagepass.json` when no `--origin` flags are passed. You can still pass `--origin` explicitly for CORS.
 
 **Default CORS allowlist (always):** `https://*.sp`, `http(s)://localhost[:port]`, `http(s)://127.0.0.1[:port]`, plus any `--origin` / `~/.stagepass/projects.json` entries. **`*.webflow.io` is not a default**; add e.g. `--origin my-project.webflow.io`. Explicit `--origin *.webflow.io` is allowed but warns.
 
@@ -76,13 +74,13 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 | `--lang ts\|js` | Language (default: `ts`) |
 | `--styles scss\|css` | Styles (default: `scss`) |
 | `--modules` / `--no-modules` | Include `@stagepass/modules` (npm, types) |
-| `--site <host>` | Live Webflow site to detect loaded modules from (https); also sets `origin` in `stagepass.json`. On CLI 2.3.0 (unreleased) must match `--staging` when both are set. |
+| `--site <host>` | Live Webflow site to detect loaded modules from (https); also sets `origin` in `stagepass.json`. Must match `--staging` when both are set. |
 | `--site-modules <list>` | Modules the site loads: `none`, `all`, or `inject,cookies,maintenance` |
-| `--staging <domain>` | **(unreleased, CLI 2.3.0)** Staging hostname written to `stagepass.json` as `origin` (wizard suggests `<name>.webflow.io`) |
-| `--production <domain>` | **(unreleased, CLI 2.3.0)** Optional production hostname written to `stagepass.json`. Skipping production prints a short `stagepass link --origin` hint. |
-| `--php` / `--no-php` | **(unreleased, CLI 2.3.0)** Enable PHP (`api/` + `php_fastcgi` on link). Default off. Existing linked projects without a `php` setting keep PHP on (non-breaking). |
-| `--php-examples` / `--no-php-examples` | **(unreleased, CLI 2.3.0)** Secure samples under `examples/php/` (requires `--php`) |
-| `--link` / `--no-link` | **(unreleased, CLI 2.3.0)** Run `stagepass link` after scaffolding (macOS only; interactive ask unless `--link` / `--yes`) |
+| `--staging <domain>` | Staging hostname written to `stagepass.json` as `origin` (wizard suggests `<name>.webflow.io`) |
+| `--production <domain>` | Optional production hostname written to `stagepass.json`. Skipping production prints a short `stagepass link --origin` hint. |
+| `--php` / `--no-php` | Enable PHP (`api/` + `php_fastcgi` on link). Default off. Existing linked projects without a `php` setting keep PHP on (non-breaking). |
+| `--php-examples` / `--no-php-examples` | Secure samples under `examples/php/` (requires `--php`) |
+| `--link` / `--no-link` | Run `stagepass link` after scaffolding (macOS only; interactive ask unless `--link` / `--yes`) |
 | `--git` / `--no-git` | Initialize a git repository |
 | `--remote <url>` | Git remote URL (requires git) |
 | `--install` / `--no-install` | Run `npm install` after scaffolding (default off) |
@@ -92,7 +90,7 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 
 Interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY).
 
-Generated projects write stable `dist/main.js` and `dist/styles.css` plus hashed files and SRI (`integrity` sha384) per file in `dist/manifest.json`. `npm run dev` aliases `watch`; prefer `stagepass dev` for live reload **(unreleased, CLI 2.3.0)**. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+Generated projects write stable `dist/main.js` and `dist/styles.css` plus hashed files and SRI (`integrity` sha384) per file in `dist/manifest.json`. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
 
 ## `upgrade`
 
@@ -109,7 +107,7 @@ Generated projects write stable `dist/main.js` and `dist/styles.css` plus hashed
 ## Config locations
 
 * `~/.stagepass/Caddyfile`
-* `~/.stagepass/projects.json` (roots, CORS, optional `php`, live-reload `devPort` / `devPid` while `stagepass dev` runs; live-reload fields are unreleased, CLI 2.3.0)
+* `~/.stagepass/projects.json` (roots, CORS, optional `php`, live-reload `devPort` / `devPid` while `stagepass dev` runs)
 * `~/.stagepass/server.log` (detailed logs when not verbose)
 * Project `stagepass.json` (name, domain, modules, origins, optional `php`, optional `outDir`)
 

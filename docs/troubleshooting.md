@@ -3,10 +3,10 @@
 ## Local assets do not load
 
 1. Confirm a session is active (`?stagepass=your-project.sp`) and the domain matches the linked project.
-2. Run `stagepass doctor` (read-only; never uses sudo). It flags mismatches between declared modules and the live site. Unpinned CDN warnings are **(unreleased, CLI 2.3.0)**.
-3. Check CORS: add the live host with `stagepass link --origin your-site.webflow.io` (or, with CLI 2.3.0 unreleased, set `--staging` / `--production` when scaffolding so `link` picks them up from `stagepass.json`). Caddy CORS headers alone do not grant Chrome’s Local Network Access **permission** (see below).
+2. Run `stagepass doctor` (read-only; never uses sudo). It flags mismatches between declared modules and the live site, and warns on unpinned CDN URLs.
+3. Check CORS: add the live host with `stagepass link --origin your-site.webflow.io`, or set `--staging` / `--production` when scaffolding so `link` picks them up from `stagepass.json`. Caddy CORS headers alone do not grant Chrome’s Local Network Access **permission** (see below).
 4. On a public `https://` page (for example a Webflow staging site) that fetches `https://<project>.sp/…`, allow **Local network** / **Loopback network** for that origin when Chrome prompts, or re-enable them in Site settings if previously denied. See [Public origin to .sp (ERR_FAILED)](#public-origin-to-sp-err_failed). The flag card may mention local network access when the local server is unreachable.
-5. Confirm the Stagepass local CA is trusted and site certs are valid (`stagepass certs check`, then `certs trust`; `certs renew` is unreleased, CLI 2.3.0; see [Caddy / TLS](#caddy--tls)). An untrusted CA is a separate failure from Local Network Access denial.
+5. Confirm the Stagepass local CA is trusted and site certs are valid (`stagepass certs check`, then `certs trust`; `certs renew` for failing site certificates; see [Caddy / TLS](#caddy--tls)). An untrusted CA is a separate failure from Local Network Access denial.
 6. Confirm files exist under the linked project root at the `data-stagepass-path` (or the filename extracted from the production URL).
 7. With an active session or debug mode, the loader warns when two tagged assets resolve to the same local filename without unique `data-stagepass-path` values.
 
@@ -33,24 +33,24 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 * **Symptom:** `net::ERR_CERT_AUTHORITY_INVALID` (or the browser’s certificate interstitial) when opening `https://<project>.sp`.
 * This is **not** the same as A. A context that ignores certificate errors can still hit A (LNA denied) with no certificate errors.
-* Use the existing Stagepass certs workflow under [Caddy / TLS](#caddy--tls): `stagepass certs check`, then `stagepass certs trust` if the local CA is not trusted; `stagepass certs renew` **(unreleased, CLI 2.3.0)** for failing site certificates. Interactive `stagepass start` can offer `certs trust`.
+* Use the existing Stagepass certs workflow under [Caddy / TLS](#caddy--tls): `stagepass certs check`, then `stagepass certs trust` if the local CA is not trusted; `stagepass certs renew` for failing site certificates. Interactive `stagepass start` can offer `certs trust` or site `renew`.
 
 ## Caddy / TLS
 
 * `stagepass certs check` then `stagepass certs trust` if the local CA is not trusted.
-* `stagepass certs renew` **(unreleased, CLI 2.3.0)** repairs failing site certificates. Use `--root` only when you intend to move the local CA folder to a timestamped backup (double confirmation, or `--yes --i-understand-root-renewal`). `--remove-orphans` deletes orphaned keychain roots by SHA-1 after confirmation.
+* `stagepass certs renew` repairs failing site certificates. Use `--root` only when you intend to move the local CA folder to a timestamped backup (double confirmation, or `--yes --i-understand-root-renewal`). `--remove-orphans` deletes orphaned keychain roots by SHA-1 after confirmation.
 * Port 443 conflicts: `stagepass start` can identify the process (name and PID) and offer to stop it (SIGTERM first; SIGKILL only after a second confirmation). Own processes are signalled without elevated rights first; `sudo` only when needed. There is no standby `sudo -v`. For nginx, `valet stop` is tried before any sudo.
 * When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently). Autostart plists embed a validated Homebrew `PATH` so login/`daemon` can resolve `caddy`.
 
 ## PHP
 
-* Project `"php"` in `stagepass.json` controlling `php_fastcgi` on link is **(unreleased, CLI 2.3.0)**. Existing linked projects without a `php` setting keep PHP on.
-* Project-level PHP checks in `stagepass doctor` are **(unreleased, CLI 2.3.0)**. `stagepass daemon` ensures PHP-FPM without sudo.
+* Project `"php"` in `stagepass.json` controls `php_fastcgi` on link. Existing linked projects without a `php` setting keep PHP on.
+* `stagepass doctor` runs project-level PHP checks when the flag is set. `stagepass daemon` ensures PHP-FPM without sudo.
 
 ## Live reload does nothing
 
 * Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**, npm `latest`; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** does **not** include `live.min.js`. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
-* `stagepass dev` is **(unreleased, CLI 2.3.0)**. Use a preview or repository CLI build inside the **linked** project directory (not only `npm run watch`).
+* Run `stagepass dev` inside the **linked** project directory (not only `npm run watch` or `stagepass watch` alone).
 * Keep a swap session active (not `debug`). The loader opens `EventSource` to `https://<domain.sp>/__stagepass/live` after injecting local assets.
 * If `stagepass dev` is not running, the live chunk closes after the first error and does not retry.
 * Public-origin sessions still need Local Network / Loopback permission and a trusted Stagepass CA (see [Public origin to .sp (ERR_FAILED)](#public-origin-to-sp-err_failed)).
