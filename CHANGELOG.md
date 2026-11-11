@@ -18,6 +18,12 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - Aborting (Ctrl+C or EOF) at any confirmation prompt now ends with a single `Aborted.` line instead of an `ExitPromptError` stack trace, exiting 130 for SIGINT and 1 for EOF/closed stdin (N-1).
 - `stagepass start` no longer prints `Certificates: ok` when site TLS checks were skipped because Caddy was not yet serving `:443`; it now reports that site TLS was not checkable (N-2).
 
+### `@stagepass/loader`
+
+#### Added
+
+- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view (`?_cb=<timestamp>`), not just during a Stagepass session. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>` (existing query/hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
+
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
