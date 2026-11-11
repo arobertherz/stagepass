@@ -13,6 +13,13 @@
  *   ExitPromptError "User force closed the prompt with 0 null" while the
  *   event loop drains. The catch still runs and the process exits 1 with
  *   one "Aborted." line.
+ * - SIGINT to the CLI pid (not the 0x03 byte) while that prompt is up.
+ *   The wrapper is `sh -c 'echo $$ > "$SP_PIDFILE"; exec node …'`, so the
+ *   pidfile is the Node process. The signal is sent only after the prompt
+ *   is visible and `/proc/<pid>/cmdline` contains this bin. confirm()
+ *   handles that SIGINT synchronously: one "Aborted.", exit 130. Cleanup
+ *   kills the CLI process group and script's group. The run resolves on
+ *   'exit'.
  * - A non-TTY whose stdin is already closed never reaches a yes/no prompt:
  *   shipped confirms are gated on stdin.isTTY (certs trust refuses). That
  *   sub-case is not a product path; the library pipe is
@@ -60,9 +67,11 @@ function stripAnsi(s) {
 
 /** @type {number|null} */
 let groupPid = null;
+/** @type {number|null} */
+let cliPid = null;
 
 function killGroup(pid) {
-  if (!pid) return;
+  if (!pid || pid === process.pid) return;
   try {
     process.kill(-pid, 'SIGKILL');
   } catch {
@@ -74,18 +83,67 @@ function killGroup(pid) {
   }
 }
 
+/** Process group of a pid that may have called setsid (script's grandchild). */
+function killProcGroup(pid) {
+  if (!pid || pid === process.pid) return;
+  let pgrp = null;
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
+    const n = Number(fields[2]);
+    if (
+      Number.isInteger(n) &&
+      n > 1 &&
+      n !== process.pid &&
+      n !== process.ppid
+    ) {
+      pgrp = n;
+    }
+  } catch {
+    /* already gone */
+  }
+  if (pgrp) killGroup(pgrp);
+  else killGroup(pid);
+}
+
 afterEach(() => {
+  killProcGroup(cliPid);
   killGroup(groupPid);
+  cliPid = null;
   groupPid = null;
 });
 
 /**
- * @param {{ mode: 'ctrlc' | 'eof' }} opts
+ * Pid of the Node CLI: the shell writes `$$` and then execs node, so the
+ * pid does not change. Accept it only when /proc cmdline is this bin.
+ * @param {string} pidfile
+ * @returns {number|null}
+ */
+function readCliPid(pidfile) {
+  let pid;
+  try {
+    pid = Number.parseInt(fs.readFileSync(pidfile, 'utf8').trim(), 10);
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return null;
+  try {
+    const cmd = fs.readFileSync(`/proc/${pid}/cmdline`);
+    if (!cmd.includes(BIN)) return null;
+  } catch {
+    return null;
+  }
+  return pid;
+}
+
+/**
+ * @param {{ mode: 'ctrlc' | 'eof' | 'sigint' }} opts
  */
 function runCertsTrustAbort(opts) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-pty-'));
   const home = path.join(root, 'home');
   const binDir = path.join(root, 'bin');
+  const pidfile = path.join(root, 'cli.pid');
   fs.mkdirSync(home, { recursive: true });
   fs.mkdirSync(binDir, { recursive: true });
   const calls = path.join(root, 'calls.log');
@@ -98,10 +156,14 @@ function runCertsTrustAbort(opts) {
     );
   }
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  const prelude =
+    opts.mode === 'sigint'
+      ? 'stty rows 40 cols 120 2>/dev/null; echo $$ > "$SP_PIDFILE"; exec "$@"'
+      : 'stty rows 40 cols 120 2>/dev/null; exec "$@"';
   const inner = [
     'sh',
     '-c',
-    'stty rows 40 cols 120 2>/dev/null; exec "$@"',
+    prelude,
     'sh',
     process.execPath,
     BIN,
@@ -120,6 +182,7 @@ function runCertsTrustAbort(opts) {
       FORCE_COLOR: '0',
       SP_CALLS: calls,
       CI: '1',
+      ...(opts.mode === 'sigint' ? { SP_PIDFILE: pidfile } : {}),
     },
   });
   groupPid = child.pid ?? null;
@@ -136,7 +199,9 @@ function runCertsTrustAbort(opts) {
       clearTimeout(hard);
       clearInterval(poll);
       const callsAfter = fs.readFileSync(calls, 'utf8');
+      killProcGroup(cliPid);
       killGroup(child.pid);
+      cliPid = null;
       groupPid = null;
       resolve({
         code,
@@ -164,6 +229,19 @@ function runCertsTrustAbort(opts) {
     const poll = setInterval(() => {
       if (sent || settled) return;
       if (!/caddy trust/.test(stripAnsi(out))) return;
+      if (opts.mode === 'sigint') {
+        const pid = readCliPid(pidfile);
+        if (!pid) return;
+        cliPid = pid;
+        sent = true;
+        callsAtPrompt = fs.readFileSync(calls, 'utf8');
+        try {
+          process.kill(pid, 'SIGINT');
+        } catch (err) {
+          out += String(err);
+        }
+        return;
+      }
       sent = true;
       callsAtPrompt = fs.readFileSync(calls, 'utf8');
       if (opts.mode === 'ctrlc') child.stdin.write(Buffer.from([0x03]));
@@ -176,7 +254,7 @@ function assertAbort(result, code) {
   const plain = stripAnsi(result.out);
   expect(result.timedOut, plain).toBe(false);
   expect(result.code, plain).toBe(code);
-  expect(plain.split('Aborted.').length - 1).toBe(1);
+  expect(plain.split('Aborted.').length - 1, plain).toBe(1);
   expect(plain).not.toMatch(STACK_RE);
   expect(result.callsAtPrompt).not.toMatch(/\bcaddy trust\b/);
   expect(result.callsAfter).toBe(result.callsAtPrompt);
@@ -198,6 +276,15 @@ describe('shipped confirm abort on a PTY', () => {
     async () => {
       const result = await runCertsTrustAbort({ mode: 'eof' });
       assertAbort(result, 1);
+    },
+    20000
+  );
+
+  it.skipIf(!hasLinuxScript)(
+    `[AC-1] SIGINT to the CLI pid at certs trust prints Aborted. once, exit 130, no action${skipNote}`,
+    async () => {
+      const result = await runCertsTrustAbort({ mode: 'sigint' });
+      assertAbort(result, 130);
     },
     20000
   );

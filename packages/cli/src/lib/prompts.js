@@ -18,6 +18,17 @@ export async function confirm(message, options = {}) {
   const confirmFn = options.confirm || defaultConfirm;
   const exit = options.exit ?? ((code) => process.exit(code));
   const write = options.write ?? ((msg) => process.stderr.write(msg));
+  // Byte 0x03 is a readline event, not a process signal (raw mode has ISIG
+  // off). A real SIGINT is caught by signal-exit, which re-raises it and the
+  // process dies before this await's catch runs. Handle that signal here,
+  // synchronously, and only while a real prompt is on screen.
+  const onSigInt = options.confirm
+    ? null
+    : () => {
+        write('Aborted.\n');
+        exit(130);
+      };
+  if (onSigInt) process.on('SIGINT', onSigInt);
   try {
     return await confirmFn({
       message: String(message || ''),
@@ -30,5 +41,7 @@ export async function confirm(message, options = {}) {
       return false;
     }
     throw error;
+  } finally {
+    if (onSigInt) process.off('SIGINT', onSigInt);
   }
 }
