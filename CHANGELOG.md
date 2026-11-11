@@ -87,7 +87,7 @@ Stable release of the CLI 2.3 line, on top of `2.3.0-beta.1` (published npm dist
 - Doctor live-site check: self-hosted loader (`cdn: "self"`) is reported as self-hosted instead of `@stagepass/loader@latest`; a concrete version is appended only when known (P-4 / AC-3).
 - Doctor unpinned-CDN scan also covers `*.html` in the project root and `snippets/` (non-recursive; regular files ≤ 1 MB; symlinks skipped) (P-5 / AC-18).
 - Aborting (Ctrl+C or EOF) at any confirmation prompt now ends with a single `Aborted.` line instead of an `ExitPromptError` stack trace, exiting 130 for SIGINT and 1 for EOF/closed stdin (N-1).
-- `stagepass start` no longer prints `Certificates: ok` when site TLS checks were skipped because Caddy was not yet serving `:443`; it now reports that site TLS was not checkable (N-2).
+- `stagepass start` no longer prints `Certificates: ok` when site TLS was not checked or not ok. The line names the root status (`ok` / `warning` / `not checked`) and says site TLS was not checkable, adding "Caddy not serving :443" only when that was the skip reason (N-2).
 
 ### [2.3.0-beta.1] - 2026-11-10 (prerelease, npm `next`)
 

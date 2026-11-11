@@ -216,6 +216,30 @@ export function summarizeCertFindings(report) {
 }
 
 /**
+ * Honest one-line cert summary when nothing failed hard enough to offer repair.
+ * Never says "ok" for a root or a site check that did not run or was not ok.
+ * The Caddy :443 reason is included only when every skip came from that check.
+ * @param {{ root?: { status?: string }, handshakes?: { status?: string, reason?: string }[] }} report
+ */
+function certStatusLine(report) {
+  const root = report?.root?.status;
+  const rootLabel =
+    root === 'ok' ? 'root ok' : root === 'warn' ? 'root warning' : 'root not checked';
+  const hs = report?.handshakes || [];
+  if (!hs.length) return `Certificates: ${rootLabel}, site TLS not checked.`;
+  const skips = hs.filter((h) => h.status === 'skip');
+  if (skips.length) {
+    const why = skips.every((h) => /not serving :443/.test(String(h.reason || '')))
+      ? ' (Caddy not serving :443)'
+      : '';
+    return `Certificates: ${rootLabel}, site TLS not checkable${why}.`;
+  }
+  const sitesOk = hs.every((h) => h.status === 'ok');
+  if (root === 'ok' && sitesOk) return 'Certificates: ok';
+  return `Certificates: ${rootLabel}, site TLS ${sitesOk ? 'ok' : 'not ok'}.`;
+}
+
+/**
  * @param {object} [options]
  */
 export async function start(options = {}) {
@@ -282,12 +306,8 @@ export async function start(options = {}) {
           )
         );
       }
-    } else if ((certReport.handshakes || []).some((h) => h.status === 'skip')) {
-      console.log(
-        chalk.dim('Certificates: root ok, site TLS not checkable (Caddy not running yet).')
-      );
     } else {
-      console.log(chalk.dim('Certificates: ok'));
+      console.log(chalk.dim(certStatusLine(certReport)));
     }
   } catch (error) {
     console.log(
