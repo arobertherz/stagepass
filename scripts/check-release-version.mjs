@@ -88,15 +88,14 @@ export function releasePlan(tag, root = ROOT) {
 }
 
 /**
- * npm dist-tag for staging. Every staged release (stable or prerelease) goes
- * to `next`; promoting a verified stable release to `latest` is a separate,
- * explicit `npm dist-tag add` step (see RELEASING.md). This keeps existing
- * `npm install` / `^2` users on the current latest until the release is checked.
- * @param {string} _version
- * @returns {'next'}
+ * npm dist-tag for staging. A prerelease (version contains `-`) stages on
+ * `next`. A stable X.Y.Z stages on `latest`, so one approval publishes it
+ * as the default install (see RELEASING.md).
+ * @param {string} version
+ * @returns {'next'|'latest'}
  */
-export function distTagForVersion(_version) {
-  return 'next';
+export function distTagForVersion(version) {
+  return version.includes('-') ? 'next' : 'latest';
 }
 
 function main() {
@@ -119,7 +118,7 @@ function main() {
   }
 
   const distTag = distTagForVersion(plan.version);
-  const kind = plan.version.includes('-') ? 'prerelease' : 'stable; promote after verification';
+  const kind = plan.version.includes('-') ? 'prerelease' : 'stable';
   const selected = plan.stage[0];
   console.log(`✅ Stage ${selected.name}@${selected.version}`);
   console.log(`   dist_tag: ${distTag} (${kind})`);

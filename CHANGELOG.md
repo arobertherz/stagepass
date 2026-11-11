@@ -24,6 +24,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### Repo
 
+- Stable package releases now stage directly on npm dist-tag `latest` (one 2FA approval, no separate promotion); prereleases still stage on `next`.
 - master packages now match the published releases: `@stagepass/loader` 2.4.0 (dist byte-identical to npm) and `@stagepass/modules` 2.2.2 plus the unreleased cookie events; CLI pins (`LOADER_VERSION`/`MODULES_VERSION`) synced to 2.4.0 / 2.2.2.
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does; also covers CSS hot-swap SSE on a generated js project (`node scripts/build.mjs --watch` + packed `createLiveServer`, with hard timeout and process-group cleanup).
 - Docs: always embed the full `/dist/loader.min.js` path on unpkg / redirecting CDNs (or set `data-stagepass-flag-base`); short package URLs break session chunk resolution. Live reload docs note content-hash classification and selective watch builds.
