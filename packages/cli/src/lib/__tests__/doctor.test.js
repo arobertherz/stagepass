@@ -182,3 +182,156 @@ demo.sp {
     expect(result.exitCode).toBe(1); // missing root CA / trust fail
   });
 });
+
+const DOCTOR_CADDY = `# START: demo.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false
+demo.sp {
+    tls internal
+    handle {
+        root * "/tmp/demo-site"
+        file_server
+    }
+}
+# END: demo.sp
+`;
+
+function agentPlist(nodePath, cliPath) {
+  return `<plist><dict><key>ProgramArguments</key><array><string>${nodePath}</string><string>${cliPath}</string><string>daemon</string></array></dict></plist>`;
+}
+
+async function runLaunchAgentDoctor({ nodePath, cliPath, exists, stateVersion }) {
+  const plistPath = '/tmp/sp74-agent.plist';
+  const statePath = '/tmp/sp74-daemon.json';
+  const files = new Map([
+    ['/etc/resolver/sp', 'nameserver 127.0.0.1\n'],
+    ['/tmp/Caddyfile', DOCTOR_CADDY],
+    [plistPath, agentPlist(nodePath, cliPath)],
+    [statePath, JSON.stringify({ version: stateVersion, pid: process.pid })],
+  ]);
+  return runDoctor({
+    platform: 'darwin',
+    cliVersion: '2.3.1',
+    plistPath,
+    daemonStatePath: statePath,
+    resolverPath: '/etc/resolver/sp',
+    caddyfilePath: '/tmp/Caddyfile',
+    projectsPath: '/tmp/sp-doctor-74-no-projects.json',
+    rootCaPath: '/tmp/missing-root.crt',
+    skipHandshake: true,
+    projectChecks: false,
+    projectCdnScan: false,
+    pathExists: async (p) => {
+      if (p === '/tmp/missing-root.crt') return false;
+      if (p === plistPath || p === '/etc/resolver/sp' || p === '/tmp/Caddyfile') return true;
+      return exists(p);
+    },
+    readFile: async (p) => {
+      if (!files.has(p)) throw new Error(`missing ${p}`);
+      return files.get(p);
+    },
+    exec: async (file, args = []) => {
+      if (file === '/usr/bin/env' && args[0] === 'which') {
+        const name = args[1];
+        if (['brew', 'caddy', 'php', 'php-fpm', 'dnsmasq'].includes(name)) {
+          return { stdout: `/usr/local/bin/${name}\n`, stderr: '', code: 0 };
+        }
+        throw Object.assign(new Error('not found'), { code: 1 });
+      }
+      if (file === 'brew' && args[0] === '--prefix') {
+        return { stdout: '/usr/local\n', stderr: '', code: 0 };
+      }
+      if (file === 'lsof') {
+        return {
+          stdout:
+            'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\ncaddy 9 me 8u IPv6 0x1 0t0 TCP *:443 (LISTEN)\n',
+          stderr: '',
+          code: 0,
+        };
+      }
+      if (file === 'launchctl') {
+        return { stdout: 'state = running\npid = 1\n', stderr: '', code: 0 };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    },
+  });
+}
+
+function byId(result, id) {
+  return result.checks.find((c) => c.id === id);
+}
+
+describe('[#74] LaunchAgent doctor checks', () => {
+  const node = '/opt/homebrew/bin/node';
+  const cli = '/opt/homebrew/bin/stagepass';
+
+  it('[#74] fails when a LaunchAgent node or CLI path is missing', async () => {
+    const missingNode = await runLaunchAgentDoctor({
+      nodePath: node,
+      cliPath: cli,
+      exists: (p) => p === cli,
+      stateVersion: '2.3.1',
+    });
+    const nodeFail = byId(missingNode, 'autostart.paths');
+    expect(nodeFail?.status).toBe('fail');
+    expect(nodeFail?.detail).toBe('stagepass autostart on');
+    expect(nodeFail?.message).toMatch(/node/);
+
+    const missingCli = await runLaunchAgentDoctor({
+      nodePath: node,
+      cliPath: cli,
+      exists: (p) => p === node,
+      stateVersion: '2.3.1',
+    });
+    const cliFail = byId(missingCli, 'autostart.paths');
+    expect(cliFail?.status).toBe('fail');
+    expect(cliFail?.detail).toBe('stagepass autostart on');
+    expect(cliFail?.message).toMatch(/CLI/);
+  });
+
+  it('[#74] warns when the LaunchAgent node path is a versioned Cellar path', async () => {
+    const cellar = '/opt/homebrew/Cellar/node/25.2.1/bin/node';
+    const result = await runLaunchAgentDoctor({
+      nodePath: cellar,
+      cliPath: cli,
+      exists: (p) => p === cellar || p === cli,
+      stateVersion: '2.3.1',
+    });
+    expect(byId(result, 'autostart.paths')?.status).toBe('ok');
+    const warn = byId(result, 'autostart.node');
+    expect(warn?.status).toBe('warn');
+    expect(warn?.detail).toBe('stagepass autostart on');
+    expect(byId(result, 'autostart.version')?.status).toBe('ok');
+  });
+
+  it('[#74] warns when the daemon version differs from the CLI', async () => {
+    const result = await runLaunchAgentDoctor({
+      nodePath: node,
+      cliPath: cli,
+      exists: (p) => p === node || p === cli,
+      stateVersion: '2.2.7',
+    });
+    expect(byId(result, 'autostart.paths')?.status).toBe('ok');
+    expect(byId(result, 'autostart.node')?.status).toBe('ok');
+    const warn = byId(result, 'autostart.version');
+    expect(warn?.status).toBe('warn');
+    expect(warn?.detail).toBe('stagepass autostart on');
+    expect(warn?.message).toMatch(/2\.2\.7/);
+    expect(warn?.message).toMatch(/2\.3\.1/);
+  });
+
+  it('[#74] reports ok when LaunchAgent paths and daemon version match', async () => {
+    const result = await runLaunchAgentDoctor({
+      nodePath: node,
+      cliPath: cli,
+      exists: (p) => p === node || p === cli,
+      stateVersion: '2.3.1',
+    });
+    expect(byId(result, 'autostart.paths')).toMatchObject({ status: 'ok' });
+    expect(byId(result, 'autostart.node')).toMatchObject({ status: 'ok' });
+    expect(byId(result, 'autostart.version')).toMatchObject({ status: 'ok' });
+    for (const id of ['autostart.paths', 'autostart.node', 'autostart.version']) {
+      expect(byId(result, id)?.status).not.toMatch(/warn|fail/);
+    }
+  });
+});

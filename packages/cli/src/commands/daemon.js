@@ -1,12 +1,14 @@
 import fs from 'fs-extra';
+import { createRequire } from 'node:module';
 import chalk from 'chalk';
 import { defaultExec } from '../lib/exec.js';
-import { getCaddyfilePath, getLogsDir } from '../lib/paths.js';
+import { getCaddyfilePath, getDaemonStatePath, getLogsDir, getProjectsPath } from '../lib/paths.js';
 import { runCertsCheck } from '../lib/certs.js';
 import { loadProjects } from '../lib/projects.js';
-import { getProjectsPath } from '../lib/paths.js';
 import { ensurePhpFpm } from '../lib/php-fpm.js';
 import { notifyMac } from '../lib/notify.js';
+
+const CLI_VERSION = createRequire(import.meta.url)('../../package.json').version;
 
 /**
  * Detect bind / permission failures that will not self-heal on immediate restart.
@@ -60,6 +62,20 @@ export async function daemon(options = {}) {
   const pathExists = options.pathExists || ((p) => fs.pathExists(p));
 
   await fs.ensureDir(options.logsDir || getLogsDir());
+
+  // Doctor reads this to see the version that is actually running (#74).
+  if (options.recordState !== false) {
+    try {
+      const writeFile = options.writeFile || ((p, c) => fs.writeFile(p, c, 'utf8'));
+      const version = options.version || CLI_VERSION;
+      await writeFile(
+        options.statePath || getDaemonStatePath(),
+        JSON.stringify({ version, pid: process.pid })
+      );
+    } catch {
+      // diagnostic only
+    }
+  }
 
   if (!(await pathExists(caddyfilePath))) {
     log(`Caddyfile missing: ${caddyfilePath}`);

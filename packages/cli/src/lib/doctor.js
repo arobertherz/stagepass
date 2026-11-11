@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import { createRequire } from 'node:module';
 import { runProjectSiteChecks } from './doctor-site.js';
 import path from 'node:path';
 import { defaultExec, resolveCommand } from './exec.js';
@@ -6,17 +7,23 @@ import {
   getCaddyfilePath,
   getProjectsPath,
   getCaddyRootCaPath,
+  getDaemonStatePath,
 } from './paths.js';
 import { parseBlocks } from './caddyfile.js';
 import { loadProjects } from './projects.js';
 import { runCertsCheck } from './certs.js';
-import { getAutostartStatus } from './autostart.js';
+import { getAutostartStatus, isVersionedCellarNodeBin } from './autostart.js';
+import { isPidAlive } from './dev-port.js';
+import { isMacOS } from './platform.js';
 import {
   CHROME_LNA_HINT,
   findUnpinnedCdnSnippets,
   RECOMMENDED_CDN_SNIPPETS,
   scanProjectUnpinnedCdn,
 } from './cdn-snippets.js';
+
+const CLI_VERSION = createRequire(import.meta.url)('../../package.json').version;
+const AUTOSTART_ON = 'stagepass autostart on';
 
 /**
  * @typedef {'ok'|'warn'|'fail'|'info'} CheckStatus
@@ -32,6 +39,50 @@ import {
  */
 function check(id, status, message, detail) {
   return detail ? { id, status, message, detail } : { id, status, message };
+}
+
+/** @param {unknown} value */
+function safeVersion(value) {
+  return typeof value === 'string' && /^[0-9A-Za-z.+-]{1,32}$/.test(value) ? value : '';
+}
+
+/** @param {string} value */
+function unescapeXml(value) {
+  return String(value)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** @param {string} xml @returns {string[]} */
+function plistProgramArguments(xml) {
+  const block = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(
+    String(xml || '')
+  );
+  if (!block) return [];
+  const args = [];
+  const re = /<string>([^<]*)<\/string>/g;
+  let m;
+  while ((m = re.exec(block[1]))) args.push(unescapeXml(m[1]));
+  return args;
+}
+
+/**
+ * Version recorded by the running daemon, or null when the pid is dead / unreadable.
+ * @param {(p: string, enc?: string) => Promise<string>} readFile
+ * @param {string} statePath
+ */
+async function readRunningDaemonVersion(readFile, statePath) {
+  try {
+    const data = JSON.parse(String(await readFile(statePath, 'utf8')));
+    const version = safeVersion(data && data.version);
+    if (!version || !isPidAlive(data.pid)) return null;
+    return version;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -460,6 +511,55 @@ export async function runDoctor(opts = {}) {
         autostart.plistPath
       )
     );
+  }
+
+  // #74: plist paths and the running daemon version (macOS, plist on disk).
+  if (isMacOS(opts.platform) && autostart.plistExists) {
+    let args = [];
+    try {
+      args = plistProgramArguments(await readFile(autostart.plistPath, 'utf8'));
+    } catch {
+      args = [];
+    }
+    const nodeArg = args[0] || '';
+    const cliArg = args[1] || '';
+    const nodeOk = nodeArg.length > 0 && (await pathExists(nodeArg));
+    const cliOk = cliArg.length > 0 && (await pathExists(cliArg));
+    if (!nodeOk || !cliOk) {
+      const which = [!nodeOk ? 'node' : '', !cliOk ? 'CLI' : ''].filter(Boolean).join(' and ');
+      checks.push(check('autostart.paths', 'fail', `LaunchAgent ${which} path is missing`, AUTOSTART_ON));
+    } else {
+      checks.push(check('autostart.paths', 'ok', 'LaunchAgent node and CLI paths exist'));
+    }
+    if (isVersionedCellarNodeBin(nodeArg)) {
+      checks.push(
+        check(
+          'autostart.node',
+          'warn',
+          'LaunchAgent node path is a versioned Homebrew Cellar path',
+          AUTOSTART_ON
+        )
+      );
+    } else if (nodeOk) {
+      checks.push(check('autostart.node', 'ok', 'LaunchAgent node path is not a versioned Cellar path'));
+    }
+    const running = await readRunningDaemonVersion(
+      readFile,
+      opts.daemonStatePath || getDaemonStatePath()
+    );
+    const cliVersion = safeVersion(opts.cliVersion || CLI_VERSION);
+    if (running && cliVersion && running !== cliVersion) {
+      checks.push(
+        check(
+          'autostart.version',
+          'warn',
+          `Daemon version ${running} differs from CLI ${cliVersion}`,
+          AUTOSTART_ON
+        )
+      );
+    } else if (running && cliVersion && running === cliVersion) {
+      checks.push(check('autostart.version', 'ok', `Daemon version matches CLI ${cliVersion}`));
+    }
   }
 
   // CDN snippets: canonical docs + current project snippet files (read-only)
