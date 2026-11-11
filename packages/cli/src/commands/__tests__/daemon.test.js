@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createRequire } from 'node:module';
 import { daemon, isPermanentDaemonFailure } from '../daemon.js';
+
+const CLI_VERSION = createRequire(import.meta.url)('../../../package.json').version;
 
 describe('daemon', () => {
   it('classifies bind failures as permanent', () => {
@@ -77,6 +80,29 @@ describe('daemon', () => {
       },
     });
     expect(code).toBe(1);
+  });
+
+  it('[#74] writes the running daemon version and pid before caddy starts', async () => {
+    const writes = [];
+    const code = await daemon({
+      caddyfilePath: '/tmp/Caddyfile',
+      projectsPath: '/tmp/projects.json',
+      logsDir: '/tmp/stagepass-logs-test',
+      statePath: '/tmp/sp74-daemon.json',
+      pathExists: async (p) => p === '/tmp/Caddyfile',
+      log: () => {},
+      notify: async () => {},
+      ensurePhpFpm: async () => ({ ok: true, action: 'start' }),
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      writeFile: async (p, c) => {
+        writes.push({ p, c });
+      },
+      runForeground: async () => ({ stdout: '', stderr: '', code: 0 }),
+    });
+    expect(code).toBe(0);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].p).toBe('/tmp/sp74-daemon.json');
+    expect(JSON.parse(writes[0].c)).toEqual({ version: CLI_VERSION, pid: process.pid });
   });
 
   it('exits 0 when caddy exits cleanly', async () => {

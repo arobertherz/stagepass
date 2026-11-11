@@ -31,6 +31,11 @@ export function getDaemonStderrLogPath() {
   return path.join(getLogsDir(), 'daemon.stderr.log');
 }
 
+/** Version and pid of the running `stagepass daemon` (~/.stagepass/daemon.json). */
+export function getDaemonStatePath() {
+  return path.join(getStagepassDir(), 'daemon.json');
+}
+
 /** LaunchAgent label (owned GitHub-io reverse DNS; not a third-party domain). */
 export const LAUNCH_AGENT_LABEL = 'io.github.arobertherz.stagepass';
 
