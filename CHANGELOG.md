@@ -363,6 +363,10 @@ Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the vi
 
 - Measured `loader.min.js`: 15006 / 6621 / 5910 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
 
+#### Docs
+
+- npm README: version references updated for 2.5.0; nocache marked as 2.5.0+.
+
 ### [2.4.0] - 2026-11-08
 
 Loader-only release (`loader-v2.4.0`, `cddec72`). Published on npm and jsDelivr as `@stagepass/loader@2.4.0` on 2026-11-08 (17:00:11 Europe/Berlin). First published under dist-tag `next`; `latest` now points to 2.4.0.
