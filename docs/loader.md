@@ -67,6 +67,7 @@ Why `@2`:
 | `data-src` / `data-href` | asset | Production URL (legacy mode; loaded by default for all users) |
 | `data-stagepass-path` | asset | Relative path on the local `.sp` root (optional; if omitted while swapping, the filename is extracted from the production URL) |
 | `data-stagepass-v` | asset | Production appends `?v=<version>` |
+| `data-stagepass-nocache` | asset | Boolean (present, or `="true"`; `="false"` off). Production only: appends `?_cb=<timestamp>` to this asset on every page view, for every visitor. Combines with `data-stagepass-v` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets. |
 | `data-stagepass-version` | loader | Default production `?v=` for assets without a per-asset override |
 | `data-stagepass-session-hours` | loader | Session lifetime in hours (default `12`) |
 | `data-stagepass-mute-console="true"` | loader | Opt-in legacy global console mute in production when no session |
@@ -257,7 +258,7 @@ sp.resolveLocalUrl('js/app.js');   // e.g. 'https://my-project.sp/js/app.js?_cb=
 sp.resolveLocalUrl('/lib.js');     // leading slash is normalized
 ```
 
-While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`.
+While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`. For an individual asset that must bypass caching permanently in production (for every visitor, every view — e.g. a script embedding forms via iframes), add `data-stagepass-nocache` to that element; it appends `?_cb=<timestamp>` after any `?v=`. It has no effect while swapping locally (the asset already resolves to the local `.sp` URL with its own `_cb` stamp) and does not apply to `data-stagepass-live-src="true"` assets. `data-stagepass-cachebust` stays legacy and separate.
 
 ### Logging API
 

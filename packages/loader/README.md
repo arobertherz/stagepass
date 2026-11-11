@@ -41,6 +41,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Inserts the new element before the original, then removes the original (`data-stagepass-processed` prevents double work).
 - Local session: cache-bust with a single `?_cb=<timestamp>` per page load.
 - Production: version bust with `data-stagepass-version` (loader tag) and/or `data-stagepass-v` (per asset) → `?v=<version>` (URL-encoded; existing query/hash preserved).
+- Production, per asset: `data-stagepass-nocache` on a `data-src` / `data-href` asset appends a fresh `?_cb=<timestamp>` on **every** page view, for every visitor (not just during a Stagepass session). `?v=` is applied first when present, so both combine as `?v=<version>&_cb=<timestamp>`. Existing query/hash stay preserved.
 - `data-stagepass-cachebust="true"` is legacy and **does not** timestamp every production view in v2.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
@@ -67,6 +68,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-src` / `data-href` | Production URL for legacy mode (default). Required unless live-src opt-in uses native `src` / `href`. |
 | `data-stagepass-path` | Local path under the linked project root (optional). |
 | `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
+| `data-stagepass-nocache` | Boolean (present, or `="true"`; `="false"` turns it off). Production only: appends a fresh `?_cb=<timestamp>` to **this asset's** URL on every page view, for every visitor. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
 | `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
 | `data-stagepass-processed` | Internal; set after processing. |
 
@@ -106,6 +108,25 @@ Shown only while a session is active (including debug).
 ## Zero-cost production mode
 
 Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0**). Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See [Zero-cost production mode](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#zero-cost-production-mode) for migration, SRI, and limitations.
+
+## Permanent per-asset cache busting
+
+`data-stagepass-nocache` is for the rare asset that must be fetched fresh on every page view, for every production visitor — not just during a Stagepass session. Typical case: a script that embeds third-party forms via iframes, where a stale cached copy breaks the embed.
+
+```html
+<script
+  data-stagepass
+  data-src="https://cdn.example.com/js/forms-embed.js"
+  data-stagepass-nocache
+></script>
+```
+
+- Boolean attribute: present (any value, including empty) or `="true"` turns it on; `="false"` turns it off (same as omitting it).
+- Scoped to exactly that asset. All other `data-stagepass` assets keep the existing version-only cache strategy.
+- Appends `?_cb=<Date.now()>` after any `?v=<version>` from `data-stagepass-v` / `data-stagepass-version`, preserving existing query strings and hash fragments.
+- Production only. During an active local/dev swap session the asset resolves to the local `.sp` URL as usual (single `?_cb=<timestamp>` per page load, same as every other swapped file) — `data-stagepass-nocache` has no extra effect there.
+- Not applied to `data-stagepass-live-src="true"` assets: that mode is intentionally zero-cost (untouched by the loader in production), so pair an asset that needs permanent busting with the default `data-src` / `data-href` mode instead.
+- `data-stagepass-cachebust` remains legacy and unrelated: it no longer timestamps every production view (see above) and is not a per-asset opt-in.
 
 ## Runtime API
 
