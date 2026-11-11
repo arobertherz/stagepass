@@ -213,6 +213,103 @@ describe('autostart helpers', () => {
     expect(result.error).toMatch(/does not exist/);
   });
 
+  it('[#74] uses the Homebrew node shim when execPath is a versioned Cellar path', async () => {
+    const node = '/opt/homebrew/Cellar/node/25.2.1/bin/node';
+    const shim = '/opt/homebrew/bin/node';
+    const cli = '/opt/homebrew/Cellar/node/25.2.1/lib/node_modules/@stagepass/cli/bin/index.js';
+    const cliStable = '/opt/homebrew/lib/node_modules/@stagepass/cli/bin/index.js';
+    const intel = '/usr/local/Cellar/node/20.17.0/bin/node';
+    const intelShim = '/usr/local/bin/node';
+    const node22 = '/opt/homebrew/Cellar/node@22/22.14.0/bin/node';
+    const present = new Set([node, shim, cli, cliStable, intel, intelShim, node22]);
+    const pathExists = async (p) => present.has(p);
+
+    const result = await resolveAutostartPaths({
+      execPath: node,
+      argv1: cli,
+      realpath: async (p) => p,
+      pathExists,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.nodePath).toBe(shim);
+    expect(result.cliPath).toBe(cliStable);
+
+    const intelResult = await resolveAutostartPaths({
+      execPath: intel,
+      argv1: '/usr/local/lib/node_modules/@stagepass/cli/bin/index.js',
+      realpath: async (p) => p,
+      pathExists: async (p) => present.has(p) || p.startsWith('/usr/local/lib/'),
+    });
+    expect(intelResult.nodePath).toBe(intelShim);
+    expect(intelResult.cliPath).toBe('/usr/local/lib/node_modules/@stagepass/cli/bin/index.js');
+
+    const keg = await resolveAutostartPaths({
+      execPath: node22,
+      argv1: cliStable,
+      realpath: async (p) => p,
+      pathExists,
+    });
+    expect(keg.nodePath).toBe(shim);
+  });
+
+  it('[#74] keeps the Cellar execPath when the Homebrew shim is missing', async () => {
+    const node = '/opt/homebrew/Cellar/node/25.2.1/bin/node';
+    const cli = '/opt/homebrew/Cellar/node/25.2.1/lib/node_modules/@stagepass/cli/bin/index.js';
+    const looked = [];
+    const result = await resolveAutostartPaths({
+      execPath: node,
+      argv1: cli,
+      realpath: async (p) => p,
+      pathExists: async (p) => {
+        looked.push(p);
+        return p === node || p === cli;
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.nodePath).toBe(node);
+    expect(result.cliPath).toBe(cli);
+    expect(looked).toContain('/opt/homebrew/bin/node');
+    expect(looked).toContain('/opt/homebrew/lib/node_modules/@stagepass/cli/bin/index.js');
+  });
+
+  it('[#74] leaves an nvm node path unchanged', async () => {
+    const node = '/Users/me/.nvm/versions/node/v22.21.0/bin/node';
+    const cli = '/Users/me/.nvm/versions/node/v22.21.0/lib/node_modules/@stagepass/cli/bin/index.js';
+    const looked = [];
+    const result = await resolveAutostartPaths({
+      execPath: node,
+      argv1: cli,
+      realpath: async (p) => p,
+      pathExists: async (p) => {
+        looked.push(p);
+        return true;
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.nodePath).toBe(node);
+    expect(result.cliPath).toBe(cli);
+    expect(looked.filter((p) => p !== node && p !== cli)).toEqual([]);
+  });
+
+  it('[#74] leaves a Linux node path unchanged', async () => {
+    const node = '/usr/bin/node';
+    const cli = '/usr/lib/node_modules/@stagepass/cli/bin/index.js';
+    const looked = [];
+    const result = await resolveAutostartPaths({
+      execPath: node,
+      argv1: cli,
+      realpath: async (p) => p,
+      pathExists: async (p) => {
+        looked.push(p);
+        return true;
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.nodePath).toBe(node);
+    expect(result.cliPath).toBe(cli);
+    expect(looked.filter((p) => p !== node && p !== cli)).toEqual([]);
+  });
+
   it('disableAutostart boots out and removes plist without shell strings', async () => {
     const removed = [];
     const calls = [];

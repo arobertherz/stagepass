@@ -205,6 +205,32 @@ async function requireAbsoluteExistingPath(candidate, label, pathExists) {
   return { ok: true, path: candidate };
 }
 
+/** `<prefix>/Cellar/node[…]/<version>/<rel>` (Homebrew node keg). */
+const CELLAR_NODE_RE = /^(.*)\/Cellar\/node[^/]*\/[^/]+\/(.+)$/;
+
+/**
+ * Use `<prefix>/<rel>` when `absPath` is a versioned Homebrew node Cellar
+ * path and that unversioned file exists. Otherwise return `absPath`.
+ * @param {string} absPath
+ * @param {(p: string) => Promise<boolean>} pathExists
+ */
+async function preferHomebrewStablePath(absPath, pathExists) {
+  const m = CELLAR_NODE_RE.exec(absPath);
+  if (!m) return absPath;
+  const stable = `${m[1]}/${m[2]}`;
+  if (stable !== absPath && (await pathExists(stable))) return stable;
+  return absPath;
+}
+
+/**
+ * True for `<prefix>/Cellar/node[…]/<version>/bin/node`.
+ * @param {string} absPath
+ */
+export function isVersionedCellarNodeBin(absPath) {
+  const m = CELLAR_NODE_RE.exec(String(absPath || ''));
+  return !!m && m[2] === 'bin/node';
+}
+
 /**
  * Resolve absolute node + CLI entry paths for the LaunchAgent.
  * @param {object} [opts]
@@ -237,7 +263,7 @@ export async function resolveAutostartPaths(opts = {}) {
       cliPath: null,
     };
   }
-  const nodePath = nodeCheck.path;
+  const nodePath = await preferHomebrewStablePath(nodeCheck.path, pathExists);
 
   let cliPath = null;
 
@@ -274,7 +300,8 @@ export async function resolveAutostartPaths(opts = {}) {
     };
   }
 
-  return { ok: true, nodePath, cliPath: cliCheck.path, error: null };
+  const cliPathStable = await preferHomebrewStablePath(cliCheck.path, pathExists);
+  return { ok: true, nodePath, cliPath: cliPathStable, error: null };
 }
 
 /**
