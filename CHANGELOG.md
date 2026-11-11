@@ -37,7 +37,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [Unreleased]
+### [2.3.1] - 2026-11-11
+
+Patch release on top of 2.3.0: fixes the login autostart after a Homebrew node upgrade and makes `stagepass doctor` report a stale LaunchAgent or daemon (#74). No other behaviour change. Loader and modules are not part of this release.
 
 #### Fixed
 
