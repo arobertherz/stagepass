@@ -85,6 +85,9 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
           confirms.push(message);
           return true;
         },
+        // Fixture PID must not reach process.kill: in a container PID namespace
+        // that number can be a live vitest worker (F-3).
+        kill: () => true,
         sleep: async () => {},
         recheck: async () =>
           confirms.length === 1 ? { pid: '99', name: 'httpd' } : null,
@@ -195,6 +198,38 @@ nginx   4242 me  8u IPv6 0x1 0t0 TCP *:443 (LISTEN)
       true
     );
   });
+
+  it('[AC-4] port 443 confirm defaults to false and No does not signal', async () => {
+    const calls = [];
+    const kills = [];
+    const prompts = [];
+    const result = await resolvePort443Conflict(
+      { pid: '4242', name: 'OtherApp' },
+      {
+        exec: async (file, args) => {
+          calls.push({ file, args });
+          return { stdout: '', stderr: '' };
+        },
+        kill: (pid, sig) => {
+          kills.push([pid, String(sig)]);
+          return true;
+        },
+        confirm: async (message, options) => {
+          prompts.push({ message, default: options?.default });
+          return false;
+        },
+      }
+    );
+    expect(prompts).toEqual([
+      {
+        message: 'Send SIGTERM to OtherApp (PID 4242) to free port 443?',
+        default: false,
+      },
+    ]);
+    expect(result).toEqual({ ok: false, cancelled: true });
+    expect(kills).toEqual([]);
+    expect(calls).toEqual([]);
+  });
 });
 
 describe('start autostart / certs integration', () => {
@@ -301,7 +336,9 @@ describe('start autostart / certs integration', () => {
     expect(confirmFn).not.toHaveBeenCalled();
     const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(joined).not.toMatch(/Certificates: ok/);
-    expect(joined).toMatch(/site TLS not checkable/);
+    expect(joined).toMatch(
+      /Certificates: root ok, site TLS not checkable \(Caddy not serving :443\)\./
+    );
   });
 
   it('[N-2] all handshakes ok: prints "Certificates: ok"', async () => {
@@ -355,6 +392,91 @@ describe('start autostart / certs integration', () => {
     expect(confirmFn).toHaveBeenCalled();
     expect(certsRenewFn).toHaveBeenCalled();
     const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).not.toMatch(/Certificates: ok/);
+  });
+});
+
+describe('[F-4] certificate line is honest', () => {
+  let logSpy;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function line(report) {
+    logSpy.mockClear();
+    await start({
+      verbose: true,
+      interactive: false,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        trust: { trusted: true },
+        orphans: [],
+        handshakes: [],
+        ...report,
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({ loaded: false, plistExists: false }),
+    });
+    return logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+  }
+
+  it('[F-4] root warning and every handshake ok is not "Certificates: ok"', async () => {
+    const joined = await line({
+      root: { status: 'warn', reason: 'soon' },
+      handshakes: [{ status: 'ok', servername: 'a.sp' }],
+    });
+    expect(joined).toMatch(/Certificates: root warning, site TLS ok\./);
+    expect(joined).not.toMatch(/Certificates: ok/);
+  });
+
+  it('[F-4] root ok and a skip that is not the :443 check names no cause', async () => {
+    const joined = await line({
+      root: { status: 'ok' },
+      handshakes: [{ status: 'skip', servername: 'a.sp', reason: 'skipped' }],
+    });
+    expect(joined).toMatch(/Certificates: root ok, site TLS not checkable\./);
+    expect(joined).not.toMatch(/Caddy not serving/);
+    expect(joined).not.toMatch(/Certificates: ok/);
+  });
+
+  it('[F-4] root warning and Caddy not serving :443 does not say root ok', async () => {
+    const joined = await line({
+      root: { status: 'warn' },
+      handshakes: [
+        {
+          status: 'skip',
+          servername: 'a.sp',
+          reason: 'Caddy is not serving :443; TLS not checkable.',
+        },
+      ],
+    });
+    expect(joined).toMatch(
+      /Certificates: root warning, site TLS not checkable \(Caddy not serving :443\)\./
+    );
+    expect(joined).not.toMatch(/root ok/);
+  });
+
+  it('[F-4] no handshakes (no linked sites or skipHandshake) is not checked', async () => {
+    const ok = await line({ root: { status: 'ok' }, handshakes: [] });
+    expect(ok).toMatch(/Certificates: root ok, site TLS not checked\./);
+    expect(ok).not.toMatch(/Certificates: ok/);
+    const warn = await line({ root: { status: 'warn' }, handshakes: [] });
+    expect(warn).toMatch(/Certificates: root warning, site TLS not checked\./);
+    const missing = await line({ root: {}, handshakes: [] });
+    expect(missing).toMatch(/Certificates: root not checked, site TLS not checked\./);
+  });
+
+  it('[F-4] a handshake that is only a warning is not "Certificates: ok"', async () => {
+    const joined = await line({
+      root: { status: 'ok' },
+      handshakes: [{ status: 'warn', servername: 'a.sp', reason: 'soon' }],
+    });
+    expect(joined).toMatch(/Certificates: root ok, site TLS not ok\./);
     expect(joined).not.toMatch(/Certificates: ok/);
   });
 });

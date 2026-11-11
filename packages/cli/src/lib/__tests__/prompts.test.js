@@ -72,4 +72,39 @@ describe('confirm [N-1]', () => {
     exitSpy.mockRestore();
     writeSpy.mockRestore();
   });
+
+  it('[F-2] passes the exact message and default true, false, or omitted', async () => {
+    const confirmFn = vi.fn(async () => false);
+    const exit = vi.fn();
+    const write = vi.fn();
+    await confirm('Keep this file?', {
+      default: true,
+      confirm: confirmFn,
+      exit,
+      write,
+    });
+    expect(confirmFn).toHaveBeenCalledWith({
+      message: 'Keep this file?',
+      default: true,
+    });
+    confirmFn.mockClear();
+    await confirm('Keep this file?', {
+      default: false,
+      confirm: confirmFn,
+      exit,
+      write,
+    });
+    expect(confirmFn).toHaveBeenCalledWith({
+      message: 'Keep this file?',
+      default: false,
+    });
+    confirmFn.mockClear();
+    await confirm('Keep this file?', { confirm: confirmFn, exit, write });
+    expect(confirmFn).toHaveBeenCalledWith({
+      message: 'Keep this file?',
+      default: false,
+    });
+    expect(exit).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
 });
