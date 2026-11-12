@@ -145,6 +145,7 @@ describe('autostart helpers', () => {
       },
       exec: async (file, args) => {
         calls.push({ file, args });
+        if (args[0] === 'print') throw new Error('Could not find service');
         return { stdout: '', stderr: '', code: 0 };
       },
     });
@@ -330,5 +331,140 @@ describe('autostart helpers', () => {
       file: 'launchctl',
       args: buildLaunchctlBootoutArgs(501),
     });
+  });
+
+  const plistPath = '/tmp/io.github.arobertherz.stagepass.plist';
+  const eioMessage =
+    'Command failed: launchctl bootstrap gui/501 /tmp/io.github.arobertherz.stagepass.plist\nBootstrap failed: 5: Input/output error';
+
+  function raceOpts(exec, nowCalls) {
+    const sleeps = [];
+    return {
+      sleeps,
+      opts: {
+        uid: 501,
+        plistPath,
+        logsDir: '/tmp/stagepass-logs',
+        paths: {
+          ok: true,
+          nodePath: '/usr/local/bin/node',
+          cliPath: '/opt/cli/bin/index.js',
+        },
+        runtime: {
+          ok: true,
+          pathEnv:
+            '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin',
+        },
+        pathExists: async () => true,
+        ensureDir: async () => {},
+        writeFile: async () => {},
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        now: () => {
+          nowCalls.count += 1;
+          return 0;
+        },
+        exec,
+      },
+    };
+  }
+
+  function eioError() {
+    return Object.assign(new Error(eioMessage), { code: 5 });
+  }
+
+  it('bootout-race (1): waits until print misses the job, then bootstraps once', async () => {
+    const seq = [];
+    let prints = 0;
+    const nowCalls = { count: 0 };
+    const { sleeps, opts } = raceOpts(async (file, args) => {
+      seq.push(args[0]);
+      if (args[0] === 'bootout') return { stdout: '', stderr: '', code: 0 };
+      if (args[0] === 'print') {
+        prints += 1;
+        expect(args).toEqual(buildLaunchctlPrintArgs(501));
+        if (prints < 3) return { stdout: 'state = running', stderr: '', code: 0 };
+        throw new Error('Could not find service');
+      }
+      if (args[0] === 'bootstrap') {
+        expect(args).toEqual(buildLaunchctlBootstrapArgs(501, plistPath));
+        return { stdout: '', stderr: '', code: 0 };
+      }
+      throw new Error(`unexpected ${file} ${args.join(' ')}`);
+    }, nowCalls);
+
+    const result = await enableAutostart(opts);
+    expect(result.ok).toBe(true);
+    expect(seq).toEqual([
+      'bootout',
+      'print',
+      'print',
+      'print',
+      'bootstrap',
+    ]);
+    expect(sleeps).toEqual([50, 50]);
+    expect(nowCalls.count).toBeGreaterThan(0);
+    expect(prints).toBe(3);
+  });
+
+  it('bootout-race (2): retries bootstrap once after launchctl error 5', async () => {
+    const seq = [];
+    let bootstraps = 0;
+    const nowCalls = { count: 0 };
+    const { sleeps, opts } = raceOpts(async (_file, args) => {
+      seq.push(args[0]);
+      if (args[0] === 'bootout') return { stdout: '', stderr: '', code: 0 };
+      if (args[0] === 'print') throw new Error('Could not find service');
+      if (args[0] === 'bootstrap') {
+        bootstraps += 1;
+        if (bootstraps === 1) throw eioError();
+        return { stdout: '', stderr: '', code: 0 };
+      }
+      throw new Error(`unexpected ${args[0]}`);
+    }, nowCalls);
+
+    const result = await enableAutostart(opts);
+    expect(result.ok).toBe(true);
+    expect(bootstraps).toBe(2);
+    expect(sleeps).toEqual([100]);
+    expect(seq.filter((s) => s === 'bootstrap')).toHaveLength(2);
+  });
+
+  it('bootout-race (3): returns ok:false after bounded error-5 attempts', async () => {
+    let bootstraps = 0;
+    const nowCalls = { count: 0 };
+    const { sleeps, opts } = raceOpts(async (_file, args) => {
+      if (args[0] === 'bootout') return { stdout: '', stderr: '', code: 0 };
+      if (args[0] === 'print') throw new Error('Could not find service');
+      if (args[0] === 'bootstrap') {
+        bootstraps += 1;
+        throw eioError();
+      }
+      throw new Error(`unexpected ${args[0]}`);
+    }, nowCalls);
+
+    const result = await enableAutostart(opts);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe(eioMessage);
+    expect(bootstraps).toBe(3);
+    expect(sleeps).toEqual([100, 100]);
+  });
+
+  it('bootout-race (4): does not wait when bootout throws and bootstraps once', async () => {
+    const seq = [];
+    const nowCalls = { count: 0 };
+    const { sleeps, opts } = raceOpts(async (_file, args) => {
+      seq.push(args[0]);
+      if (args[0] === 'bootout') throw new Error('Boot-out failed: 3: No such process');
+      if (args[0] === 'bootstrap') return { stdout: '', stderr: '', code: 0 };
+      throw new Error(`unexpected ${args[0]}`);
+    }, nowCalls);
+
+    const result = await enableAutostart(opts);
+    expect(result.ok).toBe(true);
+    expect(seq).toEqual(['bootout', 'bootstrap']);
+    expect(sleeps).toEqual([]);
+    expect(nowCalls.count).toBe(0);
   });
 });

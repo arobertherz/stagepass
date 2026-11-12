@@ -37,7 +37,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [Unreleased]
+### [2.3.1] - 2026-11-11
+
+Patch release on top of 2.3.0: fixes the login autostart after a Homebrew node upgrade and makes `stagepass doctor` report a stale LaunchAgent or daemon (#74). Loader and modules are not part of this release.
 
 #### Added
 
@@ -49,6 +51,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - LaunchAgent plist uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path, so `brew upgrade node` does not leave login autostart pointed at a deleted binary (#74).
 - Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
 - `stagepass doctor` fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Cellar path or the running daemon version differs from the CLI (`stagepass autostart on`) (#74).
+- `stagepass autostart on` waits for launchd to unload the previous job and retries a racing bootstrap, so re-running it with the daemon loaded no longer leaves autostart unloaded.
 
 #### Changed
 

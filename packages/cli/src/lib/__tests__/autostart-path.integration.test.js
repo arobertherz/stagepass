@@ -235,7 +235,10 @@ child.on('close', (code) => {
           writes.push(p);
           fs.writeFileSync(p, c);
         },
-        exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+        exec: async (_file, args) => {
+          if (args?.[0] === 'print') throw new Error('Could not find service');
+          return { stdout: '', stderr: '', code: 0 };
+        },
       });
       expect(enabled.ok).toBe(true);
       expect(writes).toContain(plistPath);

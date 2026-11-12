@@ -566,9 +566,13 @@ export async function getAutostartStatus(opts = {}) {
 /**
  * Write plist (idempotent) and bootstrap the LaunchAgent.
  * @param {object} [opts]
+ * @param {(ms: number) => Promise<void>} [opts.sleep]
+ * @param {() => number} [opts.now]
  */
 export async function enableAutostart(opts = {}) {
   const exec = opts.exec || defaultExec;
+  const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const now = opts.now || Date.now;
   const uid = opts.uid ?? process.getuid?.() ?? os.userInfo().uid;
   const pathExists = opts.pathExists || ((p) => fs.pathExists(p));
   const paths =
@@ -636,19 +640,46 @@ export async function enableAutostart(opts = {}) {
 
   await writeFile(plistPath, plist);
 
-  // Idempotent: bootout if already loaded, then bootstrap.
+  // bootout returns before launchd drops the job; bootstrap then hits error 5.
+  let unloaded = false;
   try {
     await exec('launchctl', buildLaunchctlBootoutArgs(uid));
+    unloaded = true;
   } catch {
-    // not loaded yet
+    // not loaded yet: one bootstrap, no wait
+  }
+  if (unloaded) {
+    const until = now() + 3000;
+    for (let i = 0; i < 60 && now() < until; i++) {
+      try {
+        await exec('launchctl', buildLaunchctlPrintArgs(uid));
+      } catch {
+        break;
+      }
+      await sleep(50);
+    }
   }
 
-  try {
-    await exec('launchctl', buildLaunchctlBootstrapArgs(uid, plistPath));
-  } catch (error) {
+  let bootErr = null;
+  for (let n = 0, tries = unloaded ? 3 : 1; n < tries; n++) {
+    try {
+      await exec('launchctl', buildLaunchctlBootstrapArgs(uid, plistPath));
+      bootErr = null;
+      break;
+    } catch (error) {
+      bootErr = error;
+      const msg = `${error instanceof Error ? error.message : error} ${error?.stderr || ''}`;
+      const race =
+        error?.code === 5 ||
+        /Input\/output error|Bootstrap failed: 5/.test(msg);
+      if (!race || n + 1 === tries) break;
+      await sleep(100);
+    }
+  }
+  if (bootErr) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: bootErr instanceof Error ? bootErr.message : String(bootErr),
       plistPath,
       paths,
     };
