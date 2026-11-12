@@ -135,7 +135,7 @@ function liveReloadHandleLines(port, allowAllOrigins) {
     '        }',
   ];
   lines.push(...deferredSuccessCorsLines(allowAllOrigins));
-  lines.push('    }', '');
+  lines.push('    }');
   return lines;
 }
 

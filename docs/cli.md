@@ -2,7 +2,7 @@
 
 Package: `@stagepass/cli`. System commands require macOS (platform guard in `src/lib/platform.js`). Override for tests only: `STAGEPASS_SKIP_PLATFORM_CHECK=1`. `--version` and `--help` work everywhere.
 
-**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI 2.3.1 (`@stagepass/cli`) `engines.node` is `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Contributors develop and test on Node 22 or 24.
+**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI 2.3.1 (`@stagepass/cli`) `engines.node` is `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Contributors develop and test on Node 22 or 24. The v3 site block needs Caddy 2.9 or newer (`brew upgrade caddy`). `brew install caddy` does not upgrade an existing install.
 
 Typical order: `setup` → `start` → `link`, then `stagepass build` / `stagepass watch` / `stagepass dev` (then `reload` / `unlink` / `stop` as needed). Most commands support `-v, --verbose`.
 
@@ -13,12 +13,12 @@ This reference describes CLI **2.4.0**. It is not yet published on npm; publishe
 | Command | Description |
 | --- | --- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the `.sp` resolver. |
-| `stagepass start` | Start Caddy & PHP (certs check; offer repair when interactive; `launchctl kickstart` when autostart is on). Migrates legacy Caddyfile blocks if needed. Clears stale `devPort` entries. Non-interactive prints findings and a hint. No standby `sudo -v`: port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation; own processes without elevated rights first, `sudo kill` only after unprivileged failure. |
+| `stagepass start` | Start Caddy & PHP (certs check; offer repair when interactive; `launchctl kickstart` when autostart is on). Migrates legacy Caddyfile blocks if needed, except when Caddy is known to be older than 2.9 (`brew upgrade caddy`); those blocks stay as they are. Clears stale `devPort` entries. Non-interactive prints findings and a hint. No standby `sudo -v`: port 443 conflicts show process name and PID; SIGTERM first, SIGKILL only after a second confirmation; own processes without elevated rights first, `sudo kill` only after unprivileged failure. |
 | `stagepass stop` | Stop services. With autostart enabled, uses `launchctl bootout` until next login (`autostart off` removes the LaunchAgent permanently). |
-| `stagepass link [domain]` | Link the current directory to a `.sp` domain and reload Caddy. |
+| `stagepass link [domain]` | Link the current directory to a `.sp` domain and reload Caddy. Writes a v3 site block. On Caddy older than 2.9, does not rewrite other existing blocks and warns that CORS on success responses may be missing (`brew upgrade caddy`). |
 | `stagepass unlink [domain]` | Remove the link (and `projects.json` entry) for that domain. |
-| `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). |
-| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus project modules vs. live site, project PHP when `stagepass.json` has `"php": true\|false`. Unpinned CDN warnings (`@latest`, bare major `@1`, or bare package) in recommended snippets and project files. Published CLI 2.3.1 also fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Homebrew Cellar path or the running daemon version differs from the CLI. The fix hint on those checks is `stagepass autostart on`. `--json`, `--skip-site`. Exit `1` on any fail. |
+| `stagepass reload` | Reload Caddy configuration (also migrates legacy blocks if needed). Skips that rewrite when Caddy is older than 2.9 (`brew upgrade caddy`). |
+| `stagepass doctor` | Read-only stack diagnostics (never sudo), plus project modules vs. live site, project PHP when `stagepass.json` has `"php": true\|false`. Unpinned CDN warnings (`@latest`, bare major `@1`, or bare package) in recommended snippets and project files. Reports the Caddy version and warns (does not fail) below 2.9 (`brew upgrade caddy`). Published CLI 2.3.1 also fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Homebrew Cellar path or the running daemon version differs from the CLI. The fix hint on those checks is `stagepass autostart on`. `--json`, `--skip-site`. Exit `1` on any fail. |
 | `stagepass certs check` | Read-only Caddy local CA / trust / TLS checks. `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after confirmation (or `--yes`). |
 | `stagepass certs renew` | Repair failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`). `--root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`. `--remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`). |

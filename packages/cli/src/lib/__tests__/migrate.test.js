@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -107,6 +107,88 @@ app.sp {
     });
     expect(second.changed).toBe(false);
     expect(second.backupPath).toBeNull();
+  });
+
+  function v2Block() {
+    const root = path.join(tmpDir, 'app');
+    return `# START: app.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false php=true origins=example.com
+app.sp {
+    root * "${root}"
+    file_server
+}
+# END: app.sp
+`;
+  }
+
+  function versionExec(stdout, fail) {
+    return async (file, args = []) => {
+      if (file === 'caddy' && args[0] === 'version') {
+        if (fail) throw new Error('caddy not found');
+        return { stdout, stderr: '' };
+      }
+      throw new Error(`unexpected ${file} ${args.join(' ')}`);
+    };
+  }
+
+  it('[caddy-2.9] leaves v2 blocks unchanged on Caddy 2.8.4 and warns once', async () => {
+    await fs.writeFile(caddyfilePath, v2Block());
+    const logs = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((msg) => logs.push(String(msg)));
+    try {
+      const result = await ensureCaddyfileMigrated({
+        caddyfilePath,
+        projectsPath,
+        exec: versionExec('v2.8.4 h1:old\n'),
+      });
+      expect(result.changed).toBe(false);
+      expect(result.backupPath).toBeNull();
+      const after = await fs.readFile(caddyfilePath, 'utf-8');
+      expect(after).toContain('stagepass-block: v2');
+      expect(after).not.toContain('stagepass-block: v3');
+      expect(after).not.toContain('>Access-Control-Allow-Origin');
+      const text = logs.join('\n');
+      expect(text).toContain('2.8.4');
+      expect(text).toContain('brew upgrade caddy');
+      expect(text.match(/brew upgrade caddy/g)).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['2.9.0', 'v2.9.0 h1:min\n'],
+    ['2.10.2', 'v2.10.2 h1:new\n'],
+  ])('[caddy-2.9] still rewrites v2 blocks on Caddy %s', async (_label, stdout) => {
+      await fs.writeFile(caddyfilePath, v2Block());
+      const result = await ensureCaddyfileMigrated({
+        caddyfilePath,
+        projectsPath,
+        silent: true,
+        exec: versionExec(stdout),
+      });
+      expect(result.changed).toBe(true);
+      expect(result.upgraded.map((item) => item.domain)).toEqual(['app.sp']);
+      const after = await fs.readFile(caddyfilePath, 'utf-8');
+      expect(after).toContain('stagepass-block: v3');
+      expect(after).toContain('>Access-Control-Allow-Origin');
+    }
+  );
+
+  it('[caddy-2.9] still rewrites when the Caddy version is unknown', async () => {
+    await fs.writeFile(caddyfilePath, v2Block());
+    for (const exec of [versionExec('not a version\n'), versionExec('', true)]) {
+      await fs.writeFile(caddyfilePath, v2Block());
+      const result = await ensureCaddyfileMigrated({
+        caddyfilePath,
+        projectsPath,
+        silent: true,
+        exec,
+      });
+      expect(result.changed).toBe(true);
+      expect(await fs.readFile(caddyfilePath, 'utf-8')).toContain('stagepass-block: v3');
+    }
   });
 
   it('no-ops when Caddyfile is missing', async () => {

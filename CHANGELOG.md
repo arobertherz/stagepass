@@ -48,7 +48,7 @@ Minor release on top of 2.3.1: command suggestions for a misplaced top-level opt
 #### Fixed
 
 - Interactive `stagepass new --no-link` no longer asks to link on macOS.
-- Linked `.sp` responses set a single `Access-Control-Allow-Origin` on HTTP 2xx (Caddy deferred replace), including when the PHP app also sends CORS. A PHP 403 for a disallowed origin is not given that header. Existing `v2` site blocks are rewritten on `link`, `reload`, and `start` with their saved options kept.
+- Linked `.sp` responses set a single `Access-Control-Allow-Origin` on HTTP 2xx (Caddy deferred replace), including when the PHP app also sends CORS. A PHP 403 for a disallowed origin is not given that header. That v3 site block needs Caddy 2.9 or newer (`brew upgrade caddy`). When `caddy version` is 2.9 or newer, or cannot be read, existing `v2` site blocks are rewritten on `link`, `reload`, and `start` with their saved options kept. When Caddy is known to be older than 2.9, those commands leave existing blocks unchanged (they keep working as in 2.3.1) and print `brew upgrade caddy`. `link` still writes the linked project's own block as v3 and warns that CORS on success responses may be missing. `stagepass doctor` reports the Caddy version and warns (does not fail) below 2.9 with the same hint. `doctor --json` stays JSON.
 - Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
 
 #### Changed

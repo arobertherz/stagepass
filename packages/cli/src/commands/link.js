@@ -17,6 +17,7 @@ import {
   isBroadWebflowWildcard,
 } from '../lib/origins.js';
 import { ensureCaddyfileMigrated } from '../lib/migrate.js';
+import { CADDY_UPGRADE_HINT, readCaddyVersion } from '../lib/caddy-version.js';
 import {
   originsFromStagepassConfig,
   phpFromStagepassConfig,
@@ -36,6 +37,7 @@ import { isPhpEnabled } from '../lib/caddyfile.js';
  * @param {string} [deps.cwd]
  * @param {(msg?: string) => void} [deps.log]
  * @param {(msg?: string) => void} [deps.error]
+ * @param {import('../lib/exec.js').ExecFn} [deps.exec]
  */
 export async function link(domain, options = {}, deps = {}) {
   const log = deps.log || console.log;
@@ -127,7 +129,15 @@ export async function link(domain, options = {}, deps = {}) {
     await fs.ensureDir(caddyDir);
 
     spinner.stop();
-    await ensureCaddyfileMigrated({ caddyfilePath: caddyFilePath, projectsPath });
+    const caddy = await readCaddyVersion(deps.exec);
+    await ensureCaddyfileMigrated({ caddyfilePath: caddyFilePath, projectsPath, caddy });
+    if (caddy.known && !caddy.ok) {
+      log(
+        chalk.yellow(
+          `   This site block is v3 and needs Caddy 2.9 or newer for CORS on success responses. ${CADDY_UPGRADE_HINT}`
+        )
+      );
+    }
     await clearStaleDevPorts(projectsPath);
     spinner.start(`Linking ${chalk.bold(targetDomain)}...`);
 

@@ -29,7 +29,11 @@ export async function reload(options = {}) {
 
   try {
     spinner.stop();
-    await ensureCaddyfileMigrated({ caddyfilePath: caddyFilePath, projectsPath });
+    await ensureCaddyfileMigrated({
+      caddyfilePath: caddyFilePath,
+      projectsPath,
+      exec: (file, args, opts) => execa(file, args, opts),
+    });
     await warnIfAllowAllOriginsActive({ caddyfilePath: caddyFilePath });
     spinner.start('Reloading Caddy...');
 

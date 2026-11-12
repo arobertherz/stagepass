@@ -335,3 +335,86 @@ describe('[#74] LaunchAgent doctor checks', () => {
     }
   });
 });
+
+describe('[caddy-2.9] doctor Caddy version', () => {
+  function execFor(version) {
+    return async (file, args = []) => {
+      if (file === '/usr/bin/env' && args[0] === 'which') {
+        const name = args[1];
+        if (['brew', 'caddy', 'php', 'php-fpm', 'dnsmasq'].includes(name)) {
+          return { stdout: `/usr/local/bin/${name}\n`, stderr: '', code: 0 };
+        }
+        throw Object.assign(new Error('not found'), { code: 1 });
+      }
+      if (file === 'caddy' && args[0] === 'version') {
+        if (version == null) throw new Error('caddy version failed');
+        return { stdout: version, stderr: '', code: 0 };
+      }
+      if (file === 'brew' && args[0] === '--prefix') {
+        return { stdout: '/usr/local\n', stderr: '', code: 0 };
+      }
+      if (String(file).endsWith('/php') && args[0] === '-v') {
+        return { stdout: 'PHP 8.3.1 (cli)\n', stderr: '', code: 0 };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    };
+  }
+
+  async function caddyCheck(version) {
+    const result = await runDoctor({
+      platform: 'darwin',
+      exec: execFor(version),
+      projectChecks: false,
+      projectCdnScan: false,
+      skipHandshake: true,
+      resolverPath: '/tmp/sp-caddy-ver-resolver',
+      caddyfilePath: '/tmp/sp-caddy-ver-Caddyfile',
+      projectsPath: '/tmp/sp-caddy-ver-projects.json',
+      rootCaPath: '/tmp/sp-caddy-ver-ca.crt',
+      plistPath: '/tmp/sp-caddy-ver-agent.plist',
+      pathExists: async () => false,
+      readFile: async () => {
+        throw new Error('missing');
+      },
+    });
+    const payload = {
+      ok: result.exitCode === 0,
+      summary: result.summary,
+      checks: result.checks,
+      hints: result.hints,
+    };
+    const parsed = JSON.parse(JSON.stringify(payload));
+    return parsed.checks.find((item) => item.id === 'caddy');
+  }
+
+  it('[caddy-2.9] warns below 2.9 with brew upgrade caddy and stays valid JSON', async () => {
+    const caddy = await caddyCheck('v2.8.4 h1:old\n');
+    expect(caddy).toMatchObject({
+      status: 'warn',
+      detail: 'brew upgrade caddy',
+    });
+    expect(caddy.message).toContain('2.8.4');
+    expect(caddy.status).not.toBe('fail');
+  });
+
+  it('[caddy-2.9] reports an ok version at 2.9.0 and 2.10.2', async () => {
+    const min = await caddyCheck('v2.9.0 h1:min\n');
+    expect(min).toMatchObject({ status: 'ok' });
+    expect(min.message).toContain('2.9.0');
+    const current = await caddyCheck('v2.10.2 h1:new\n');
+    expect(current).toMatchObject({ status: 'ok' });
+    expect(current.message).toContain('2.10.2');
+    expect(current.message).toContain('/usr/local/bin/caddy');
+  });
+
+  it('[caddy-2.9] keeps the previous ok check when the version cannot be read', async () => {
+    const unknown = await caddyCheck('not a version\n');
+    expect(unknown).toEqual({
+      id: 'caddy',
+      status: 'ok',
+      message: 'Caddy found (/usr/local/bin/caddy)',
+    });
+    const missing = await caddyCheck(null);
+    expect(missing).toEqual(unknown);
+  });
+});

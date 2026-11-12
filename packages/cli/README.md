@@ -51,12 +51,12 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
-| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL; sudo only if unprivileged kill fails). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). Migrates legacy Caddyfile blocks if needed. |
-| `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
+| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL; sudo only if unprivileged kill fails). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). Migrates legacy Caddyfile blocks if needed, except when Caddy is known to be older than 2.9 (`brew upgrade caddy`). |
+| `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. The linked block is v3. On Caddy older than 2.9, other existing blocks are left unchanged and CORS on success responses may be missing (`brew upgrade caddy`). |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
-| `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed, except when Caddy is known to be older than 2.9 (`brew upgrade caddy`). |
 | `stagepass stop` | Stop Caddy & PHP. If autostart is installed/loaded, `launchctl bootout` first (until next login); use `autostart off` to disable permanently. |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Reports the Caddy version and warns (does not fail) when it is older than 2.9 (`brew upgrade caddy`); the v3 site block needs 2.9 or newer. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
 | `stagepass certs renew` | Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm, or `--yes --i-understand-root-renewal`); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
@@ -283,6 +283,8 @@ stagepass link --no-allow-all-origins
 ```
 
 Hand-written content outside `# START:` / `# END:` markers is left untouched. Unparsable legacy blocks are left unchanged with a warning. Migration is idempotent (second run does nothing and creates no new backup).
+
+The v3 block needs Caddy 2.9 or newer (`brew upgrade caddy`). Homebrew does not upgrade an existing Caddy when you `brew install caddy`. On a known older Caddy, `link`, `reload`, and `start` do not rewrite existing blocks. `link` still writes that project's block as v3 and warns that CORS on success responses may be missing until you upgrade. If `caddy version` cannot be read, the rewrite stays as before. `stagepass doctor` reports the version and warns below 2.9.
 
 ## Troubleshooting (CLI)
 
