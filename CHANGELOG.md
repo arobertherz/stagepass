@@ -39,6 +39,10 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### [Unreleased]
 
+#### Added
+
+- A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
+
 #### Fixed
 
 - LaunchAgent plist uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path, so `brew upgrade node` does not leave login autostart pointed at a deleted binary (#74).
