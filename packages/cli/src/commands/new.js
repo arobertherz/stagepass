@@ -339,10 +339,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       if (install === undefined) {
         install = await askYesNo(rl, 'Run npm install now?', false);
       }
-      if (linkAtEnd === undefined) {
-        // Asked after create on macOS only; remember preference here when already decided.
-        linkAtEnd = undefined;
-      }
+      // Asked after create on macOS only when the link flag was omitted.
     } finally {
       rl.close();
     }
@@ -387,7 +384,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   if (install === undefined) install = false;
   if (php === undefined) php = false;
   if (phpExamples === undefined) phpExamples = false;
-  if (linkAtEnd === undefined) linkAtEnd = false;
+  if (linkAtEnd == null && !interactive) linkAtEnd = false;
 
   if (lang !== 'ts' && lang !== 'js') {
     return { ok: false, error: 'Language must be ts or js.' };
@@ -563,7 +560,7 @@ async function maybeDoctorPreflight(deps = {}) {
 }
 
 /**
- * Optionally link the new project (macOS only; interactive ask or --link).
+ * Optionally link the new project (macOS only; --link, or ask when unset).
  *
  * @param {object} config
  * @param {string} targetDir
@@ -579,9 +576,9 @@ async function maybeLinkProject(config, targetDir, deps = {}) {
     return;
   }
 
-  let shouldLink = config.linkAtEnd === true;
+  let shouldLink = config.linkAtEnd;
   const isTty = deps.isTTY != null ? Boolean(deps.isTTY) : Boolean(input.isTTY);
-  if (!shouldLink && isTty && deps.yes !== true) {
+  if (shouldLink == null && isTty && deps.yes !== true) {
     const rl =
       deps.createReadline?.() ||
       readline.createInterface({ input, output });
