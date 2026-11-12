@@ -11,6 +11,21 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+### `@stagepass/cli`
+
+#### Added
+
+- A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
+- `stagepass upgrade` replaces `scripts/build.mjs` when the file is still an unmodified scaffold from an earlier CLI (2.1.0–2.2.7 string manifests, the SRI template `f7afa80`, published 2.3.0 / 2.3.0-beta.1, and the watch-stable template `688dca9`). Line endings are normalized; scaffold entry paths (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged, with a hint that points at `docs/cli.md` and describes `stagepass build`, `stagepass watch` and `stagepass dev`. A missing script stays missing.
+
+#### Fixed
+
+- Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
+
+#### Changed
+
+- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only), including CLI 2.2.x manifests whose values are filename strings. `stagepass upgrade` replaces an unmodified copy of an older scaffold (see Added).
+
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -19,7 +34,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 ### Repo
 
 - Stable package releases now stage directly on npm dist-tag `latest` (one 2FA approval, no separate promotion); prereleases still stage on `next`.
-- master packages now match the published releases: `@stagepass/loader` 2.4.0 (dist byte-identical to npm) and `@stagepass/modules` 2.2.2 plus the unreleased cookie events; CLI pins (`LOADER_VERSION`/`MODULES_VERSION`) synced to 2.4.0 / 2.2.2.
+- master packages now match the published releases: `@stagepass/loader` 2.5.0 (dist byte-identical to npm) and `@stagepass/modules` 2.2.2 plus the unreleased cookie events; CLI pins (`LOADER_VERSION`/`MODULES_VERSION`) synced to 2.5.0 / 2.2.2. Published `@stagepass/cli@2.3.1` still bundles the 2.4.0 loader pin.
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does; also covers CSS hot-swap SSE on a generated js project (`node scripts/build.mjs --watch` + packed `createLiveServer`, with hard timeout and process-group cleanup).
 - Docs: always embed the full `/dist/loader.min.js` path on unpkg / redirecting CDNs (or set `data-stagepass-flag-base`); short package URLs break session chunk resolution. Live reload docs note content-hash classification and selective watch builds.
 - Docs split under `docs/` (#11): getting started, CLI, loader, modules, migration pointer, troubleshooting, live reload. README keeps a short intro and index.
@@ -31,25 +46,15 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.3.1] - 2026-11-11
+### [2.3.1] - 2026-11-12
 
-Patch release on top of 2.3.0: fixes the login autostart after a Homebrew node upgrade and makes `stagepass doctor` report a stale LaunchAgent or daemon (#74). Loader and modules are not part of this release.
-
-#### Added
-
-- A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
-- `stagepass upgrade` replaces `scripts/build.mjs` when the file is still an unmodified scaffold from an earlier CLI (2.1.0–2.2.7 string manifests, the SRI template `f7afa80`, published 2.3.0 / 2.3.0-beta.1, and the watch-stable template `688dca9`). Line endings are normalized; scaffold entry paths (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged, with a hint that points at `docs/cli.md` and describes `stagepass build`, `stagepass watch` and `stagepass dev`. A missing script stays missing.
+Patch release on top of 2.3.0: fixes the login autostart after a Homebrew node upgrade and makes `stagepass doctor` report a stale LaunchAgent or daemon (#74). Loader and modules are not part of this release. Published on npm as `@stagepass/cli@2.3.1` on 12 November 2026, 12:06 Europe/Berlin, dist-tag `latest`. Source tag `cli-v2.3.1` (`2688c81`), npm gitHead `2688c811cf1beb59a7d460c0df49c73737b8c1b1`, npm shasum `f858a0a83612f2b4e91e7183f908c5e9bec058b1`.
 
 #### Fixed
 
 - LaunchAgent plist uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path, so `brew upgrade node` does not leave login autostart pointed at a deleted binary (#74).
-- Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
 - `stagepass doctor` fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Cellar path or the running daemon version differs from the CLI (`stagepass autostart on`) (#74).
 - `stagepass autostart on` waits for launchd to unload the previous job and retries a racing bootstrap, so re-running it with the daemon loaded no longer leaves autostart unloaded.
-
-#### Changed
-
-- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only), including CLI 2.2.x manifests whose values are filename strings. `stagepass upgrade` replaces an unmodified copy of an older scaffold (see Added).
 
 ### [2.3.0] - 2026-11-11
 
@@ -364,9 +369,9 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ## `@stagepass/loader`
 
-### [2.5.0] - 2026-11-11
+### [2.5.0] - 2026-11-12
 
-Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the visitor path without that attribute is unchanged; CLI and modules are not part of this release; not yet published on npm. The CLI's bundled `LOADER_VERSION` snapshot moves to 2.5.0 only in this repo and ships with the next CLI release.
+Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the visitor path without that attribute is unchanged; CLI and modules are not part of this release. Published on npm as `@stagepass/loader@2.5.0` on 12 November 2026, 12:06 Europe/Berlin, dist-tag `latest`. Source tag `loader-v2.5.0` (`1e88b52`), npm gitHead `1e88b5237e7d9cd4d9cdbfdfd9b51479dfcbb27d`, npm shasum `7be5dec96404e7f95b339411485c07369ecf1429`. jsDelivr `@2.5.0/dist/loader.min.js` serves the published file (15065 bytes). Published `@stagepass/modules` stays 2.2.2. The CLI's bundled `LOADER_VERSION` snapshot moves to 2.5.0 only in this repo and ships with the next CLI release.
 
 #### Added
 

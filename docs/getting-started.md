@@ -55,7 +55,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 
 ## Installation
 
-Stagepass CLI is distributed via npm. Published CLI 2.3.0 requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
+Stagepass CLI is distributed via npm. Published CLI 2.3.1 requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -120,7 +120,7 @@ Add the **Universal Loader** to your Webflow project settings (Project Settings 
 <!-- Core loader only (major pin @2) -->
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.4.0"
+  data-stagepass-version="2.5.0"
 ></script>
 ```
 
@@ -151,7 +151,7 @@ Modules extend the core loader with additional features (e.g., programmatic inje
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.4.0"
+  data-stagepass-version="2.5.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
@@ -216,7 +216,7 @@ Go to your live Webflow URL and append the parameter:
 
 **Browser prerequisites:** for this public-origin → `.sp` (loopback) path, allow Chrome **Local network** / **Loopback network** for that live site when prompted (or in Site settings if previously blocked), and trust the Stagepass local CA (`stagepass certs check` / `certs trust`). See [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project (CLI 2.3.0). Live reload / `live.min.js` is in published loader **2.4.0** (npm `latest`; pin `@2.4.0`). Published **2.3.3** does not include it. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load (see [dev.md](./dev.md)).
+For CSS hot swap and JS full reload while you edit, run `stagepass dev` in the linked project (published CLI 2.3.1). Live reload / `live.min.js` ships since published loader **2.4.0** (npm `latest` is **2.5.0**; pin `@2.5.0`). Published **2.3.3** does not include it. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load (see [dev.md](./dev.md)).
 
 ## Session modes
 

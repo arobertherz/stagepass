@@ -12,7 +12,7 @@ Prefer the major pin `@2` in production. Stagepass follows strict semver: no bre
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.4.0"
+  data-stagepass-version="2.5.0"
 ></script>
 ```
 

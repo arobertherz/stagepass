@@ -12,7 +12,7 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.4.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.5.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
@@ -68,7 +68,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-src` / `data-href` | Production URL for legacy mode (default). Required unless live-src opt-in uses native `src` / `href`. |
 | `data-stagepass-path` | Local path under the linked project root (optional). |
 | `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
-| `data-stagepass-nocache` | Requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). Boolean (present, or `="true"`; `="false"` turns it off). Production only: sets exactly one fresh `?_cb=<timestamp>` on **this asset's** URL on every page view, for every visitor. An existing `_cb` is replaced (never a second one). Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
+| `data-stagepass-nocache` | Available in published loader **2.5.0** (npm `latest`). Requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). Boolean (present, or `="true"`; `="false"` turns it off). Production only: sets exactly one fresh `?_cb=<timestamp>` on **this asset's** URL on every page view, for every visitor. An existing `_cb` is replaced (never a second one). Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
 | `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
 | `data-stagepass-processed` | Internal; set after processing. |
 
@@ -111,7 +111,7 @@ Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0**
 
 ## Permanent per-asset cache busting
 
-`data-stagepass-nocache` requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). It is for the rare asset that must be fetched fresh on every page view, for every production visitor, not just during a Stagepass session. Typical case: a script that embeds third-party forms via iframes, where a stale cached copy breaks the embed.
+`data-stagepass-nocache` is available in published loader **2.5.0** (npm `latest`). It requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). It is for the rare asset that must be fetched fresh on every page view, for every production visitor, not just during a Stagepass session. Typical case: a script that embeds third-party forms via iframes, where a stale cached copy breaks the embed.
 
 ```html
 <script

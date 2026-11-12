@@ -41,6 +41,7 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 * `stagepass certs renew` repairs failing site certificates. Use `--root` only when you intend to move the local CA folder to a timestamped backup (double confirmation, or `--yes --i-understand-root-renewal`). `--remove-orphans` deletes orphaned keychain roots by SHA-1 after confirmation.
 * Port 443 conflicts: `stagepass start` can identify the process (name and PID) and offer to stop it (SIGTERM first; SIGKILL only after a second confirmation). Own processes are signalled without elevated rights first; `sudo` only when needed. There is no standby `sudo -v`. For nginx, `valet stop` is tried before any sudo.
 * When the login LaunchAgent is installed, `start` uses `launchctl kickstart` and `stop` uses `launchctl bootout` (stopped until next login; `autostart off` removes it permanently). Autostart plists embed a validated Homebrew `PATH` so login/`daemon` can resolve `caddy`.
+* Published CLI 2.3.1: `stagepass doctor` fails when a LaunchAgent node or CLI path is missing. It warns when that node path is a versioned Homebrew Cellar path, or when the running daemon version differs from the CLI. The fix hint on those checks is `stagepass autostart on`. That command rewrites the plist. When the running node is a versioned Cellar path, it records the Homebrew `bin/node` shim so a later `brew upgrade node` does not leave login autostart pointed at a deleted binary.
 
 ## PHP
 
@@ -49,7 +50,7 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 ## Live reload does nothing
 
-* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (published in **2.4.0**, npm `latest`; pin `@2.4.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** does **not** include `live.min.js`. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
+* Automatic CSS swap / JS reload needs a loader that ships `live.min.js` (ships since **2.4.0**; npm `latest` is **2.5.0**; pin `@2.5.0`) **and** an active `?stagepass=<project>.sp` swap session. Published **2.3.3** does **not** include `live.min.js`. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. See [dev.md](./dev.md) and [loader.md](./loader.md#dev-chunks).
 * Run `stagepass dev` inside the **linked** project directory (not only `npm run watch` or `stagepass watch` alone).
 * Keep a swap session active (not `debug`). The loader opens `EventSource` to `https://<domain.sp>/__stagepass/live` after injecting local assets.
 * If `stagepass dev` is not running, the live chunk closes after the first error and does not retry.
