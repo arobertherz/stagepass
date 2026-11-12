@@ -186,12 +186,59 @@ async function removeStaleHashes(prev) {
   }
 }
 
+function skipPublishName(name) {
+  if (name === '.env' || (name.startsWith('.env') && name !== '.env.example')) return true;
+  return name === 'rate-limit' || name.endsWith('.log') || name.endsWith('.pid');
+}
+
+async function copyFiltered(src, dest) {
+  let entries;
+  try {
+    entries = await fs.readdir(src, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  await fs.mkdir(dest, { recursive: true });
+  for (const ent of entries) {
+    if (skipPublishName(ent.name) || ent.isSymbolicLink()) continue;
+    const from = path.join(src, ent.name);
+    const to = path.join(dest, ent.name);
+    if (ent.isDirectory()) await copyFiltered(from, to);
+    else if (ent.isFile()) await fs.copyFile(from, to);
+  }
+}
+
+/** PHP projects: upload bundle is dist/api plus dist/.php/config.php. Watch serves the project root. */
+async function publishPhp() {
+  if (watchMode) return;
+  let cfg;
+  try {
+    cfg = JSON.parse(await fs.readFile(path.join(root, 'stagepass.json'), 'utf8'));
+  } catch {
+    return;
+  }
+  if (!cfg || cfg.php !== true) return;
+  await copyFiltered(path.join(root, 'api'), path.join(distDir, 'api'));
+  const configSrc = path.join(root, '.php', 'config.php');
+  let st;
+  try {
+    st = await fs.lstat(configSrc);
+  } catch {
+    return;
+  }
+  if (!st.isFile()) return;
+  const destDir = path.join(distDir, '.php');
+  await fs.mkdir(destDir, { recursive: true });
+  await fs.copyFile(configSrc, path.join(destDir, 'config.php'));
+}
+
 async function buildOnce() {
   await ensureDist();
   const prev = watchMode ? null : await priorHashNames();
   await buildJsOnce();
   await buildCss();
   if (prev) await removeStaleHashes(prev);
+  await publishPhp();
   return {
     'main.js': manifestState['main.js'],
     'styles.css': manifestState['styles.css'],
