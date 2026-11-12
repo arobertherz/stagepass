@@ -21,6 +21,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 #### Fixed
 
+- Interactive `stagepass new --no-link` no longer asks to link on macOS.
 - Linked `.sp` responses set a single `Access-Control-Allow-Origin` on HTTP 2xx (Caddy deferred replace), including when the PHP app also sends CORS. A PHP 403 for a disallowed origin is not given that header. Existing `v2` site blocks are rewritten on `link`, `reload`, and `start` with their saved options kept.
 - Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
 
