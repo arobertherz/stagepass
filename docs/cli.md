@@ -6,7 +6,7 @@ Package: `@stagepass/cli`. System commands require macOS (platform guard in `src
 
 Typical order: `setup` → `start` → `link`, then `stagepass build` / `stagepass watch` / `stagepass dev` (then `reload` / `unlink` / `stop` as needed). Most commands support `-v, --verbose`.
 
-Features marked **(unreleased, next CLI)** exist on master and ship with the next CLI. They are not in published npm `latest` (`@stagepass/cli@2.3.1`).
+This reference describes CLI **2.4.0**. It is not yet published on npm; published npm `latest` is still `@stagepass/cli@2.3.1`.
 
 ## Commands
 
@@ -28,7 +28,7 @@ Features marked **(unreleased, next CLI)** exist on master and ship with the nex
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
 | `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
-| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. Replacing an unmodified `scripts/build.mjs` is **(unreleased, next CLI)**. |
+| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. CLI 2.4.0 replaces an unmodified `scripts/build.mjs`. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).
 
@@ -92,7 +92,7 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 
 Interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY).
 
-Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Published CLI 2.3.1 writes stable `dist/main.js` and `dist/styles.css` plus content-hashed copies and SRI (`integrity` sha384) in `dist/manifest.json`, and rewrites a dist file only when its bytes change. **(unreleased, next CLI):** `stagepass watch` and `stagepass dev` write only the stable files and leave hashes and `manifest.json` as the last `stagepass build` left them. That same scaffold's `stagepass build` still writes hashes, then deletes hashed names the previous manifest listed that the new one does not, including CLI 2.2.x string manifests (`"main.js": "main.<hash>.js"`) and later `{ "file", "integrity" }` entries. Only plain `<base>.<8 hex><ext>` files directly in `dist/` are removed. When `stagepass.json` has `"php": true`, that build also copies `api/` and `.php/config.php` into `dist/` (never `.env`, `.php/rate-limit/`, logs, or pid files). Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. `stagepass build` writes stable `dist/main.js` and `dist/styles.css` plus content-hashed copies and SRI (`integrity` sha384) in `dist/manifest.json`, and rewrites a dist file only when its bytes change. CLI 2.4.0 `stagepass watch` and `stagepass dev` write only the stable files and leave hashes and `manifest.json` as the last `stagepass build` left them. Published CLI 2.3.1 still writes hashes and `manifest.json` from watch when bytes change. That same scaffold's `stagepass build` still writes hashes, then deletes hashed names the previous manifest listed that the new one does not, including CLI 2.2.x string manifests (`"main.js": "main.<hash>.js"`) and later `{ "file", "integrity" }` entries. Only plain `<base>.<8 hex><ext>` files directly in `dist/` are removed. When `stagepass.json` has `"php": true`, that build also copies `api/` and `.php/config.php` into `dist/` (never `.env`, `.php/rate-limit/`, logs, or pid files). Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
 
 ## PHP
 
@@ -104,13 +104,13 @@ Optional plain PHP 8.2 (no Composer, no mail). `stagepass new --php` writes `api
 * `--site <host>`: live Webflow site to detect loaded modules from (https)
 * `--site-modules <list>`: modules the site loads (`none`, `all`, or `inject,cookies,maintenance`)
 * `--skip-site`: do not fetch the live site
-* `-y, --yes`: non-interactive; accept detected or existing modules. Replacing an unmodified `scripts/build.mjs` with `--yes` is **(unreleased, next CLI)**.
+* `-y, --yes`: non-interactive; accept detected or existing modules. With `--yes`, CLI 2.4.0 also replaces an unmodified `scripts/build.mjs`.
 * `--target <version>`: docs often say `--version`; the CLI rewrites that to `--target` so it does not collide with `stagepass --version`
 * `-v, --verbose`
 
 `upgrade` only writes ranges that a published version satisfies. An explicit `--target` that is not published is refused before any file is written. Without a TTY it maps the legacy `"modules": true` to `["all"]` instead of `[]`, and prints a hint for narrowing (`--site-modules cookies`).
 
-**(unreleased, next CLI)** `scripts/build.mjs` is replaced when it is still an unmodified scaffold from an earlier CLI. The check hashes the file against known templates from this repo after normalizing line endings. The scaffold entry lines (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. On a TTY the prompt defaults to yes. Without a TTY, and with `-y` / `--yes`, the replacement is applied. `--dry-run` prints that plan and writes nothing. An edited script is left in place. The CLI then prints what `stagepass build`, `stagepass watch` and `stagepass dev` do in the current scaffold and points at this section. A missing `scripts/build.mjs` is left missing. A symlink is left unchanged. Published CLI 2.3.1 does not replace `scripts/build.mjs`.
+CLI 2.4.0 replaces `scripts/build.mjs` when it is still an unmodified scaffold from an earlier CLI. The check hashes the file against known templates from this repo after normalizing line endings. The scaffold entry lines (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. On a TTY the prompt defaults to yes. Without a TTY, and with `-y` / `--yes`, the replacement is applied. `--dry-run` prints that plan and writes nothing. An edited script is left in place. The CLI then prints what `stagepass build`, `stagepass watch` and `stagepass dev` do in the current scaffold and points at this section. A missing `scripts/build.mjs` is left missing. A symlink is left unchanged. Published CLI 2.3.1 does not replace `scripts/build.mjs`.
 
 ## Config locations
 

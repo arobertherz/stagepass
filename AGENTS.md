@@ -176,7 +176,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass new [name]`: Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP boilerplate (`--php` / `--no-php`; `--php-examples` is deprecated), optional `--link`. Prefer `stagepass build` / `stagepass watch` / `stagepass dev`; `npm run dev` is a watch alias.
 -   `stagepass build` / `stagepass watch`: Thin wrappers around `npm run build` / `npm run watch`
 -   `stagepass dev`: Watch plus live reload SSE on the linked `.sp` domain
--   `stagepass upgrade`: Bump `@stagepass/*` in the current package.json, sync project files, and print Webflow snippets. Replacing an unmodified `scripts/build.mjs` (edited copies stay, with a hint) is unreleased and ships with the next CLI.
+-   `stagepass upgrade`: Bump `@stagepass/*` in the current package.json, sync project files, and print Webflow snippets. CLI 2.4.0 replaces an unmodified `scripts/build.mjs` (edited copies stay, with a hint). Published CLI 2.3.1 does not.
 -   All commands support `-v, --verbose` flag for detailed output where applicable
 
 ### CLI: Domain Handling

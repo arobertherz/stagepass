@@ -11,24 +11,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### `@stagepass/cli`
-
-#### Added
-
-- Optional PHP boilerplate from `stagepass new --php` (plain PHP 8.2, no Composer, no mail): `api/action.php`, allowlisted actions, `api/.env.example`, and `.php/config.php`. The interactive wizard always asks. `--php-examples` is deprecated and copies nothing. `doctor`, `dev`, and `watch` warn when PHP is missing, older than 8.2, or has no php-fpm/php-cgi, and the JS build continues. `stagepass build` copies `api/` and `.php/config.php` into `dist/` and skips `.env`, rate-limit files, logs, and pid files.
-- A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
-- `stagepass upgrade` replaces `scripts/build.mjs` when the file is still an unmodified scaffold from an earlier CLI (2.1.0–2.2.7 string manifests, the SRI template `f7afa80`, published 2.3.0 / 2.3.0-beta.1, and the watch-stable template `688dca9`). Line endings are normalized; scaffold entry paths (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged, with a hint that points at `docs/cli.md` and describes `stagepass build`, `stagepass watch` and `stagepass dev`. A missing script stays missing.
-
-#### Fixed
-
-- Interactive `stagepass new --no-link` no longer asks to link on macOS.
-- Linked `.sp` responses set a single `Access-Control-Allow-Origin` on HTTP 2xx (Caddy deferred replace), including when the PHP app also sends CORS. A PHP 403 for a disallowed origin is not given that header. Existing `v2` site blocks are rewritten on `link`, `reload`, and `start` with their saved options kept.
-- Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
-
-#### Changed
-
-- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only), including CLI 2.2.x manifests whose values are filename strings. `stagepass upgrade` replaces an unmodified copy of an older scaffold (see Added).
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -48,6 +30,30 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 
 ## `@stagepass/cli`
+
+### [2.4.0] - 2026-11-12
+
+Minor release on top of 2.3.1: command suggestions for a misplaced top-level option (#78), `stagepass watch` and `stagepass dev` write only stable files with no hash files (#79), `stagepass upgrade` replaces an unmodified scaffold `scripts/build.mjs` (#80), PHP boilerplate with a PHP 8.2 check and the Caddy v3 CORS fix (#82), and interactive `stagepass new` honours `--no-link` (#83). Loader and modules are not part of this release. Not yet published on npm.
+
+#### Notes for upgraders
+
+- Known limit, still open on Trello `jd36WpR1`: without a TTY and without `--yes`, `stagepass upgrade` still replaces an unmodified scaffold `scripts/build.mjs` (same as with `--yes`). Customised scripts stay untouched.
+
+#### Added
+
+- Optional PHP boilerplate from `stagepass new --php` (plain PHP 8.2, no Composer, no mail): `api/action.php`, allowlisted actions, `api/.env.example`, and `.php/config.php`. The interactive wizard always asks. `--php-examples` is deprecated and copies nothing. `doctor`, `dev`, and `watch` warn when PHP is missing, older than 8.2, or has no php-fpm/php-cgi, and the JS build continues. `stagepass build` copies `api/` and `.php/config.php` into `dist/` and skips `.env`, rate-limit files, logs, and pid files.
+- A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
+- `stagepass upgrade` replaces `scripts/build.mjs` when the file is still an unmodified scaffold from an earlier CLI (2.1.0–2.2.7 string manifests, the SRI template `f7afa80`, published 2.3.0 / 2.3.0-beta.1, and the watch-stable template `688dca9`). Line endings are normalized; scaffold entry paths (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged, with a hint that points at `docs/cli.md` and describes `stagepass build`, `stagepass watch` and `stagepass dev`. A missing script stays missing.
+
+#### Fixed
+
+- Interactive `stagepass new --no-link` no longer asks to link on macOS.
+- Linked `.sp` responses set a single `Access-Control-Allow-Origin` on HTTP 2xx (Caddy deferred replace), including when the PHP app also sends CORS. A PHP 403 for a disallowed origin is not given that header. Existing `v2` site blocks are rewritten on `link`, `reload`, and `start` with their saved options kept.
+- Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
+
+#### Changed
+
+- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only), including CLI 2.2.x manifests whose values are filename strings. `stagepass upgrade` replaces an unmodified copy of an older scaffold (see Added).
 
 ### [2.3.1] - 2026-11-12
 
