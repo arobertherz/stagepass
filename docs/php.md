@@ -2,7 +2,7 @@
 
 Live page: [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/)
 
-This file is the source outline for that site page. It describes published `@stagepass/cli` 2.4.0 (tarball sha256 `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`) and `@stagepass/loader` 2.5.0 types. The npm 2.4.0 package itself does not change until a later patch.
+This file is the source outline for that site page. It describes published `@stagepass/cli` 2.4.0 (tarball sha256 `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`) and the unreleased 2.4.1 security patch in this repository. 2.4.1 is not published. `@stagepass/loader` types referenced here are 2.5.0.
 
 ## 1. What this is
 
@@ -35,7 +35,7 @@ This file is the source outline for that site page. It describes published `@sta
 
 - Copy `api/.env.example` to the project root as `.env` (the folder that contains `api/`). `load_config()` also reads `.php/.env`. Real environment variables already set on the host are left as they are.
 - The secrets file is that project-root `.env`, or `.php/.env`. It is not a file named `api/.env`.
-- `stagepass build` copies `api/` to `dist/api/` and `.php/config.php` to `dist/.php/config.php`. It never copies `.env` or `.php/.env` into `dist/`.
+- `stagepass build` copies `api/` to `dist/api/` and `.php/config.php` to `dist/.php/config.php`. It never copies `.env` or `.php/.env` into `dist/`. Since 2.4.1 it also copies a project-root `.htaccess` to `dist/.htaccess` when the project has one. A `dist/.htaccess` already on disk stays when the project has none.
 - `ALLOWED_ORIGINS`: exact origins, scheme included, no trailing slash (`.sp` domain, Webflow preview, live site)
 - `APP_ENV=local` vs `production` (the `boom` test action is local only)
 - Honeypot field name, rate limit max/window, body size cap, timezone
@@ -49,17 +49,16 @@ This file is the source outline for that site page. It describes published `@sta
 - From that same folder, the matching built-in server command is `php -S 127.0.0.1:8080 -t .` (URL `/api/action.php`).
 - `php -S 127.0.0.1:8080 -t api` serves `/action.php`. That command does not match this layout.
 - The published npm 2.4.0 package README already uses `-t .`.
-- PHP's built-in server does not apply Caddy's hidden-path 404. A fuller warning about that lands in the package README with the next patch. Until then, prefer `stagepass dev` or the linked `.sp` domain. Do not point `php -S -t .` at a folder that already contains a real `.env`.
+- PHP's built-in server does not apply Caddy's hidden-path 404. The package README has carried that warning since 2.4.1. Published CLI 2.4.0 does not. Prefer `stagepass dev` or the linked `.sp` domain. Do not point `php -S -t .` at a folder that already contains a real `.env`.
 
 ## 7. Hosting hidden files
 
 - After `stagepass build`, upload `dist/`. That folder is the web root. It contains `api/` and `.php/config.php`. `.php/` is therefore public on Apache and nginx unless hidden paths are denied.
-- The starter comments that say the config sits "outside the public root" (`api/lib/config.php`) and "outside the public api/ directory" (`.php/config.php`; `api/README.md` says "outside the public api/ folder") describe the layout relative to `api/`. They do not describe a second directory outside the web root. Those comments will be corrected in the next patch: [quYArF43](https://trello.com/c/quYArF43).
+- Since 2.4.1 the starter comments state that the document root is the folder that contains `api/`. Published CLI 2.4.0 still says the config sits "outside the public root" and "outside the public api/ directory". Those phrases describe the layout relative to `api/`, not a second directory outside the web root. [quYArF43](https://trello.com/c/quYArF43).
 - Caddy already returns 404 for any path segment that starts with `.` (`/.env`, `/.php/`, `/api/.env`).
-- Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Until that patch, add one on the host.
+- Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Add one on that host. Since 2.4.1 the PHP scaffold ships the Apache `.htaccess` below. nginx still needs the snippet on the host (nginx does not read `.htaccess`).
 - Prefer real environment variables so a `.env` file is not required in the web root. `load_config()` reads the project-root `.env` and `.php/.env`. It never reads `api/.env`. `stagepass build` does not copy those files into `dist/`. It does copy `.php/config.php`.
-- The scaffold still does not ship a `.htaccess`. `stagepass build` keeps a `.htaccess` if you add one today.
-- The security gap remains for the next patch: [quYArF43](https://trello.com/c/quYArF43).
+- Since 2.4.1, `stagepass new --php` writes a web-root `.htaccess` and `stagepass build` copies it into `dist/` when the project has one. Published CLI 2.4.0 does not ship that file. `stagepass new` does not overwrite an existing `.htaccess`. `stagepass build` still keeps a `.htaccess` you add yourself.
 
 Apache, in the web root `.htaccess`. The host needs `AllowOverride All` and `mod_rewrite`. The rule follows HTML5 Boilerplate [`file_access.conf`](https://github.com/h5bp/server-configs-apache/blob/main/h5bp/security/file_access.conf), wrapped in `IfModule`:
 
@@ -171,8 +170,8 @@ form.addEventListener('submit', async (event) => {
 
 `stagepass upgrade` does not add the PHP boilerplate.
 
-- Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/` and `.php/` into the existing project. Do not overwrite files you already edited.
-- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example` and `php-private/config.php` to `.php/config.php` (npm pack drops dot paths).
+- Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/`, `.php/`, and the web-root `.htaccess` into the existing project. Do not overwrite files you already edited, including an existing `.htaccess`.
+- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example`, `php-private/config.php` to `.php/config.php`, and `htaccess` to `.htaccess` (npm pack drops dot paths). Since 2.4.1. Published CLI 2.4.0 has no `htaccess` template.
 - Set `"php": true` in `stagepass.json`, copy `api/.env.example` to `.env`, set `ALLOWED_ORIGINS`, and run `stagepass link` again so the Caddy block gets `php_fastcgi`.
 - If `scripts/build.mjs` is still an unmodified older scaffold, `stagepass upgrade` can replace it so `publishPhp` is included. An edited script stays as-is and needs the PHP copy logic added by hand.
 

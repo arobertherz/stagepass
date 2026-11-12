@@ -40,6 +40,9 @@ if ($method === 'OPTIONS') {
     if ($origin === '' || !origin_is_allowed($origin, $allowedOrigins)) {
         respond_fail(['origin' => 'Origin is not allowed.'], 'Origin is not allowed.', 403);
     }
+    if (!headers_sent()) {
+        header_remove('X-Powered-By');
+    }
     http_response_code(204);
     header('Content-Length: 0');
     exit;

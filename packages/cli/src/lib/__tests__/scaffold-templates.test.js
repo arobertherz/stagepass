@@ -54,8 +54,26 @@ describe('scaffold templates', () => {
         'api/actions/contact.php',
         'api/.env.example',
         '.php/config.php',
+        '.htaccess',
       ])
     );
+    const rule = [
+      '<IfModule mod_rewrite.c>',
+      '    RewriteEngine On',
+      '    RewriteCond %{REQUEST_URI} "!(^|/)\\.well-known/([^./]+./?)+$" [NC]',
+      '    RewriteCond %{SCRIPT_FILENAME} -d [OR]',
+      '    RewriteCond %{SCRIPT_FILENAME} -f',
+      '    RewriteRule "(^|/)\\." - [F]',
+      '</IfModule>',
+      '',
+    ].join('\n');
+    expect(fs.readFileSync(path.join(root, 'htaccess'), 'utf8')).toBe(rule);
+    const action = fs.readFileSync(path.join(root, 'api/action.php'), 'utf8');
+    const optionsAt = action.indexOf("if ($method === 'OPTIONS')");
+    const branch = action.slice(optionsAt, action.indexOf('parse_input', optionsAt));
+    const removeAt = branch.indexOf("header_remove('X-Powered-By')");
+    expect(removeAt).toBeGreaterThan(branch.indexOf('respond_fail'));
+    expect(branch.indexOf('http_response_code(204)')).toBeGreaterThan(removeAt);
     expect(outs.some((out) => out.startsWith('examples/php/'))).toBe(false);
   });
 });

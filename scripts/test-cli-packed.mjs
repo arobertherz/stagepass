@@ -380,6 +380,17 @@ try {
   for (const rel of walk(join(CLI_DIR, 'templates'))) {
     assert(packed.has(`templates/${rel}`), `templates/${rel} missing from npm tarball`);
   }
+  assert(packed.has('templates/project/htaccess'), 'htaccess template missing from npm tarball');
+  const packedHtDir = join(work, 'packed-htaccess');
+  mkdirSync(packedHtDir);
+  run('tar', ['-xzf', tarball, '-C', packedHtDir, 'package/templates/project/htaccess']);
+  const repoHt = readFileSync(join(CLI_DIR, 'templates', 'project', 'htaccess'));
+  const packedHt = readFileSync(join(packedHtDir, 'package', 'templates', 'project', 'htaccess'));
+  assert(packedHt.equals(repoHt), 'packed htaccess bytes match the template');
+  assert(
+    packedHt.includes('RewriteRule "(^|/)\\." - [F]'),
+    'packed htaccess contains the deny rule'
+  );
 
   // Loader/modules tarballs: generated projects need ^<packages version>,
   // which may not be on the registry yet (staged or unreleased).
@@ -452,6 +463,7 @@ try {
     const dir = join(projects, name);
     const gitignore = join(dir, '.gitignore');
     assert(existsSync(gitignore), `${lang}: .gitignore created`);
+    assert(!existsSync(join(dir, '.htaccess')), `${lang}: no .htaccess without PHP`);
     assert(
       readFileSync(gitignore, 'utf8').includes('node_modules/'),
       `${lang}: .gitignore content`
@@ -507,6 +519,19 @@ try {
       await assertCssHotSwap(dir, prefix, env);
     }
   }
+
+  const phpProjects = join(work, 'projects-php');
+  mkdirSync(phpProjects, { recursive: true });
+  run(
+    bin,
+    ['new', 'packed-php', '--yes', '--php', '--lang', 'js', '--styles', 'css', '--no-git', '--no-install', '--no-link', '--site-modules', 'none'],
+    { cwd: phpProjects, env: shimEnv, stdio: ['ignore', 'inherit', 'inherit'] }
+  );
+  const phpDir = join(phpProjects, 'packed-php');
+  const phpHt = readFileSync(join(phpDir, '.htaccess'));
+  assert(phpHt.equals(repoHt), 'php scaffold writes the packed .htaccess');
+  assert(!existsSync(join(phpDir, '.env')), 'php scaffold does not write a real .env');
+  console.log('✅ php scaffold .htaccess matches the packed template');
 
   // Old-style (2.0/2.1) project: no modules list, no managed block, no rule.
   const old = join(work, 'old-project');

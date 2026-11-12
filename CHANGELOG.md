@@ -16,10 +16,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
 - The peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
 
-### `@stagepass/cli`
-
-- Scaffold and package README text only, for the next patch. Published `@stagepass/cli@2.4.0` is unchanged. The monorepo templates now state the document root (`dist/` contains `api/`), the absolute PHP host URL, the Apache and nginx hidden-path deny, the `php -S` hidden-path gap, and the fail-open rate limit.
-
 ### Repo
 
 - Stable package releases now stage directly on npm dist-tag `latest` (one 2FA approval, no separate promotion); prereleases still stage on `next`.
@@ -34,6 +30,24 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 
 ## `@stagepass/cli`
+
+### [2.4.1] - unreleased
+
+Security patch on top of 2.4.0. Not published.
+
+#### Security
+
+- PHP projects from `stagepass new --php` ship a web-root `.htaccess` that denies hidden path segments (HTML5 Boilerplate `file_access`, with visible files under `/.well-known/` left reachable). `stagepass build` copies that file into `dist/` when `"php": true` and the project has one. It still does not copy `.env`, `.php/.env`, or `.php/rate-limit/`. An existing project `.htaccess` is not replaced. A `dist/.htaccess` stays when the project has none. Published CLI 2.4.0 does not include this file. nginx does not read `.htaccess`; the server snippet is in the package README and `api/README.md`, and it must sit before `location ~ \.php$`.
+- OPTIONS preflight on `api/action.php` removes `X-Powered-By` before the 204 response. `header_remove` previously ran only in `respond()`, which that path does not call.
+
+#### Fixed
+
+- PHP comments and the starter README no longer say `.php/` sits outside the public root. `load_config()` reads `.env` in the project root and `.php/.env`. The document root is the folder that contains `api/`.
+- Package README and `api/README.md` state the document root, `php -S 127.0.0.1:8080 -t .` (no Caddy 404, never against a real `.env`), and the JavaScript fallback: `sp.resolveLocalUrl` returns a URL only during an active `.sp` session. In production the fetch uses the absolute PHP host, for example `https://php.example.com/api/action.php`, not `window.location.origin`.
+
+#### Notes
+
+- Rate limiting stays fail-open and uses only `REMOTE_ADDR`. `X-Forwarded-For` is not trusted without a proxy allowlist. Behind a reverse proxy every visitor can share one counter. Still open: [sgt7wKlT](https://trello.com/c/sgt7wKlT).
 
 ### [2.4.0] - 2026-11-12
 

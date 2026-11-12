@@ -70,6 +70,7 @@ export function scaffoldPhpTemplateMap(options = {}) {
     { template: 'api/lib/validate.php', out: 'api/lib/validate.php' },
     { template: 'api/env.example', out: 'api/.env.example' },
     { template: 'php-private/config.php', out: '.php/config.php' },
+    { template: 'htaccess', out: '.htaccess' },
   ];
 }
 
@@ -222,7 +223,8 @@ export async function planScaffoldFiles(options, deps = {}) {
           '## PHP',
           '',
           `PHP is on. Caddy serves \`https://${options.name}.sp/api/action.php\` with \`php_fastcgi\`.`,
-          'Read `api/README.md`. Copy `api/.env.example` to `.env` in the project root (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL. From Webflow, call the PHP host with its absolute URL.',
+          'Read `api/README.md`. Copy `api/.env.example` to `.env` in the project root (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL. From Webflow, call the PHP host with its absolute URL, not `window.location.origin`.',
+          'Apache uses the project `.htaccess`. nginx needs the snippet in `api/README.md` before the PHP location.',
           '',
         ].join('\n')
       : [

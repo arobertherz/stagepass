@@ -29,7 +29,7 @@ export const BUILD_SCRIPT_CUSTOM_HINT = [
   `What the current scaffold does (${BUILD_SCRIPT_DOC_URL}):`,
   '  stagepass watch and stagepass dev write only stable dist/main.js and dist/styles.css. Hashed files and manifest.json stay as the last stagepass build left them.',
   '  stagepass build writes content hashes, stable copies, and SRI in dist/manifest.json, then deletes hashed files the previous manifest listed that this build does not. CLI 2.2.x manifests store those filenames as strings; those names are included. Only plain <base>.<8 hex><ext> files directly in dist/ are removed.',
-  '  When stagepass.json has "php": true, stagepass build also copies api/ and .php/config.php into dist. It skips .env, .php/rate-limit, logs, pid files, and key, certificate, or database files (.pem, .key, .p12, .pfx, .crt, .cer, .sqlite, .db). It keeps .htaccess and .env.example. Watch does not copy them.',
+  '  When stagepass.json has "php": true, stagepass build also copies api/, .php/config.php, and a project-root .htaccess into dist. It skips .env, .php/.env, .php/rate-limit, logs, pid files, and key, certificate, or database files (.pem, .key, .p12, .pfx, .crt, .cer, .sqlite, .db). It keeps .htaccess and .env.example. A dist/.htaccess stays when the project has none. Watch does not copy them.',
   'Port that behavior into your script by hand. The Scripts section of a README from stagepass new describes the same stagepass build, stagepass watch and stagepass dev commands.',
 ].join('\n');
 
@@ -71,6 +71,11 @@ export const KNOWN_SCAFFOLD_BUILD_SCRIPTS = [
     id: '2.4.0',
     commit: '983f090',
     sha256: '98578f87225fd03d08b7e5d5bbdecc07cbb6ccbbc754642c6e880bb2f53559bb',
+  },
+  {
+    id: '2.4.0-keys',
+    commit: '6966954',
+    sha256: 'cba431ef9e0ff257ecced77613f6157c96d64f2a2db7679fcaa6467795d5ca9c',
   },
 ];
 
