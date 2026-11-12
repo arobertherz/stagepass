@@ -1064,7 +1064,8 @@ describe('new: origins, php, preflight', () => {
       expect(readme).toContain('https://stagepass.one/docs/php/');
       expect(readme).toContain('https://php.example.com/api/action.php');
       expect(readme).toContain('Copy `api/.env.example` to `.env` in the project root');
-      expect(readme).not.toContain('window.location.origin');
+      expect(readme).toContain('`window.location.origin` is the Webflow host');
+      expect(readme).not.toContain('fetch(window.location.origin');
       expect(readme).not.toContain('Secrets belong only in `api/.env`');
       expect(readme).not.toContain('not live yet');
       expect(readme).not.toContain('not part of the Stagepass repository yet');

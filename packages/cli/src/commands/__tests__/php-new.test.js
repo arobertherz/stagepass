@@ -131,6 +131,9 @@ describe('cli-php new', () => {
       expect(contact).not.toMatch(/\bmail\s*\(/);
       expect(await fs.pathExists(path.join(target, '.env'))).toBe(false);
       expect(await fs.pathExists(path.join(target, 'api/.env'))).toBe(false);
+      const htaccess = await fs.readFile(path.join(target, '.htaccess'));
+      const htTemplate = await fs.readFile(path.join(templates, 'htaccess'));
+      expect(htaccess.equals(htTemplate)).toBe(true);
       const ignore = await fs.readFile(path.join(target, '.gitignore'), 'utf8');
       expect(ignore).toContain('.env');
       expect(ignore).toContain('.php/rate-limit/');
@@ -161,6 +164,7 @@ describe('cli-php new', () => {
       expect(code).toBe(0);
       expect(await fs.pathExists(path.join(target, 'api/action.php'))).toBe(false);
       expect(await fs.pathExists(path.join(target, '.php/config.php'))).toBe(false);
+      expect(await fs.pathExists(path.join(target, '.htaccess'))).toBe(false);
       const sp = await fs.readJson(path.join(target, 'stagepass.json'));
       expect(sp.php).toBe(false);
     } finally {
@@ -203,6 +207,30 @@ describe('cli-php new', () => {
       expect(errors.join('\n')).toMatch(/Refusing to write outside project directory/);
       expect(await fs.readdir(outside)).toEqual(['keep.txt']);
       expect(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).toBe('keep');
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
+  it('cli-php: refuses to overwrite an existing .htaccess', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-php-ht-'));
+    const target = path.join(tmp, 'php-app');
+    const errors = [];
+    try {
+      await fs.ensureDir(target);
+      await fs.writeFile(path.join(target, '.htaccess'), 'KEEP\n');
+      const code = await createNew('php-app', {
+        yes: true,
+        dir: target,
+        git: false,
+        lang: 'js',
+        styles: 'css',
+        siteModules: 'none',
+      }, deps(tmp, { error: (m) => errors.push(String(m)) }));
+      expect(code).toBe(1);
+      expect(errors.join('\n')).toMatch(/Refusing to overwrite/);
+      expect(errors.join('\n')).toContain('.htaccess');
+      expect(await fs.readFile(path.join(target, '.htaccess'), 'utf8')).toBe('KEEP\n');
     } finally {
       await fs.remove(tmp);
     }

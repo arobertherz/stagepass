@@ -34,6 +34,7 @@ const FIXTURES = [
   ['watch-stable.mjs', 'watch-stable'],
   ['pre-php.mjs', 'pre-php'],
   ['2.4.0.mjs', '2.4.0'],
+  ['2.4.0-keys.mjs', '2.4.0-keys'],
 ];
 
 describe('scaffold build.mjs detection', () => {

@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Optional PHP config, kept outside the public api/ directory.
- * Edit values here or in .env. Values in this file override the .env defaults.
- * On Stagepass, Caddy already returns 404 for hidden path segments such as ".php".
+ * Optional PHP config. The document root is the folder that contains api/, so this file is inside it.
+ * load_config() reads .env in the project root and .php/.env. Values here override those defaults.
+ * Hidden paths: shipped .htaccess on Apache, the nginx snippet in api/README.md, Caddy 404 locally.
  */
 
 declare(strict_types=1);

@@ -22,9 +22,8 @@ function project_root(): string
 }
 
 /**
- * Hidden directory for config and rate-limit files.
- *
- * On Stagepass, Caddy already returns 404 for any path segment starting with ".".
+ * Config and rate-limit directory, inside the document root (the folder that contains api/).
+ * Deny hidden paths with the shipped .htaccess, the nginx snippet in api/README.md, or Caddy locally.
  */
 function private_dir(): string
 {
@@ -130,7 +129,7 @@ function env_list(string $key): array
 }
 
 /**
- * Load configuration from .env and an optional PHP config file outside the public root.
+ * Load configuration from the project-root .env, .php/.env, and optional .php/config.php.
  *
  * @return array{
  *   env: string,

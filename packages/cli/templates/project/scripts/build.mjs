@@ -213,7 +213,20 @@ async function copyFiltered(src, dest) {
   }
 }
 
-/** PHP projects: upload bundle is dist/api plus dist/.php/config.php. Watch serves the project root. */
+/** Copy a regular project-root .htaccess. Missing source leaves dist/.htaccess alone. */
+async function publishRootHtaccess() {
+  const src = path.join(root, '.htaccess');
+  let st;
+  try {
+    st = await fs.lstat(src);
+  } catch {
+    return;
+  }
+  if (!st.isFile()) return;
+  await fs.copyFile(src, path.join(distDir, '.htaccess'));
+}
+
+/** PHP projects: dist/api, dist/.php/config.php, and dist/.htaccess. Watch serves the project root. */
 async function publishPhp() {
   if (watchMode) return;
   let cfg;
@@ -224,6 +237,7 @@ async function publishPhp() {
   }
   if (!cfg || cfg.php !== true) return;
   await copyFiltered(path.join(root, 'api'), path.join(distDir, 'api'));
+  await publishRootHtaccess();
   const configSrc = path.join(root, '.php', 'config.php');
   let st;
   try {

@@ -155,13 +155,52 @@ describe('cli-php build publish', () => {
     expect(fs.existsSync(path.join(dist, 'api', '.env'))).toBe(false);
   });
 
+  it('cli-php: production build copies a root .htaccess and still skips env files', async () => {
+    await setup(true);
+    await seedApi();
+    await fsp.writeFile(path.join(tmp, '.htaccess'), 'PROJECT-HTACCESS\n');
+    await fsp.writeFile(path.join(tmp, '.php', '.env'), 'SECRET_PHP_ENV\n');
+    await fsp.mkdir(path.join(tmp, 'dist'), { recursive: true });
+    await fsp.writeFile(path.join(tmp, 'dist', '.htaccess'), 'OLD-DIST\n');
+    const result = await runBuild();
+    expect(result.code, result.out).toBe(0);
+    const dist = path.join(tmp, 'dist');
+    expect(await fsp.readFile(path.join(dist, '.htaccess'), 'utf8')).toBe('PROJECT-HTACCESS\n');
+    expect(fs.existsSync(path.join(dist, '.env'))).toBe(false);
+    expect(fs.existsSync(path.join(dist, '.php', '.env'))).toBe(false);
+    expect(fs.existsSync(path.join(dist, '.php', 'rate-limit'))).toBe(false);
+    expect(await fsp.readFile(path.join(dist, '.php', 'config.php'), 'utf8')).toContain('return');
+  });
+
+  it('cli-php: a dist .htaccess stays when the project has none', async () => {
+    await setup(true);
+    await seedApi();
+    await fsp.mkdir(path.join(tmp, 'dist'), { recursive: true });
+    await fsp.writeFile(path.join(tmp, 'dist', '.htaccess'), 'KEEP-DIST\n');
+    const result = await runBuild();
+    expect(result.code, result.out).toBe(0);
+    expect(await fsp.readFile(path.join(tmp, 'dist', '.htaccess'), 'utf8')).toBe('KEEP-DIST\n');
+  });
+
+  it('cli-php: a symlink .htaccess is not published', async () => {
+    await setup(true);
+    await seedApi();
+    await fsp.writeFile(path.join(tmp, 'secret.txt'), 'SECRET-LINK\n');
+    await fsp.symlink(path.join(tmp, 'secret.txt'), path.join(tmp, '.htaccess'));
+    const result = await runBuild();
+    expect(result.code, result.out).toBe(0);
+    expect(fs.existsSync(path.join(tmp, 'dist', '.htaccess'))).toBe(false);
+  });
+
   it('cli-php: a non-PHP project build does not copy api/', async () => {
     await setup(false);
     await seedApi();
+    await fsp.writeFile(path.join(tmp, '.htaccess'), 'PROJECT-HTACCESS\n');
     const result = await runBuild();
     expect(result.code, result.out).toBe(0);
     expect(fs.existsSync(path.join(tmp, 'dist', 'api'))).toBe(false);
     expect(fs.existsSync(path.join(tmp, 'dist', '.php'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'dist', '.htaccess'))).toBe(false);
     expect(fs.existsSync(path.join(tmp, 'dist', 'main.js'))).toBe(true);
     const manifest = JSON.parse(await fsp.readFile(path.join(tmp, 'dist', 'manifest.json'), 'utf8'));
     expect(manifest['main.js'].file).toMatch(/^main\./);
@@ -170,6 +209,7 @@ describe('cli-php build publish', () => {
   it('cli-php: watch does not copy PHP into dist', async () => {
     await setup(true);
     await seedApi();
+    await fsp.writeFile(path.join(tmp, '.htaccess'), 'PROJECT-HTACCESS\n');
     child = spawn(process.execPath, ['scripts/build.mjs', '--watch'], {
       cwd: tmp,
       env: {
@@ -198,6 +238,7 @@ describe('cli-php build publish', () => {
     });
     expect(fs.existsSync(path.join(tmp, 'dist', 'api'))).toBe(false);
     expect(fs.existsSync(path.join(tmp, 'dist', '.php'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'dist', '.htaccess'))).toBe(false);
     expect(fs.existsSync(path.join(tmp, 'dist', 'manifest.json'))).toBe(false);
     child.kill('SIGTERM');
   });
