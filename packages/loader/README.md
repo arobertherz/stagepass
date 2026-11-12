@@ -41,7 +41,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 - Inserts the new element before the original, then removes the original (`data-stagepass-processed` prevents double work).
 - Local session: cache-bust with a single `?_cb=<timestamp>` per page load.
 - Production: version bust with `data-stagepass-version` (loader tag) and/or `data-stagepass-v` (per asset) → `?v=<version>` (URL-encoded; existing query/hash preserved).
-- Production, per asset: `data-stagepass-nocache` on a `data-src` / `data-href` asset appends a fresh `?_cb=<timestamp>` on **every** page view, for every visitor (not just during a Stagepass session). `?v=` is applied first when present, so both combine as `?v=<version>&_cb=<timestamp>`. Existing query/hash stay preserved.
+- Production, per asset: `data-stagepass-nocache` on a `data-src` / `data-href` asset sets exactly one fresh `?_cb=<timestamp>` on **every** page view, for every visitor (not just during a Stagepass session). An existing `_cb` in that URL is replaced, so there is never a second `_cb`. `?v=` is applied first when present. Order: original query (without `_cb`), then `v`, then `_cb`. Other query parameters and the hash stay preserved.
 - `data-stagepass-cachebust="true"` is legacy and **does not** timestamp every production view in v2.
 - Session expiry (default **12 h**): `data-stagepass-session-hours` on the loader tag.
 - Optional legacy global console mute: `data-stagepass-mute-console="true"` (production, no session only).
@@ -68,7 +68,7 @@ See [MIGRATION.md](../../MIGRATION.md) for breaking changes from 1.x.
 | `data-src` / `data-href` | Production URL for legacy mode (default). Required unless live-src opt-in uses native `src` / `href`. |
 | `data-stagepass-path` | Local path under the linked project root (optional). |
 | `data-stagepass-v` | Per-asset production `?v=<version>` (overrides loader `data-stagepass-version`). |
-| `data-stagepass-nocache` | Requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). Boolean (present, or `="true"`; `="false"` turns it off). Production only: appends a fresh `?_cb=<timestamp>` to **this asset's** URL on every page view, for every visitor. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
+| `data-stagepass-nocache` | Requires loader **2.5.0** or later (older loaders ignore the attribute; the asset then loads cached as before). Boolean (present, or `="true"`; `="false"` turns it off). Production only: sets exactly one fresh `?_cb=<timestamp>` on **this asset's** URL on every page view, for every visitor. An existing `_cb` is replaced (never a second one). Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb`. No effect during an active local/dev swap session (local assets already get a per-page-load `_cb` stamp). Not applied to `data-stagepass-live-src="true"` assets, which stay untouched in production by design. |
 | `data-stagepass-cachebust` | Legacy; ignored for production timestamps in v2. |
 | `data-stagepass-processed` | Internal; set after processing. |
 
@@ -123,7 +123,7 @@ Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0**
 
 - Boolean attribute: present (any value, including empty) or `="true"` turns it on; `="false"` turns it off (same as omitting it).
 - Scoped to exactly that asset. All other `data-stagepass` assets keep the existing version-only cache strategy.
-- Appends `?_cb=<Date.now()>` after any `?v=<version>` from `data-stagepass-v` / `data-stagepass-version`, preserving existing query strings and hash fragments.
+- Sets exactly one `?_cb=<Date.now()>`, replacing any `_cb` already in the URL (a page-supplied `_cb` does not survive, and a second `_cb` is not appended). Any `?v=<version>` from `data-stagepass-v` / `data-stagepass-version` is applied first, so the order is original query (without `_cb`), then `v`, then `_cb`. Other query parameters and the hash stay preserved.
 - Production only. During an active local/dev swap session the asset resolves to the local `.sp` URL as usual (single `?_cb=<timestamp>` per page load, same as every other swapped file). `data-stagepass-nocache` has no extra effect there.
 - Not applied to `data-stagepass-live-src="true"` assets: that mode is intentionally zero-cost (untouched by the loader in production), so pair an asset that needs permanent busting with the default `data-src` / `data-href` mode instead.
 - `data-stagepass-cachebust` remains legacy and unrelated: it no longer timestamps every production view (see above) and is not a per-asset opt-in.

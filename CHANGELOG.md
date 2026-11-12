@@ -357,15 +357,16 @@ Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the vi
 
 #### Added
 
-- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view (`?_cb=<timestamp>`), not just during a Stagepass session. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as `?v=<version>&_cb=<timestamp>` (existing query/hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
+- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view. Sets exactly one `?_cb=<timestamp>`; an existing `_cb` in the asset URL is replaced, so the page cannot keep a stale value and a second `_cb` is not appended. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb` (other query parameters and the hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
 
 #### Changed
 
-- Measured `loader.min.js`: 15006 / 6621 / 5910 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
+- Measured `loader.min.js`: 15065 / 6668 / 5955 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
 
 #### Docs
 
-- npm README: version references updated for 2.5.0; nocache marked as 2.5.0+.
+- npm README: version references updated for 2.5.0; nocache marked as 2.5.0+; existing `_cb` is documented as replaced by exactly one fresh `_cb`.
+- Package README: nocache section and 2.5.0 pins; also the post-2.4.0 docs already on master (MIGRATION link moved, GitHub issue #8 / P1 sentence removed, live.min.js since 2.4.0, Two layers for `sp.vars` vs `sp.env`, link to `docs/loader.md`, `certs renew` no longer marked unreleased).
 
 ### [2.4.0] - 2026-11-08
 
