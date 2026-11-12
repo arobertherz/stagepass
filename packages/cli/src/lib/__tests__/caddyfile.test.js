@@ -45,7 +45,12 @@ describe('renderSiteBlock', () => {
     expect(block).toContain(`@blocked path_regexp blocked ${BLOCKED_PATH_REGEXP}`);
     expect(block).toContain('respond 404');
     expect(block).toContain('Access-Control-Allow-Private-Network true');
-    expect(block).toContain('Vary Origin');
+    expect(block).toContain('>Vary Origin');
+    expect(block).toContain('>Access-Control-Allow-Origin "{http.request.header.Origin}"');
+    expect(block).toContain('match status 2xx');
+    expect(block).not.toContain(
+      'header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"'
+    );
     expect(block).not.toContain('webflow\\.io');
     expect(block).not.toContain('webflow\\.com');
     expect(block).toContain('example\\.com');
@@ -86,6 +91,8 @@ describe('renderSiteBlock', () => {
     expect(block).toContain('allowAllOrigins=true');
     expect(block).toContain('php=true');
     expect(block).toContain('header Access-Control-Allow-Origin *');
+    expect(block).toContain('>Access-Control-Allow-Origin *');
+    expect(block).toContain('match status 2xx');
     expect(block).toContain('@blocked path_regexp');
     expect(block).not.toContain('@cors_origin');
   });
@@ -125,7 +132,8 @@ describe('renderSiteBlock', () => {
     const fileIdx = block.indexOf('file_server');
     expect(liveIdx).toBeGreaterThan(-1);
     expect(fileIdx).toBeGreaterThan(liveIdx);
-    expect(block).toContain('header @cors_origin Access-Control-Allow-Origin');
+    expect(block).toContain('>Access-Control-Allow-Origin "{http.request.header.Origin}"');
+    expect(block).toContain('match status 2xx');
   });
 
   it('rejects invalid devPort before writing Caddyfile text', () => {
@@ -160,6 +168,38 @@ describe('parseBlocks / migrateLegacyContent', () => {
     expect(migrated.content).toContain('allowAllOrigins=true');
     expect(migrated.content).toContain('@blocked path_regexp');
 
+    const again = migrateLegacyContent(migrated.content);
+    expect(again.changed).toBe(false);
+    expect(again.content).toBe(migrated.content);
+    expect(migrated.upgraded).toEqual([]);
+  });
+
+  it('cli-php: rewrites a v2 block to the current marker and keeps options', () => {
+    const old = `# START: app.sp
+# stagepass-block: v2
+# stagepass-options: allowAllOrigins=false php=false origins=example.com devPort=34567
+app.sp {
+    tls internal
+    root * "/Users/dev/Sites/app"
+    file_server
+    header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
+    header @cors_origin Vary Origin
+}
+# END: app.sp
+`;
+    const migrated = migrateLegacyContent(`${old}\n`);
+    expect(migrated.changed).toBe(true);
+    expect(migrated.migrated).toEqual([]);
+    expect(migrated.upgraded).toEqual([
+      { domain: 'app.sp', root: '/Users/dev/Sites/app' },
+    ]);
+    expect(migrated.content).toContain(`# stagepass-block: ${BLOCK_VERSION}`);
+    expect(migrated.content).toContain(
+      'allowAllOrigins=false php=false origins=example.com devPort=34567'
+    );
+    expect(migrated.content).toContain('>Access-Control-Allow-Origin');
+    expect(migrated.content).not.toContain('allowAllOrigins=true');
+    expect(migrated.content).not.toContain('php_fastcgi');
     const again = migrateLegacyContent(migrated.content);
     expect(again.changed).toBe(false);
     expect(again.content).toBe(migrated.content);

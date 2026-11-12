@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 import {
+  BLOCK_VERSION,
   formatBackupStamp,
   migrateLegacyContent,
   parseBlocks,
@@ -25,7 +26,7 @@ export async function ensureCaddyfileMigrated(options = {}) {
   const silent = options.silent === true;
 
   if (!(await fs.pathExists(caddyfilePath))) {
-    return { changed: false, migrated: [], skipped: [], backupPath: null };
+    return { changed: false, migrated: [], upgraded: [], skipped: [], backupPath: null };
   }
 
   const original = await fs.readFile(caddyfilePath, 'utf-8');
@@ -39,6 +40,7 @@ export async function ensureCaddyfileMigrated(options = {}) {
     return {
       changed: false,
       migrated: [],
+      upgraded: [],
       skipped: result.skipped,
       backupPath: null,
     };
@@ -52,7 +54,7 @@ export async function ensureCaddyfileMigrated(options = {}) {
     await ensureMigratedProject(item.domain, item.root, projectsPath);
   }
 
-  if (!silent) {
+  if (!silent && result.migrated.length > 0) {
     console.log(
       chalk.yellow(
         `   Migrated ${result.migrated.length} legacy Caddy block(s). Backup: ${path.basename(backupPath)}`
@@ -67,10 +69,18 @@ export async function ensureCaddyfileMigrated(options = {}) {
       )
     );
   }
+  if (!silent && result.upgraded.length > 0) {
+    console.log(
+      chalk.dim(
+        `   Updated ${result.upgraded.length} Caddy block(s) to stagepass-block ${BLOCK_VERSION}.`
+      )
+    );
+  }
 
   return {
     changed: true,
     migrated: result.migrated,
+    upgraded: result.upgraded,
     skipped: result.skipped,
     backupPath,
   };

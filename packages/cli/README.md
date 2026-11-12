@@ -238,7 +238,7 @@ Stagepass reflects `Access-Control-Allow-Origin` for **allowed** browser `Origin
 
 Webflow staging/live hosts are **not** included by default. Add them per project, e.g. `--origin my-project.webflow.io`. An explicit `--origin *.webflow.io` (or `*.webflow.com`) is accepted but prints a warning (any Webflow user's site would then be allowed).
 
-Matching responses also send `Vary: Origin`. Preflight (`OPTIONS`) for allowed origins returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
+Matching responses also send `Vary: Origin`. On HTTP 2xx, Caddy sets a single `Access-Control-Allow-Origin` with a deferred replace, so a PHP app that sends the same header does not produce a second value. Other status codes are not given an ACAO by Caddy. Preflight (`OPTIONS`) for allowed origins returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
 
 Non-matching origins get **no** ACAO. Non-allowlisted `OPTIONS` still get `204` without CORS headers.
 
@@ -272,6 +272,8 @@ On `stagepass link`, `reload`, and `start`, legacy Caddyfile blocks (no `# stage
 2. Blocks are rewritten with path blocking + the version marker
 3. **`allowAllOrigins` is enabled** for migrated blocks so existing Webflow / live-domain embedding keeps working
 4. A short notice recommends tightening CORS
+
+Blocks already marked `# stagepass-block: v2` are rewritten to the current marker on those same commands. Saved options (`allowAllOrigins`, origins, `php`, `devPort`) stay as they are.
 
 Recommended after migration:
 
