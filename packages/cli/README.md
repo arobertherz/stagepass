@@ -130,7 +130,35 @@ Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `
 
 ### PHP
 
-`--php` writes a plain PHP 8.2 boilerplate: `api/action.php` is the only public entry, actions are an allowlist in `api/actions.php`, and `.php/config.php` stays outside that folder. Copy `api/.env.example` to `.env` in the project root (or use `.php/.env`) and set `ALLOWED_ORIGINS` (include `https://<name>.sp`). There is no mail. Caddy already returns 404 for hidden segments such as `/.env`, `/api/.env`, and `/.php/`. The scaffold does not ship an Apache or nginx deny snippet. On those hosts, deny hidden paths (at least `/.env` and `/.php/`) or set real environment variables so a `.env` file is not required in the web root. `stagepass build` keeps a `.htaccess` if you add one. `stagepass new` and `doctor` warn when `php` is missing, older than 8.2, or has no `php-fpm` / `php-cgi` (`brew install php` on macOS). `stagepass dev` and `stagepass watch` on a `"php": true` project do the same check and start Homebrew php-fpm (`brew services start php`, and `brew services restart php` only if start fails), the same helper `stagepass start` has used since 2.3. The JS build still runs. `stagepass build` copies `api/` to `dist/api/` and `.php/config.php` to `dist/.php/config.php`. Upload `dist/` (the folder that contains `api/`) so the public URL stays `/api/action.php`. The copy skips `.env`, `.php/rate-limit/`, logs, pid files, and key, certificate, or database files (`.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.cer`, `.sqlite`, `.db`). It keeps `.htaccess` and `.env.example`. `stagepass dev` / `watch` serve PHP from the project root, so edits show up on the next request. From the folder that contains `api/`, `php -S 127.0.0.1:8080 -t .` matches `/api/action.php`. `php -S` does not apply Caddy's hidden-path 404. Do not point it at a folder that already contains a real `.env`. Prefer `stagepass dev` or the linked `.sp` domain. `sp.resolveLocalUrl` is only the local `.sp` URL during an active session. On Webflow, fetch the absolute PHP host, for example `https://php.example.com/api/action.php`. `stagepass upgrade` does not add this boilerplate. The website guide is live at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/) (source outline: [docs/php.md](https://github.com/arobertherz/stagepass/blob/master/docs/php.md)).
+`--php` writes a plain PHP 8.2 boilerplate: `api/action.php` is the only public entry, actions are an allowlist in `api/actions.php`, and `.php/config.php` sits outside the `api/` folder. That placement is relative to `api/`, not a second directory outside the web root. The starter comments that say the config sits "outside the public root" and "outside the public api/ directory" mean the same thing. They will be corrected in the next patch ([quYArF43](https://trello.com/c/quYArF43)). Copy `api/.env.example` to `.env` in the project root (or use `.php/.env`) and set `ALLOWED_ORIGINS` (include `https://<name>.sp`). There is no mail. `load_config()` reads that project-root `.env` and `.php/.env`. It never reads `api/.env`.
+
+Caddy already returns 404 for any path segment that starts with `.` (`/.env`, `/api/.env`, `/.php/`). Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Until that patch, add one. Prefer real environment variables so a `.env` file is not required in the web root. The scaffold still does not ship a `.htaccess`. `stagepass build` keeps one if you add it today.
+
+`stagepass new` and `doctor` warn when `php` is missing, older than 8.2, or has no `php-fpm` / `php-cgi` (`brew install php` on macOS). `stagepass dev` and `stagepass watch` on a `"php": true` project do the same check and start Homebrew php-fpm (`brew services start php`, and `brew services restart php` only if start fails), the same helper `stagepass start` has used since 2.3. The JS build still runs. `stagepass build` copies `api/` to `dist/api/` and `.php/config.php` to `dist/.php/config.php`. It does not copy `.env` or `.php/.env`. The copy also skips `.php/rate-limit/`, logs, pid files, and key, certificate, or database files (`.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.cer`, `.sqlite`, `.db`). It keeps `.htaccess` and `.env.example`. Upload `dist/` (the folder that contains `api/`). That folder is the web root, so `.php/` is public on Apache and nginx unless hidden paths are denied. The public URL stays `/api/action.php`.
+
+Apache, in the web root `.htaccess`. `AllowOverride All` and `mod_rewrite` are required. The rule follows HTML5 Boilerplate [`file_access.conf`](https://github.com/h5bp/server-configs-apache/blob/main/h5bp/security/file_access.conf), wrapped in `IfModule`:
+
+```apache
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} "!(^|/)\.well-known/([^./]+./?)+$" [NC]
+    RewriteCond %{SCRIPT_FILENAME} -d [OR]
+    RewriteCond %{SCRIPT_FILENAME} -f
+    RewriteRule "(^|/)\." - [F]
+</IfModule>
+```
+
+nginx, inside the server block, before the PHP `location ~ \.php$` block. If this location comes later, `/.php/config.php` can be passed to php-fpm. The rule follows HTML5 Boilerplate [`security_file_access.conf`](https://github.com/h5bp/server-configs-nginx/blob/main/h5bp/location/security_file_access.conf):
+
+```nginx
+location ~* /\.(?!well-known\/) {
+    deny all;
+}
+```
+
+Both rules were tested on 12 November 2026 on php:8.2-apache (`AllowOverride All`, `a2enmod rewrite`) and on nginx 1.27 with php:8.2-fpm. `/.env`, `/.php/config.php`, `/api/.env.example`, and `/.git/HEAD` returned HTTP 403, with no secret or config leak. `/api/action.php?action=ping` returned HTTP 200, `{"status":"success","data":{"pong":true},"message":null}`. `/.well-known/test.txt` returned HTTP 200, body `well-known-ok`. `/.well-known/` as a directory with no index file returned HTTP 403 on both servers (no DirectoryIndex). Visible files under `/.well-known/` stay reachable. The security gap remains for the next patch: [quYArF43](https://trello.com/c/quYArF43).
+
+`stagepass dev` / `watch` serve PHP from the project root, so edits show up on the next request. From the folder that contains `api/`, `php -S 127.0.0.1:8080 -t .` matches `/api/action.php`. `php -S` does not apply Caddy's hidden-path 404. Do not point it at a folder that already contains a real `.env`. Prefer `stagepass dev` or the linked `.sp` domain. `sp.resolveLocalUrl` is only the local `.sp` URL during an active session. On Webflow, fetch the absolute PHP host, for example `https://php.example.com/api/action.php`. `stagepass upgrade` does not add this boilerplate. The website guide is live at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/) (source outline: [docs/php.md](https://github.com/arobertherz/stagepass/blob/master/docs/php.md)).
 
 ### Declared modules (`stagepass.json`)
 
