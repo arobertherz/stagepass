@@ -6,14 +6,14 @@ Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). CDN
 
 Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production CDN embeds, pin the **major** (`@2`), or an **exact** version when you want to freeze one publish and avoid alias caching.
 
-**Published 2.4.0 and live reload:** `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. `live.min.js` is in published loader **2.4.0** (`loader-v2.4.0` / `cddec72`; npm `latest`). Published **2.3.3** does **not** include it (CDN `/dist/live.min.js` on `@2.3.3` 404s; version scope, not a packaging bug). Do not assume a CDN `@2` embed ships live reload.
+**Published loader and live reload:** `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. `live.min.js` ships since published loader **2.4.0** (`loader-v2.4.0` / `cddec72`). npm `latest` is **2.5.0**. Published **2.3.3** does **not** include it (CDN `/dist/live.min.js` on `@2.3.3` 404s; version scope, not a packaging bug). Do not assume a CDN `@2` embed ships live reload.
 
 ### Recommended (`@2`)
 
 ```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
-  data-stagepass-version="2.4.0"
+  data-stagepass-version="2.5.0"
 ></script>
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
@@ -24,10 +24,10 @@ See [MIGRATION.md](../MIGRATION.md) for breaking changes from 1.x. `stagepass do
 
 ### Optional exact pin
 
-For maximum control (freeze one publish), use an exact version such as `@2.4.0`:
+For maximum control (freeze one publish), use an exact version such as `@2.5.0`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.4.0/dist/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.5.0/dist/loader.min.js"></script>
 ```
 
 jsDelivr may cache alias versions such as `@2` for a while after a new publish (often up to about 7 days). Exact pins are not affected the same way. To force a refresh of the major alias, purge:
@@ -51,7 +51,7 @@ Why `@2`:
 
 * **Compatible updates**: minor/patch releases within v2 stay backward compatible under strict semver.
 * **One intentional major bump**: breaking changes require a new major (v3) and a deliberate URL change.
-* **Exact pin when needed**: use `@2.4.0` (or any exact published version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.3.0-beta.4`).
+* **Exact pin when needed**: use `@2.5.0` (or any exact published version) for maximum control; prereleases are never resolved by `@2` (pin the exact beta, e.g. `@2.3.0-beta.4`).
 
 ## Markup
 
@@ -67,7 +67,7 @@ Why `@2`:
 | `data-src` / `data-href` | asset | Production URL (legacy mode; loaded by default for all users) |
 | `data-stagepass-path` | asset | Relative path on the local `.sp` root (optional; if omitted while swapping, the filename is extracted from the production URL) |
 | `data-stagepass-v` | asset | Production appends `?v=<version>` |
-| `data-stagepass-nocache` | asset | Boolean (present, or `="true"`; `="false"` off). Production only: appends `?_cb=<timestamp>` to this asset on every page view, for every visitor. Combines with `data-stagepass-v` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets. |
+| `data-stagepass-nocache` | asset | Available in published loader **2.5.0** (npm `latest`). Boolean (present, or `="true"`; `="false"` off). Production only: appends `?_cb=<timestamp>` to this asset on every page view, for every visitor. Combines with `data-stagepass-v` as `?v=<version>&_cb=<timestamp>`. No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets. |
 | `data-stagepass-version` | loader | Default production `?v=` for assets without a per-asset override |
 | `data-stagepass-session-hours` | loader | Session lifetime in hours (default `12`) |
 | `data-stagepass-mute-console="true"` | loader | Opt-in legacy global console mute in production when no session |
@@ -258,7 +258,15 @@ sp.resolveLocalUrl('js/app.js');   // e.g. 'https://my-project.sp/js/app.js?_cb=
 sp.resolveLocalUrl('/lib.js');     // leading slash is normalized
 ```
 
-While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`. For an individual asset that must bypass caching permanently in production (for every visitor, every view — e.g. a script embedding forms via iframes), add `data-stagepass-nocache` to that element; it sets exactly one `?_cb=<timestamp>` after any `?v=`, replacing a `_cb` already present in the URL. It has no effect while swapping locally (the asset already resolves to the local `.sp` URL with its own `_cb` stamp) and does not apply to `data-stagepass-live-src="true"` assets. `data-stagepass-cachebust` stays legacy and separate.
+While a local session is active, swapped assets use a single `?_cb=<timestamp>` per page load. In production, use `data-stagepass-version` (loader) or `data-stagepass-v` (asset) to append `?v=<version>`. For an individual asset that must bypass caching permanently in production (for every visitor, every view — e.g. a script embedding forms via iframes), add `data-stagepass-nocache` to that element; it sets exactly one `?_cb=<timestamp>` after any `?v=`, replacing a `_cb` already present in the URL. It has no effect while swapping locally (the asset already resolves to the local `.sp` URL with its own `_cb` stamp) and does not apply to `data-stagepass-live-src="true"` assets. `data-stagepass-cachebust` stays legacy and separate. `data-stagepass-nocache` is available in published loader **2.5.0** (npm `latest`). Older loaders ignore the attribute.
+
+```html
+<script
+  data-stagepass
+  data-src="https://cdn.example.com/js/forms-embed.js"
+  data-stagepass-nocache
+></script>
+```
 
 ### Logging API
 
@@ -294,4 +302,4 @@ More CLI security notes: [`packages/cli/README.md`](../packages/cli/README.md).
 
 ## Dev chunks
 
-While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. Published **2.3.3** does not include `live.min.js`; the chunk is in published loader **2.4.0** (npm `latest`). `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. See [dev.md](./dev.md) and [Version pinning](#version-pinning).
+While a session is active, the loader loads `flag.min.js` from the same folder as the loader script URL (or `data-stagepass-flag-base` / jsDelivr fallback). During a **swap** session (not debug), a loader build that ships the live client then appends `live.min.js` from the same folder as `flag-card.min.js`. `live.min.js` opens EventSource to `https://<domain.sp>/__stagepass/live` for CSS cache-bust without reload and full reload on JS; it closes after the first error when `stagepass dev` is not running. Never loaded without a session. Published **2.3.3** does not include `live.min.js`; the chunk ships since published loader **2.4.0**. npm `latest` is **2.5.0**. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. See [dev.md](./dev.md) and [Version pinning](#version-pinning).

@@ -1,10 +1,10 @@
 # Live reload (`stagepass dev`)
 
-`stagepass dev` ships in published CLI **2.3.0** (npm `latest`). The client chunk `live.min.js` is in published loader **2.4.0**.
+`stagepass dev` ships in published CLI **2.3.1** (npm `latest`). The client chunk `live.min.js` ships since published loader **2.4.0** (npm `latest` is **2.5.0**).
 
 ## Decision: no Vite in user projects
 
-Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order. `stagepass build` emits a hashed `dist/manifest.json` plus stable `dist/main.js` / `dist/styles.css` copies. `stagepass watch` and `stagepass dev` write only those stable files (the loader swaps them with `?_cb=` and does not read hashes or the manifest). A Vite dev graph would change script-order semantics and fight that model.
+Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order. Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. `stagepass build` emits a hashed `dist/manifest.json` plus stable `dist/main.js` / `dist/styles.css` copies. The loader swaps the stable files with `?_cb=` and does not read hashes or the manifest. **(unreleased, next CLI)** `stagepass watch` and `stagepass dev` write only those stable files (no hashed files, no `manifest.json` writes). Published CLI 2.3.1 still writes hashes and `manifest.json` from watch when bytes change. A Vite dev graph would change script-order semantics and fight that model.
 
 Instead, live reload is owned by the CLI and proxied on the existing `.sp` HTTPS site.
 
@@ -32,7 +32,7 @@ Then open the live site with `?stagepass=my-project.sp`.
 
 **Prerequisites (public origin):** for a public `https://` page that swaps to `https://<project>.sp` (typically `127.0.0.1`), allow Chrome **Local network** / **Loopback network** for that origin and trust the Stagepass local CA. These are separate failure modes (`LocalNetworkAccessPermissionDenied` vs `ERR_CERT_AUTHORITY_INVALID`). Details: [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-**Version split:** published `@stagepass/loader` **2.4.0** (npm `latest`) includes `dist/live.min.js`. Published **2.3.3** does **not** ship that chunk. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.4.0`) when a specific build must load. Automatic CSS swap / JS reload requires a loader that includes `live.min.js` (pin `@2.4.0`), an active swap session, **and** the `stagepass dev` SSE server from CLI 2.3.0. Content-hash classification: CSS-only real changes emit `{type:"css"}` (stylesheet clone with `?t=` cache-bust); any other real change emits `{type:"reload"}` (`location.reload()`). Opt-in `data-stagepass-live-src` is a separate production-markup switch, not the live-reload server. Overlay of production assets still needs `data-stagepass` tags as in [getting-started.md](./getting-started.md) / [loader.md](./loader.md).
+**Version split:** `dist/live.min.js` ships since published `@stagepass/loader` **2.4.0** (npm `latest` is **2.5.0**). Published **2.3.3** does **not** ship that chunk. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. Automatic CSS swap / JS reload requires a loader that includes `live.min.js` (pin `@2.5.0`), an active swap session, **and** the `stagepass dev` SSE server from CLI 2.3.0 (still in published CLI 2.3.1). Content-hash classification: CSS-only real changes emit `{type:"css"}` (stylesheet clone with `?t=` cache-bust); any other real change emits `{type:"reload"}` (`location.reload()`). Opt-in `data-stagepass-live-src` is a separate production-markup switch, not the live-reload server. Overlay of production assets still needs `data-stagepass` tags as in [getting-started.md](./getting-started.md) / [loader.md](./loader.md).
 
 ## Loader side
 
@@ -46,7 +46,7 @@ EventSource('https://<domain.sp>/__stagepass/live')
 
 On `css` events, every `<link rel="stylesheet">` whose `href` starts with the local base is replaced with a clone that has `?t=<timestamp>` (integrity removed; insert before remove). On `reload`, `location.reload()`. Stream payloads are JSON-parsed in try/catch; unknown types are ignored. Nothing from the stream is evaluated.
 
-Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a stable `dist` file only when its bytes changed. Watch does not write hashed files or `manifest.json`, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. The manifest stays as the last `stagepass build`. `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified older scaffold, and leaves an edited script in place with a hint.
+Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a dist file only when its bytes changed, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. **(unreleased, next CLI)** watch does not write hashed files or `manifest.json` (the manifest stays as the last `stagepass build`), and `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified older scaffold, leaving an edited script in place with a hint. Published CLI 2.3.1 does not do that replacement.
 
 ## Security notes
 

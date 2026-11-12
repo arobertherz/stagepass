@@ -6,7 +6,7 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 
 ## Install
 
-Published CLI 2.3.0 requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew, because `@inquirer/prompts@8` requires it. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Development and CI use Node 22 or 24.
+Published CLI 2.3.1 requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew, because `@inquirer/prompts@8` requires it. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Development and CI use Node 22 or 24.
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -21,7 +21,7 @@ npx @stagepass/cli@2 setup
 ## Requirements
 
 - **macOS** (system commands refuse other platforms with exit code 1; this is not a breaking change because those commands never worked off macOS)
-- Published CLI 2.3.0: Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
+- Published CLI 2.3.1: Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
 - Homebrew
 
 `stagepass --version` and `stagepass --help` work on any platform. For tests/CI only, set `STAGEPASS_SKIP_PLATFORM_CHECK=1` to bypass the macOS guard (not for production use).
@@ -56,7 +56,7 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
 | `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
 | `stagepass stop` | Stop Caddy & PHP. If autostart is installed/loaded, `launchctl bootout` first (until next login); use `autostart off` to disable permanently. |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
 | `stagepass certs renew` | Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm, or `--yes --i-understand-root-renewal`); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
@@ -77,7 +77,8 @@ All commands support `-v, --verbose` where applicable.
 - `certs renew` is opt-in and confirmation-gated. Site repair only deletes `certificates/local/<linked-domain>` after checks fail. `--root` moves the CA folder to a timestamped backup (never deletes; needs two interactive confirmations without `--yes`, or `--yes --i-understand-root-renewal`). `--yes` alone always aborts for `--root` (TTY or not). Do not combine `--root` with `--remove-orphans`; run them as separate commands. Orphans are removed only by SHA-1 via `renew --remove-orphans`.
 - Chrome may require Local Network Access permission for public HTTPS pages that load `https://*.sp` assets.
 - Autostart runs as your user (same privilege model as interactive `caddy start`). `start` kickstarts the agent when present; `stop` bootouts until the next login. If port 443 cannot be bound, `daemon` logs a clear error, may notify, and exits `0` so launchd KeepAlive does not restart-loop. Interactive `start` confirms before signalling any non-caddy listener (name + PID; SIGTERM then optional SIGKILL). Own processes are signalled without elevated rights first; `sudo` only when needed after confirmation. There is no standby `sudo -v`.
-- `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist.
+- `stagepass autostart on` records a launchd-safe `PATH` from `brew --prefix` (Apple Silicon `/opt/homebrew`, Intel `/usr/local`) plus `/usr/bin:/bin:/usr/sbin:/sbin`. It does **not** copy your interactive shell environment. `brew` and `caddy` must resolve to shims under that prefix's `bin`/`sbin` (normal Homebrew Cellar symlinks are fine). Missing Homebrew/Caddy aborts **before** writing the plist. Published CLI 2.3.1 uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path.
+- Published CLI 2.3.1 `stagepass doctor` fails when a LaunchAgent node or CLI path is missing. It warns when that node path is a versioned Homebrew Cellar path, or when the running daemon version differs from the CLI. The fix hint is `stagepass autostart on`.
 - Published CLI requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18.
 - Manual macOS checklist: [`TESTING-macos.md`](./TESTING-macos.md).
 
@@ -94,7 +95,7 @@ These are different prompts. Grant only the narrow dialog macOS shows. Stagepass
 #### Install location and LaunchAgent paths
 
 - Prefer a **stable** global install (`npm install -g @stagepass/cli` into the normal npm prefix, or another fixed absolute path). Avoid pointing autostart at a temporary Desktop unpack / ad-hoc test tarball when you can use the published package instead.
-- `autostart on` records **absolute** Node and CLI paths (often Homebrew Cellar Node + the realpathed `stagepass` entry) plus the validated Homebrew `PATH`. It does not follow later `brew` upgrades automatically.
+- `autostart on` records **absolute** Node and CLI paths plus the validated Homebrew `PATH`. Published CLI 2.3.1 uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path (it does not store that versioned binary). It does not follow later `brew` upgrades automatically.
 - After a Homebrew Node upgrade/cleanup, moving the CLI, or changing the npm prefix, run `stagepass autostart on` again so ProgramArguments stay valid. A brief local outage while the agent reloads is expected.
 - Upgrading the global CLI package does **not** rewrite an existing LaunchAgent that still points at an older test path. Switch deliberately: `stagepass autostart off` then `autostart on` with the stable CLI you want. Do **not** delete a test directory while a loaded agent still references it; disable/refresh the agent first.
 - Development checkouts (`packages/cli`, Desktop test packs) and the published global install are different binaries; compare behaviour with one style at a time.
@@ -158,7 +159,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 | `--site <host>` | Live site to detect modules from (default: the origin linked in `~/.stagepass/projects.json` for this folder). Stored in `stagepass.json` when given. |
 | `--site-modules <list>` | Set the modules list directly (`none`, `all`, or a comma list). |
 | `--skip-site` | Do not fetch the live site. |
-| `-y, --yes` | Accept the detected or existing list, and replace an unmodified `scripts/build.mjs`, without asking. |
+| `-y, --yes` | Accept the detected or existing list without asking. Replacing an unmodified `scripts/build.mjs` is **(unreleased, next CLI)**. |
 | `--dry-run` | Print every planned change; write no file. |
 
 `upgrade` bumps `@stagepass/*` in `package.json`, then resolves the modules list (`--site-modules`, else live detection, confirmed interactively; if the site is unreachable or no origin is known it asks; without a TTY it keeps the existing list or `[]` and prints a hint). It then syncs the project:
@@ -167,7 +168,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 - `AGENTS.md`: created if missing, otherwise only the managed block is replaced (or appended when there is none). Your own text stays. Broken markers are left alone with a hint.
 - `.cursor/rules/stagepass.mdc`: created if missing, otherwise only its managed block is refreshed.
 - `tsconfig.json` / `jsconfig.json`: only `compilerOptions.types` changes, the rest of the JSON is preserved. Files with comments, or without a `types` array, are skipped with a hint.
-- `scripts/build.mjs`: replaced when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing.
+- `scripts/build.mjs`: **(unreleased, next CLI)** replaced when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing. Published CLI 2.3.1 does not replace that file.
 
 Every change is printed as `file: action` (unchanged files are not listed; skipped files appear as hints). `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 
@@ -284,6 +285,7 @@ Hand-written content outside `# START:` / `# END:` markers is left untouched. Un
 | Autostart runs at login but `caddy: command not found` / daemon exits | Re-run `stagepass autostart on` so the plist embeds Homebrew `PATH`. Confirm `brew --prefix` and that `which caddy` points at `$prefix/bin/caddy` (Cellar symlink OK). |
 | macOS asks Node for Desktop access | Normal TCC when the CLI/agent reads a project under Desktop. Grant the folder or move the project / use a stable global CLI install. Not the same as browser Local Network or CA trust. |
 | Autostart still runs an old Desktop test binary after `npm i -g` | Global upgrade does not migrate LaunchAgent ProgramArguments. `autostart off` then `on` with the stable CLI; do not remove the old path while the agent still references it. |
+| Login autostart points at a deleted Homebrew Node, or `doctor` warns that the daemon version differs from the CLI | Published CLI 2.3.1. Run `stagepass autostart on`. `doctor` fails on a missing LaunchAgent node or CLI path, and warns on a versioned Cellar node path or a daemon/CLI version mismatch. The fix hint is `stagepass autostart on`. |
 | `stagepass start` spinner floods the terminal (weird ANSI) | Upgrade to a build with the spinner geometry guard. Rare with TTY width `0`. |
 | `start` asks for a password at every boot | There is no unconditional `sudo -v`. Only confirmed conflict resolution may use `sudo kill` / `apachectl`. |
 | Port 443 bind failure under LaunchAgent | Expected when something else owns 443; daemon exits `0` (no restart loop). Free the port or use interactive `stagepass start`. |
