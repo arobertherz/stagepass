@@ -123,6 +123,38 @@ describe('cli-php build publish', () => {
     expect(manifest['styles.css'].file).toMatch(/^styles\.[0-9a-f]{8}\.css$/);
   });
 
+  it('[F-5] production build skips key, cert, and database files and keeps htaccess', async () => {
+    await setup(true);
+    await seedApi();
+    const names = [
+      'secret.pem',
+      'app.key',
+      'id.p12',
+      'id.pfx',
+      'ca.crt',
+      'ca.cer',
+      'app.sqlite',
+      'app.db',
+      'Secret.PEM',
+    ];
+    for (const name of names) {
+      await fsp.writeFile(path.join(tmp, 'api', name), 'SECRET\n');
+    }
+    await fsp.writeFile(path.join(tmp, 'api', 'actions', 'token.key'), 'SECRET\n');
+    await fsp.writeFile(path.join(tmp, 'api', '.htaccess'), 'Require all denied\n');
+    const result = await runBuild();
+    expect(result.code, result.out).toBe(0);
+    const dist = path.join(tmp, 'dist');
+    expect(await fsp.readFile(path.join(dist, 'api', '.htaccess'), 'utf8')).toContain('Require all denied');
+    expect(await fsp.readFile(path.join(dist, 'api', '.env.example'), 'utf8')).toContain('ALLOWED_ORIGINS');
+    expect(await fsp.readFile(path.join(dist, 'api', 'action.php'), 'utf8')).toContain('ping');
+    for (const name of names) {
+      expect(fs.existsSync(path.join(dist, 'api', name))).toBe(false);
+    }
+    expect(fs.existsSync(path.join(dist, 'api', 'actions', 'token.key'))).toBe(false);
+    expect(fs.existsSync(path.join(dist, 'api', '.env'))).toBe(false);
+  });
+
   it('cli-php: a non-PHP project build does not copy api/', async () => {
     await setup(false);
     await seedApi();
