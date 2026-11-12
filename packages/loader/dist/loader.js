@@ -57,13 +57,19 @@ var Stagepass = (() => {
     const encoded = encodeURIComponent(value);
     const hashIdx = url.indexOf("#");
     const hash = hashIdx >= 0 ? url.slice(hashIdx) : "";
-    const base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+    let base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+    if (key === "_cb") {
+      base = base.replace(
+        /\?.*/,
+        (query) => query.replace(/[&?]_cb(=[^&]*)?(?=&|$)/g, "").replace(/^&/, "?")
+      );
+    }
     const sep = base.includes("?") ? "&" : "?";
     return `${base}${sep}${encodeURIComponent(key)}=${encoded}${hash}`;
   }
   function buildLocalAssetUrl(domain, relativePath, cacheBust) {
-    const clean = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
-    return `https://${domain}/${clean}?_cb=${encodeURIComponent(String(cacheBust))}`;
+    const clean = relativePath.startsWith("/") ? relativePath.slice(1) : relativePath;
+    return `https://${domain}/${clean}?_cb=${cacheBust}`;
   }
 
   // src/lna.ts
@@ -291,7 +297,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.4.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.5.0" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function flagBase(v, file) {
       if (typeof v !== "string" || !(v = v.trim())) return null;
@@ -636,7 +642,7 @@ var Stagepass = (() => {
       if (swap && localPath && dom) return buildLocalAssetUrl(dom, localPath, now);
       const version = el.getAttribute("data-stagepass-v") || loaderVersionAttr;
       let url = version ? appendQueryParam(productionSrc, "v", version) : productionSrc;
-      if (isNoCacheEnabled(el)) url = appendQueryParam(url, "_cb", String(Date.now()));
+      if (isNoCacheEnabled(el)) url = appendQueryParam(url, "_cb", Date.now());
       return url;
     }
     function extractLocalFilename(ps) {

@@ -102,6 +102,16 @@ describe('check-release-version', () => {
     expect(() => releasePlan('modules-v0.0.0-never', ROOT)).toThrow(/does not match tag version/);
   });
 
+  it('stages exactly @stagepass/loader@2.5.0 for loader-v2.5.0 and nothing else (AC-10)', () => {
+    const packages = readPackageVersions(ROOT);
+    const loader = packages.find((pkg) => pkg.dir === 'loader');
+    expect(loader).toEqual({ dir: 'loader', name: '@stagepass/loader', version: '2.5.0' });
+    const plan = releasePlan('loader-v2.5.0', ROOT);
+    expect(plan.stage).toEqual([loader]);
+    expect(plan.skip).toEqual([]);
+    expect(plan.stage.map((pkg) => pkg.name)).toEqual(['@stagepass/loader']);
+  });
+
   it('fails closed on a shared v-tag or an unknown package tag', () => {
     const packages = readPackageVersions(ROOT);
     const cli = packages.find((pkg) => pkg.dir === 'cli');
@@ -183,6 +193,19 @@ describe('check-release-version process (main)', () => {
     assertFailedWithoutSelection(runMain([modulesRef, 'extra']));
     assertFailedWithoutSelection(runMain([modulesRef, '']));
     assertFailedWithoutSelection(runMain(['', modulesRef]));
+  });
+
+  it('stages loader-v2.5.0 on latest and fails closed when extra arguments are passed (AC-10)', () => {
+    const result = runMain(['loader-v2.5.0']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(
+      '✅ Stage @stagepass/loader@2.5.0\n   dist_tag: latest (stable)\n'
+    );
+    expect(result.fileOut).toBe('stage_dir=loader\ndist_tag=latest\n');
+    expect(result.stdout).not.toContain('@stagepass/cli');
+    expect(result.stdout).not.toContain('@stagepass/modules');
+    assertFailedWithoutSelection(runMain(['loader-v2.5.0', 'extra']));
+    assertFailedWithoutSelection(runMain(['loader-v2.5.0', 'cli-v2.3.0']));
   });
 
   it('uses RELEASE_REF when the CLI argument is omitted', () => {

@@ -28,10 +28,12 @@ export function applyScriptLoadOrder(
 export const NOCACHE_ATTR = 'data-stagepass-nocache';
 
 /**
- * Per-asset permanent cache busting (opt-in, production only): a fresh `?_cb=<ts>`
- * is appended on every page view, for every visitor (not just during a Stagepass
- * session). Unlike `data-stagepass-cachebust` (legacy, no-op in production), this
- * is scoped to exactly the tagged element.
+ * Per-asset permanent cache busting (opt-in, production only): exactly one fresh
+ * `?_cb=<ts>` on every page view, for every visitor (not just during a Stagepass
+ * session). An existing `_cb` in the asset URL is replaced, so the page cannot
+ * keep a stale value and a second `_cb` is never appended. Unlike
+ * `data-stagepass-cachebust` (legacy, no-op in production), this is scoped to
+ * exactly the tagged element.
  *
  * Boolean attribute semantics: present (any value, including `""`) = on;
  * explicit `="false"` = off. `="true"` also reads as on.

@@ -439,8 +439,8 @@ declare const __STAGEPASS_VERSION__: string;
     const version = el.getAttribute('data-stagepass-v') || loaderVersionAttr;
     // data-stagepass-cachebust no longer timestamps every production view
     let url = version ? appendQueryParam(productionSrc, 'v', version) : productionSrc;
-    // data-stagepass-nocache: permanent per-asset cache bust, every visitor, every view
-    if (isNoCacheEnabled(el)) url = appendQueryParam(url, '_cb', String(Date.now()));
+    // nocache: exactly one fresh _cb (an existing query `_cb` is replaced; path and hash stay)
+    if (isNoCacheEnabled(el)) url = appendQueryParam(url, '_cb', Date.now());
     return url;
   }
 
