@@ -173,7 +173,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass certs renew`: Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)
 -   `stagepass autostart on|off|status`: Login LaunchAgent (`io.github.arobertherz.stagepass`)
 -   `stagepass daemon`: Foreground helper (PHP-FPM, certs log-only, `caddy run`, notifications; never sudo)
--   `stagepass new [name]`: Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP (`--php`, `--php-examples`), optional `--link`. Prefer `stagepass build` / `stagepass watch` / `stagepass dev`; `npm run dev` is a watch alias.
+-   `stagepass new [name]`: Scaffold a lean Webflow project (TypeScript + SCSS by default; `--yes` for non-interactive). Origins (`--staging` / `--production`), optional PHP boilerplate (`--php` / `--no-php`; `--php-examples` is deprecated), optional `--link`. Prefer `stagepass build` / `stagepass watch` / `stagepass dev`; `npm run dev` is a watch alias.
 -   `stagepass build` / `stagepass watch`: Thin wrappers around `npm run build` / `npm run watch`
 -   `stagepass dev`: Watch plus live reload SSE on the linked `.sp` domain
 -   `stagepass upgrade`: Bump `@stagepass/*` in the current package.json, sync project files, and print Webflow snippets. Replacing an unmodified `scripts/build.mjs` (edited copies stay, with a hint) is unreleased and ships with the next CLI.

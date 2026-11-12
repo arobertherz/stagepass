@@ -32,6 +32,7 @@ const FIXTURES = [
   ['2.3.0-sri.mjs', '2.3.0-sri'],
   ['2.3.0.mjs', '2.3.0'],
   ['watch-stable.mjs', 'watch-stable'],
+  ['pre-php.mjs', 'pre-php'],
 ];
 
 describe('scaffold build.mjs detection', () => {

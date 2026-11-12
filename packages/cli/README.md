@@ -115,8 +115,8 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 | `--staging <domain>` | Staging hostname (hostname only; same validation as `--origin`). Stored as `origin`. Must match `--site` when both are set. |
 | `--production <domain>` | Optional production hostname. Stored as `production`. When omitted, prints a short hint to add it later via `stagepass link --origin`. |
 | `--site-modules <list>` | Modules the site loads: `none`, `all`, or a comma list of `inject`, `cookies`, `maintenance`. Takes precedence over `--site`. |
-| `--php` / `--no-php` | Enable PHP for the project (`api/` + `php_fastcgi` on link). Default: off. Existing linked projects without `"php"` keep PHP on. |
-| `--php-examples` / `--no-php-examples` | Include `examples/php/` samples (requires `--php`). Default: off. |
+| `--php` / `--no-php` | Enable the PHP boilerplate (`api/`, `.php/config.php`, `php_fastcgi` on link). Default: off. Existing linked projects without `"php"` keep PHP on. |
+| `--php-examples` / `--no-php-examples` | Deprecated. Sample actions ship with `--php` in `api/actions/`. The flags are accepted and do not copy a second sample set. |
 | `--link` / `--no-link` | After scaffolding, run `stagepass link` (macOS only). Default: off; interactive macOS may offer it. |
 | `--git` / `--no-git` | `git init` (default: yes). |
 | `--remote <url>` | Set `origin` after git init (rejects URLs with embedded credentials). |
@@ -126,7 +126,11 @@ Scaffold a project with flags for every choice (interactive prompts only on a TT
 
 The name must be DNS-safe (lowercase `a-z`, `0-9`, hyphens; 1 to 63 chars; no leading/trailing hyphen). Existing files are never overwritten. Generated projects include `scripts/build.mjs` (content-hashed `dist/` + SRI `integrity` in `manifest.json`), scripts `build` / `watch` / `dev` (`dev` aliases `watch`), Webflow head/footer snippets (jsDelivr `@2`, loader plus the declared modules), `stagepass.json`, an `AGENTS.md` with the full `sp` API reference, `.cursor/rules/stagepass.mdc`, and a `.gitignore`. `@stagepass/loader` / `@stagepass/modules` are added as `^2` (same major as the CDN pin `@2`; npm installs the newest published 2.x). Per-module types are written only when the published or installed `@stagepass/modules` ships them (2.2.0 and later); otherwise `types` lists the umbrella `@stagepass/modules`.
 
-Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `stagepass setup` if the local stack looks incomplete (never automatic, never under `--yes` / no-TTY, never sudo by itself). Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint. Staging / production prompts, PHP prompts, `--staging` detection, and `link` reading `origin` / `production` from `stagepass.json` are part of this release.
+Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `stagepass setup` if the local stack looks incomplete (never automatic, never under `--yes` / no-TTY, never sudo by itself). Without a TTY (or with `--yes`) it uses `--site-modules`, then `--site` detection, else `[]` with a hint. The interactive wizard always asks whether to enable PHP unless `--php` / `--no-php` was passed. Staging / production prompts, `--staging` detection, and `link` reading `origin` / `production` from `stagepass.json` are part of this release.
+
+### PHP
+
+`--php` writes a plain PHP 8.2 boilerplate: `api/action.php` is the only public entry, actions are an allowlist in `api/actions.php`, and `.php/config.php` stays outside that folder. Copy `api/.env.example` to `.env` and set `ALLOWED_ORIGINS` (include `https://<name>.sp`). There is no mail. Caddy already returns 404 for hidden segments such as `/.env`, `/api/.env`, and `/.php/`. `stagepass new`, `doctor`, `dev`, and `watch` warn when `php` is missing, older than 8.2, or has no `php-fpm` / `php-cgi` (`brew install php`, then `brew services start php` on macOS). The JS build still runs. `stagepass build` copies `api/` and `.php/config.php` into `dist/` and skips `.env`, `.php/rate-limit/`, logs, and pid files. `stagepass dev` / `watch` serve PHP from the project root, so edits show up on the next request. A longer draft for the website lives in [`docs/php.md`](../../docs/php.md); that page is not live yet.
 
 ### Declared modules (`stagepass.json`)
 
@@ -234,7 +238,7 @@ Stagepass reflects `Access-Control-Allow-Origin` for **allowed** browser `Origin
 
 Webflow staging/live hosts are **not** included by default. Add them per project, e.g. `--origin my-project.webflow.io`. An explicit `--origin *.webflow.io` (or `*.webflow.com`) is accepted but prints a warning (any Webflow user's site would then be allowed).
 
-Matching responses also send `Vary: Origin`. Preflight (`OPTIONS`) for allowed origins returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
+Matching responses also send `Vary: Origin`. On HTTP 2xx, Caddy sets a single `Access-Control-Allow-Origin` with a deferred replace, so a PHP app that sends the same header does not produce a second value. Other status codes are not given an ACAO by Caddy. Preflight (`OPTIONS`) for allowed origins returns `204` with reflected ACAO, `Access-Control-Allow-Methods: GET, HEAD, POST, OPTIONS`, reflected `Access-Control-Allow-Headers`, `Access-Control-Max-Age: 86400`, and `Access-Control-Allow-Private-Network: true` (Chrome Private Network Access from public HTTPS → loopback).
 
 Non-matching origins get **no** ACAO. Non-allowlisted `OPTIONS` still get `204` without CORS headers.
 
@@ -268,6 +272,8 @@ On `stagepass link`, `reload`, and `start`, legacy Caddyfile blocks (no `# stage
 2. Blocks are rewritten with path blocking + the version marker
 3. **`allowAllOrigins` is enabled** for migrated blocks so existing Webflow / live-domain embedding keeps working
 4. A short notice recommends tightening CORS
+
+Blocks already marked `# stagepass-block: v2` are rewritten to the current marker on those same commands. Saved options (`allowAllOrigins`, origins, `php`, `devPort`) stay as they are.
 
 Recommended after migration:
 

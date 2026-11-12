@@ -147,7 +147,12 @@ describe('runProjectSiteChecks', () => {
       cwd: dir,
       skipSite: true,
       loadProjects: noProjects,
-      resolveCommand: async () => '/usr/bin/php',
+      platform: 'darwin',
+      resolveCommand: async (name) => (name === 'php' || name === 'php-fpm' ? `/usr/bin/${name}` : null),
+      exec: async (_file, args = []) => {
+        if (args[0] === '-v') return { stdout: 'PHP 8.2.28 (cli)\n', stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
     });
     expect(checks.find((c) => c.id === 'project.php')).toMatchObject({
       status: 'ok',

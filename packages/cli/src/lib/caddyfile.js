@@ -3,8 +3,11 @@ import { escapeCaddyQuotedString, validateRoot } from './paths.js';
 import { buildOriginAllowlistRegex, validateOriginList } from './origins.js';
 import { isValidDevPort, normalizeDevPort } from './dev-port.js';
 
-/** Marker written inside every Stagepass-managed site block. */
-export const BLOCK_VERSION = 'v2';
+/**
+ * Marker written inside every Stagepass-managed site block.
+ * v3: success responses set one ACAO (deferred replace) so PHP CORS is not duplicated.
+ */
+export const BLOCK_VERSION = 'v3';
 
 /**
  * Sensitive path / extension blocking (always on).
@@ -98,16 +101,7 @@ export function renderSiteBlock(domain, root, options = {}) {
     lines.push('        php_fastcgi 127.0.0.1:9000');
   }
   lines.push('        file_server');
-
-  if (allowAllOrigins) {
-    lines.push('        header Access-Control-Allow-Origin *');
-  } else {
-    lines.push(
-      '        header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"',
-      '        header @cors_origin Vary Origin'
-    );
-  }
-
+  lines.push(...deferredSuccessCorsLines(allowAllOrigins));
   lines.push('    }', '}', `# END: ${domain}`);
 
   return lines.join('\n');
@@ -140,16 +134,33 @@ function liveReloadHandleLines(port, allowAllOrigins) {
     '            flush_interval -1',
     '        }',
   ];
-  if (allowAllOrigins) {
-    lines.push('        header Access-Control-Allow-Origin *');
-  } else {
-    lines.push(
-      '        header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"',
-      '        header @cors_origin Vary Origin'
-    );
-  }
+  lines.push(...deferredSuccessCorsLines(allowAllOrigins));
   lines.push('    }', '');
   return lines;
+}
+
+/**
+ * One ACAO on HTTP 2xx, applied when the response is written.
+ * `>` replaces an upstream value (PHP) instead of adding a second one.
+ * Non-2xx responses are left alone so a PHP 403 does not gain ACAO.
+ * @param {boolean} allowAllOrigins
+ */
+function deferredSuccessCorsLines(allowAllOrigins) {
+  if (allowAllOrigins) {
+    return [
+      '        header {',
+      '            >Access-Control-Allow-Origin *',
+      '            match status 2xx',
+      '        }',
+    ];
+  }
+  return [
+    '        header @cors_origin {',
+    '            >Access-Control-Allow-Origin "{http.request.header.Origin}"',
+    '            >Vary Origin',
+    '            match status 2xx',
+    '        }',
+  ];
 }
 
 function allowAllCorsLines() {
@@ -188,6 +199,15 @@ function allowlistCorsLines(origins) {
     '        respond 204',
     '    }',
   ];
+}
+
+/**
+ * @param {string} blockText
+ * @returns {string|null} `v2`, `v3`, … or null when the block has no marker
+ */
+function blockMarkerVersion(blockText) {
+  const m = blockText.match(/# stagepass-block:\s*(v\d+)/);
+  return m ? m[1] : null;
 }
 
 /**
@@ -302,9 +322,10 @@ export function removeBlock(content, domain) {
 }
 
 /**
- * Migrate legacy (pre-v2) Stagepass blocks to the current renderer.
+ * Rewrite blocks that are not the current marker.
  *
- * Legacy blocks get allowAllOrigins=true so existing Webflow embedding keeps working.
+ * No marker (pre-v2): allowAllOrigins=true so existing Webflow embedding keeps working.
+ * An older marker (v2): same options comment, current header rules.
  *
  * @param {string} content
  * @param {object} [opts]
@@ -313,24 +334,34 @@ export function removeBlock(content, domain) {
 export function migrateLegacyContent(content, opts = {}) {
   const warn = opts.warn || (() => {});
   const blocks = parseBlocks(content);
-  const legacy = blocks.filter((b) => b.isLegacy);
+  const pending = blocks.filter((b) => blockMarkerVersion(b.full) !== BLOCK_VERSION);
 
-  if (legacy.length === 0) {
-    return { content, changed: false, migrated: [], skipped: [], warnings: [] };
+  if (pending.length === 0) {
+    return {
+      content,
+      changed: false,
+      migrated: [],
+      upgraded: [],
+      skipped: [],
+      warnings: [],
+    };
   }
 
   let next = content;
   const migrated = [];
+  const upgraded = [];
   const skipped = [];
   const warnings = [];
 
-  const ordered = [...legacy].sort((a, b) => b.index - a.index);
+  const ordered = [...pending].sort((a, b) => b.index - a.index);
 
   for (const block of ordered) {
+    const legacy = blockMarkerVersion(block.full) == null;
+    const kind = legacy ? 'legacy block' : 'block';
     if (!block.root) {
       const reason = 'could not parse root path';
       skipped.push({ domain: block.domain, reason });
-      const msg = `Left legacy block ${block.domain} unchanged (${reason}).`;
+      const msg = `Left ${kind} ${block.domain} unchanged (${reason}).`;
       warnings.push(msg);
       warn(msg);
       continue;
@@ -340,7 +371,7 @@ export function migrateLegacyContent(content, opts = {}) {
     if (!rootCheck.ok) {
       const reason = rootCheck.error;
       skipped.push({ domain: block.domain, reason });
-      const msg = `Left legacy block ${block.domain} unchanged (${reason}).`;
+      const msg = `Left ${kind} ${block.domain} unchanged (${reason}).`;
       warnings.push(msg);
       warn(msg);
       continue;
@@ -348,14 +379,20 @@ export function migrateLegacyContent(content, opts = {}) {
 
     let newBlock;
     try {
-      newBlock = renderSiteBlock(block.domain, rootCheck.path, {
-        allowAllOrigins: true,
-        origins: [],
-      });
+      // Legacy (no marker) keeps allow-all. A versioned block keeps its options comment.
+      const renderOptions = legacy
+        ? { allowAllOrigins: true, origins: [] }
+        : {
+            allowAllOrigins: block.options.allowAllOrigins === true,
+            origins: block.options.origins || [],
+            php: block.options.php,
+            devPort: block.options.devPort,
+          };
+      newBlock = renderSiteBlock(block.domain, rootCheck.path, renderOptions);
     } catch (e) {
       const reason = e.message || String(e);
       skipped.push({ domain: block.domain, reason });
-      const msg = `Left legacy block ${block.domain} unchanged (${reason}).`;
+      const msg = `Left ${kind} ${block.domain} unchanged (${reason}).`;
       warnings.push(msg);
       warn(msg);
       continue;
@@ -365,7 +402,9 @@ export function migrateLegacyContent(content, opts = {}) {
       next.slice(0, block.index) +
       newBlock.trim() +
       next.slice(block.index + block.length);
-    migrated.push({ domain: block.domain, root: rootCheck.path });
+    const item = { domain: block.domain, root: rootCheck.path };
+    if (legacy) migrated.push(item);
+    else upgraded.push(item);
   }
 
   next = next.replace(/\n{3,}/g, '\n\n');
@@ -377,8 +416,9 @@ export function migrateLegacyContent(content, opts = {}) {
 
   return {
     content: next,
-    changed: migrated.length > 0,
+    changed: migrated.length + upgraded.length > 0,
     migrated,
+    upgraded,
     skipped,
     warnings,
   };

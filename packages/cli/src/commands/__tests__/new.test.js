@@ -963,14 +963,21 @@ describe('new: origins, php, preflight', () => {
     expect(detectSite).not.toHaveBeenCalled();
   });
 
-  it('rejects --php-examples without --php', async () => {
+  it('cli-php: --php-examples is deprecated and does not fail without --php', async () => {
+    const logs = [];
     const r = await resolveNewOptions(
       'shop',
       { yes: true, php: false, phpExamples: true },
-      { isTTY: false, argv: ['--yes', '--no-php', '--php-examples'], exec: async () => ({ stdout: '' }) }
+      {
+        isTTY: false,
+        argv: ['--yes', '--no-php', '--php-examples'],
+        exec: async () => ({ stdout: '' }),
+        log: (m) => logs.push(String(m)),
+      }
     );
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/php-examples/i);
+    expect(r.ok).toBe(true);
+    expect(r.config.php).toBe(false);
+    expect(logs.join('\n')).toMatch(/deprecated/i);
   });
 
   it('dry-run lists php examples and production hint', async () => {
@@ -1004,8 +1011,11 @@ describe('new: origins, php, preflight', () => {
       );
       expect(code).toBe(0);
       const joined = logs.join('\n');
-      expect(joined).toContain('examples/php/form.php');
-      expect(joined).toContain('examples/php/proxy.php');
+      expect(joined).toContain('api/action.php');
+      expect(joined).toContain('api/.env.example');
+      expect(joined).toContain('.php/config.php');
+      expect(joined).not.toContain('examples/php/form.php');
+      expect(joined).toMatch(/deprecated/);
       expect(joined).toContain('api/README.md');
       expect(joined).toMatch(/Production domain skipped/i);
       expect(await fs.pathExists(path.join(tmp, 'dry-php'))).toBe(false);
@@ -1045,16 +1055,16 @@ describe('new: origins, php, preflight', () => {
         }
       );
       expect(code).toBe(0);
-      expect(await fs.pathExists(path.join(target, 'api/README.md'))).toBe(true);
-      expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(true);
-      expect(await fs.pathExists(path.join(target, 'examples/php/proxy.php'))).toBe(true);
-      const form = await fs.readFile(path.join(target, 'examples/php/form.php'), 'utf8');
-      expect(form).toContain('htmlspecialchars');
-      expect(form).toContain('REQUEST_METHOD');
-      const proxy = await fs.readFile(path.join(target, 'examples/php/proxy.php'), 'utf8');
-      expect(proxy).toContain('STAGEPASS_PROXY_ALLOWLIST');
-      expect(proxy).toContain('CURLOPT_FOLLOWLOCATION');
-      expect(proxy).toContain('CURLPROTO_HTTPS');
+      expect(await fs.pathExists(path.join(target, 'api/action.php'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, 'api/.env.example'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, '.php/config.php'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, '.env'))).toBe(false);
+      expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(false);
+      const readme = await fs.readFile(path.join(target, 'api/README.md'), 'utf8');
+      expect(readme).toContain('is not live yet');
+      expect(readme).not.toContain('not part of the Stagepass repository yet');
+      expect(logs.join('\n')).toMatch(/deprecated/i);
+      expect(logs.join('\n')).toMatch(/https:\/\/php-app\.sp/);
       const sp = await fs.readJson(path.join(target, 'stagepass.json'));
       expect(sp).toMatchObject({
         origin: 'php-app.webflow.io',

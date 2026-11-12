@@ -33,6 +33,7 @@ import {
 import { updateConfigTypes } from '../lib/project-sync.js';
 import { validateOriginEntry, isBroadWebflowWildcard } from '../lib/origins.js';
 import { isMacOS } from '../lib/platform.js';
+import { checkPhpRuntime, phpOriginsHint, phpProjectWarning } from '../lib/php-runtime.js';
 import { runDoctor } from '../lib/doctor.js';
 import { setup as defaultSetup } from './setup.js';
 import { link as defaultLink } from './link.js';
@@ -329,9 +330,6 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       if (php === undefined) {
         php = await askYesNo(rl, 'Enable PHP for this project?', false);
       }
-      if (php && phpExamples === undefined) {
-        phpExamples = await askYesNo(rl, 'Include PHP examples under examples/php/?', false);
-      }
       if (git === undefined) {
         git = await askYesNo(rl, 'Initialize git repository?', true);
       }
@@ -397,11 +395,12 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   if (styles !== 'scss' && styles !== 'css') {
     return { ok: false, error: 'Styles must be scss or css.' };
   }
-  if (phpExamples && !php) {
-    return {
-      ok: false,
-      error: '--php-examples requires PHP. Pass --php or omit --php-examples.',
-    };
+  if (phpExamples) {
+    log(
+      chalk.yellow(
+        '--php-examples is deprecated. Sample actions (ping, contact) are included with --php under api/actions/. This flag no longer copies examples/php/.'
+      )
+    );
   }
 
   const remoteCheck = validateGitRemote(remote);
@@ -752,6 +751,7 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     if (config.install) log('  (npm install)');
     if (config.linkAtEnd) log('  (stagepass link)');
     if (config.productionSkipped) log(`  (${PRODUCTION_HINT})`);
+    await reportPhpChoice(config, deps, log);
     return 0;
   }
 
@@ -845,6 +845,7 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   }
   log(chalk.dim(`Declared modules (stagepass.json): ${formatModules(config.siteModules)}`));
   log(chalk.dim(`PHP: ${config.php ? 'on' : 'off'}`));
+  await reportPhpChoice(config, deps, log);
 
   const snippets = buildWebflowSnippets({
     version: config.loaderVersion,
@@ -861,6 +862,31 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   if (typeof linkCode === 'number' && linkCode !== 0) return linkCode;
 
   return 0;
+}
+
+/**
+ * Origins hint plus a non-fatal PHP 8.2 / php-fpm check. The project is kept either way.
+ * @param {{ php?: boolean, name: string }} config
+ * @param {object} deps
+ * @param {(msg?: string) => void} log
+ */
+async function reportPhpChoice(config, deps, log) {
+  if (config.php !== true) return;
+  log(chalk.dim(phpOriginsHint(config.name)));
+  try {
+    const runtime = await checkPhpRuntime({
+      exec: deps.exec,
+      platform: deps.platform,
+      pathExists: deps.pathExists,
+      resolveCommand: deps.resolveCommand,
+      brewPrefix: deps.brewPrefix,
+    });
+    if (!runtime.ok) {
+      log(chalk.yellow(phpProjectWarning(runtime, `${config.name}.sp`)));
+    }
+  } catch {
+    log(chalk.yellow('PHP could not be checked. The project was still created.'));
+  }
 }
 
 /** Commander-facing alias */
