@@ -59,7 +59,10 @@ var Stagepass = (() => {
     const hash = hashIdx >= 0 ? url.slice(hashIdx) : "";
     let base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
     if (key === "_cb") {
-      base = base.replace(/[&?]_cb(?:=[^&]*)?(?=&|$)/g, "").replace(/^([^?#]*?)&/, "$1?");
+      base = base.replace(
+        /\?.*/,
+        (query) => query.replace(/[&?]_cb(=[^&]*)?(?=&|$)/g, "").replace(/^&/, "?")
+      );
     }
     const sep = base.includes("?") ? "&" : "?";
     return `${base}${sep}${encodeURIComponent(key)}=${encoded}${hash}`;
@@ -639,7 +642,7 @@ var Stagepass = (() => {
       if (swap && localPath && dom) return buildLocalAssetUrl(dom, localPath, now);
       const version = el.getAttribute("data-stagepass-v") || loaderVersionAttr;
       let url = version ? appendQueryParam(productionSrc, "v", version) : productionSrc;
-      if (isNoCacheEnabled(el)) url = appendQueryParam(url, "_cb", String(Date.now()));
+      if (isNoCacheEnabled(el)) url = appendQueryParam(url, "_cb", Date.now());
       return url;
     }
     function extractLocalFilename(ps) {

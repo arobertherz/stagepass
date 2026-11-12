@@ -357,11 +357,11 @@ Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the vi
 
 #### Added
 
-- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view. Sets exactly one `?_cb=<timestamp>`; an existing `_cb` in the asset URL is replaced, so the page cannot keep a stale value and a second `_cb` is not appended. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb` (other query parameters and the hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
+- `data-stagepass-nocache` (per-asset, boolean: present or `="true"` on, `="false"` off): permanent production cache busting for a single tagged asset, for every visitor on every page view. Sets exactly one `?_cb=<timestamp>`; an existing `_cb` query parameter is replaced (only in the query string, so `&` in the path and `_cb` in the hash stay), and a second `_cb` is not appended. Use case: a script that embeds forms via iframes and must never be served stale. Combines with `data-stagepass-v` / `data-stagepass-version` as original query (without `_cb`), then `?v=<version>`, then `_cb` (other query parameters and the hash preserved). No effect during an active local/dev swap session or on `data-stagepass-live-src="true"` assets (zero-cost mode stays untouched in production by design). `data-stagepass-cachebust` remains legacy and unchanged.
 
 #### Changed
 
-- Measured `loader.min.js`: 15065 / 6668 / 5955 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
+- Measured `loader.min.js`: 15065 / 6664 / 5958 (min / gzip / brotli); 2.4.0 was 14852 / 6562 / 5856.
 
 #### Docs
 

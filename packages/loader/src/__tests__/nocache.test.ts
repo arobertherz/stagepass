@@ -203,6 +203,115 @@ describe('data-stagepass-nocache (per-asset permanent cache bust, production)', 
     expect((el.src.match(/_cb=/g) || []).length).toBe(1);
   });
 
+  it('scopes _cb replacement to the query string', async () => {
+    const before = Date.now();
+    const tags = [
+      ['amp-q', 'https://cdn.example.com/p/a&b.js?x=1'],
+      ['amp-bare', 'https://cdn.example.com/q/a&b.js'],
+      ['amp-cb', 'https://cdn.example.com/r/a&b.js?_cb=111&x=1'],
+      ['amp-token', 'https://cdn.example.com/s/a&_cb=1.js?x=1'],
+      ['empty-q', 'https://cdn.example.com/empty.js?'],
+      ['look-cbx', 'https://cdn.example.com/cbx.js?_cbx=1'],
+      ['look-val', 'https://cdn.example.com/val.js?x=_cb'],
+      ['look-b', 'https://cdn.example.com/bcb.js?a=1&b_cb=2'],
+      ['case', 'https://cdn.example.com/case.js?_CB=1'],
+      ['bare', 'https://cdn.example.com/bare.js?_cb'],
+      ['bare-eq', 'https://cdn.example.com/emptyval.js?_cb='],
+      ['multi', 'https://cdn.example.com/multi.js?_cb&_cb=1&_cb='],
+      ['consec', 'https://cdn.example.com/consec.js?a=1&_cb&_cb=2&b=3'],
+      ['hash', 'https://cdn.example.com/hash.js?x=1#_cb=1'],
+      ['hash-only', 'https://cdn.example.com/hashonly.js#_cb=1'],
+      ['rel', '/rel/a&b.js?x=1&_cb=1'],
+      ['proto', '//cdn.example.com/proto/a&b.js?_cb=111&y=1'],
+    ];
+    document.body.innerHTML = tags
+      .map(
+        ([id, src]) =>
+          `<script data-stagepass data-stagepass-nocache data-custom="${id}" data-src="${src}"></script>`
+      )
+      .join('');
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+
+    const got = (id: string) => {
+      const el = document.querySelector(`[data-custom="${id}"]`) as HTMLScriptElement;
+      expect(el, id).toBeTruthy();
+      expect(el.hasAttribute('data-stagepass-nocache')).toBe(false);
+      return el.src;
+    };
+    const fresh = (src: string) => {
+      const noHash = src.split('#')[0];
+      const qIdx = noHash.indexOf('?');
+      const q = qIdx >= 0 ? noHash.slice(qIdx) : '';
+      const values = [...q.matchAll(/(?:^|[?&])_cb=(\d+)/g)].map((m) => m[1]);
+      expect(values).toHaveLength(1);
+      expect(Number(values[0])).toBeGreaterThanOrEqual(before);
+    };
+
+    const ampQ = got('amp-q');
+    expect(ampQ).toMatch(/^https:\/\/cdn\.example\.com\/p\/a&b\.js\?x=1&_cb=\d+$/);
+    fresh(ampQ);
+
+    const ampBare = got('amp-bare');
+    expect(ampBare).toMatch(/^https:\/\/cdn\.example\.com\/q\/a&b\.js\?_cb=\d+$/);
+    fresh(ampBare);
+
+    const ampCb = got('amp-cb');
+    expect(ampCb).toMatch(/^https:\/\/cdn\.example\.com\/r\/a&b\.js\?x=1&_cb=\d+$/);
+    expect(ampCb).not.toContain('_cb=111');
+    fresh(ampCb);
+
+    const ampToken = got('amp-token');
+    expect(ampToken).toMatch(/^https:\/\/cdn\.example\.com\/s\/a&_cb=1\.js\?x=1&_cb=\d+$/);
+    fresh(ampToken);
+
+    const emptyQ = got('empty-q');
+    expect(emptyQ).toMatch(/^https:\/\/cdn\.example\.com\/empty\.js\?&_cb=\d+$/);
+    fresh(emptyQ);
+
+    expect(got('look-cbx')).toMatch(/^https:\/\/cdn\.example\.com\/cbx\.js\?_cbx=1&_cb=\d+$/);
+    expect(got('look-val')).toMatch(/^https:\/\/cdn\.example\.com\/val\.js\?x=_cb&_cb=\d+$/);
+    expect(got('look-b')).toMatch(/^https:\/\/cdn\.example\.com\/bcb\.js\?a=1&b_cb=2&_cb=\d+$/);
+    expect(got('case')).toMatch(/^https:\/\/cdn\.example\.com\/case\.js\?_CB=1&_cb=\d+$/);
+
+    const bare = got('bare');
+    expect(bare).toMatch(/^https:\/\/cdn\.example\.com\/bare\.js\?_cb=\d+$/);
+    fresh(bare);
+    const bareEq = got('bare-eq');
+    expect(bareEq).toMatch(/^https:\/\/cdn\.example\.com\/emptyval\.js\?_cb=\d+$/);
+    fresh(bareEq);
+
+    const multi = got('multi');
+    expect(multi).toMatch(/^https:\/\/cdn\.example\.com\/multi\.js\?_cb=\d+$/);
+    fresh(multi);
+    const consec = got('consec');
+    expect(consec).toMatch(/^https:\/\/cdn\.example\.com\/consec\.js\?a=1&b=3&_cb=\d+$/);
+    fresh(consec);
+
+    const hash = got('hash');
+    expect(hash).toMatch(/^https:\/\/cdn\.example\.com\/hash\.js\?x=1&_cb=\d+#_cb=1$/);
+    expect(hash.split('#')[1]).toBe('_cb=1');
+    fresh(hash);
+    const hashOnly = got('hash-only');
+    expect(hashOnly).toMatch(/^https:\/\/cdn\.example\.com\/hashonly\.js\?_cb=\d+#_cb=1$/);
+    fresh(hashOnly);
+
+    expect(got('rel')).toMatch(/\/rel\/a&b\.js\?x=1&_cb=\d+$/);
+    const proto = got('proto');
+    expect(proto).toMatch(/^https?:\/\/cdn\.example\.com\/proto\/a&b\.js\?y=1&_cb=\d+$/);
+    expect(proto).not.toContain('_cb=111');
+    fresh(proto);
+  });
+
+  it('does not rewrite & in the path when nocache is absent', async () => {
+    document.body.innerHTML =
+      '<script data-stagepass data-custom="ctrl" data-stagepass-v="3" data-src="https://cdn.example.com/c/a&b.js?_cb=111&x=1#_cb=1"></script>';
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.querySelector('[data-custom="ctrl"]') as HTMLScriptElement;
+    expect(el.src).toBe('https://cdn.example.com/c/a&b.js?_cb=111&x=1&v=3#_cb=1');
+  });
+
   it('works the same when the loader runs inside an iframe document', async () => {
     const iframe = document.createElement('iframe');
     document.body.appendChild(iframe);

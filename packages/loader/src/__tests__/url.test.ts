@@ -44,6 +44,121 @@ describe('appendQueryParam', () => {
       'https://cdn.example.com/a.js?_cbExtra=1&x_cb=2&_cb=999'
     );
   });
+
+  it('keeps & in the path when appending _cb, with or without a query', () => {
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?x=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&b.js', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?_cb=999'
+    );
+  });
+
+  it('removes an existing _cb only from the query when the path contains &', () => {
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?_cb=111&x=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?x=1&_cb=111', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&_cb=1.js?x=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&_cb=1.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&_cb=1.js', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&_cb=1.js?_cb=999'
+    );
+  });
+
+  it('keeps an empty query and appends _cb after it', () => {
+    expect(appendQueryParam('a.js?', '_cb', '999')).toBe('a.js?&_cb=999');
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?&_cb=999'
+    );
+  });
+
+  it('does not remove lookalike query keys', () => {
+    expect(appendQueryParam('https://cdn.example.com/a.js?_cbx=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_cbx=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?x=_cb', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?x=_cb&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?a=1&b_cb=2', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?a=1&b_cb=2&_cb=999'
+    );
+  });
+
+  it('keeps a different-case _CB parameter', () => {
+    expect(appendQueryParam('https://cdn.example.com/a.js?_CB=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_CB=1&_cb=999'
+    );
+  });
+
+  it('removes a bare _cb and an empty _cb value', () => {
+    expect(appendQueryParam('https://cdn.example.com/a.js?_cb', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?_cb=', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?x=1&_cb', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?x=1&_cb=', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?x=1&_cb=999'
+    );
+  });
+
+  it('removes multiple and consecutive _cb parameters', () => {
+    expect(appendQueryParam('https://cdn.example.com/a.js?_cb&_cb=1&_cb=', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?_cb&_cb&a=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?a=1&_cb=999'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js?a=1&_cb&_cb=2&b=3', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?a=1&b=3&_cb=999'
+    );
+  });
+
+  it('leaves _cb inside the hash untouched', () => {
+    expect(appendQueryParam('https://cdn.example.com/a.js?x=1#_cb=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?x=1&_cb=999#_cb=1'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a.js#_cb=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a.js?_cb=999#_cb=1'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?_cb=111#section&_cb=1', '_cb', '999')).toBe(
+      'https://cdn.example.com/a&b.js?_cb=999#section&_cb=1'
+    );
+  });
+
+  it('handles relative and protocol-relative URLs', () => {
+    expect(appendQueryParam('/a&b.js?x=1&_cb=1', '_cb', '999')).toBe('/a&b.js?x=1&_cb=999');
+    expect(appendQueryParam('./a.js?_cb=1', '_cb', '999')).toBe('./a.js?_cb=999');
+    expect(appendQueryParam('a&b.js', '_cb', '999')).toBe('a&b.js?_cb=999');
+    expect(appendQueryParam('//cdn.example.com/a&b.js?_cb=111&x=1', '_cb', '999')).toBe(
+      '//cdn.example.com/a&b.js?x=1&_cb=999'
+    );
+    expect(appendQueryParam('//cdn.example.com/a&b.js', '_cb', '999')).toBe(
+      '//cdn.example.com/a&b.js?_cb=999'
+    );
+    expect(appendQueryParam('//cdn.example.com/a&_cb=1.js?y=2', '_cb', '999')).toBe(
+      '//cdn.example.com/a&_cb=1.js?y=2&_cb=999'
+    );
+  });
+
+  it('still appends a non-_cb key without rewriting & in the path (2.4.0 behaviour)', () => {
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?x=1', 'v', '2')).toBe(
+      'https://cdn.example.com/a&b.js?x=1&v=2'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&b.js', 'v', '2')).toBe(
+      'https://cdn.example.com/a&b.js?v=2'
+    );
+    expect(appendQueryParam('https://cdn.example.com/a&b.js?_cb=111', 'v', '2')).toBe(
+      'https://cdn.example.com/a&b.js?_cb=111&v=2'
+    );
+  });
 });
 
 describe('buildLocalAssetUrl', () => {
