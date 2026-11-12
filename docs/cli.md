@@ -24,7 +24,7 @@ Features marked **(unreleased, next CLI)** exist on master and ship with the nex
 | `stagepass certs renew` | Repair failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`). `--root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`. `--remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications via `osascript`); never sudo. |
-| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (`--site` / `--site-modules`, `--staging` / `--production`, `--php` / `--php-examples`, `--link`; `--yes` for non-interactive). |
+| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (`--site` / `--site-modules`, `--staging` / `--production`, `--php` / `--no-php`, `--link`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
 | `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
@@ -80,8 +80,8 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 | `--site-modules <list>` | Modules the site loads: `none`, `all`, or `inject,cookies,maintenance` |
 | `--staging <domain>` | Staging hostname written to `stagepass.json` as `origin` (wizard suggests `<name>.webflow.io`) |
 | `--production <domain>` | Optional production hostname written to `stagepass.json`. Skipping production prints a short `stagepass link --origin` hint. |
-| `--php` / `--no-php` | Enable PHP (`api/` + `php_fastcgi` on link). Default off. Existing linked projects without a `php` setting keep PHP on (non-breaking). |
-| `--php-examples` / `--no-php-examples` | Secure samples under `examples/php/` (requires `--php`) |
+| `--php` / `--no-php` | Enable the PHP boilerplate (`api/` + `.php/config.php`, `php_fastcgi` on link). Default off. The interactive wizard always asks this unless the flag is set. Existing linked projects without a `php` setting keep PHP on (non-breaking). |
+| `--php-examples` / `--no-php-examples` | Deprecated. Sample actions (`ping`, `contact`) ship with `--php` under `api/actions/`. Accepted, no extra files. |
 | `--link` / `--no-link` | Run `stagepass link` after scaffolding (macOS only; interactive ask unless `--link` / `--yes`) |
 | `--git` / `--no-git` | Initialize a git repository |
 | `--remote <url>` | Git remote URL (requires git) |
@@ -92,7 +92,11 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 
 Interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY).
 
-Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Published CLI 2.3.1 writes stable `dist/main.js` and `dist/styles.css` plus content-hashed copies and SRI (`integrity` sha384) in `dist/manifest.json`, and rewrites a dist file only when its bytes change. **(unreleased, next CLI):** `stagepass watch` and `stagepass dev` write only the stable files and leave hashes and `manifest.json` as the last `stagepass build` left them. That same scaffold's `stagepass build` still writes hashes, then deletes hashed names the previous manifest listed that the new one does not, including CLI 2.2.x string manifests (`"main.js": "main.<hash>.js"`) and later `{ "file", "integrity" }` entries. Only plain `<base>.<8 hex><ext>` files directly in `dist/` are removed. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Published CLI 2.3.1 writes stable `dist/main.js` and `dist/styles.css` plus content-hashed copies and SRI (`integrity` sha384) in `dist/manifest.json`, and rewrites a dist file only when its bytes change. **(unreleased, next CLI):** `stagepass watch` and `stagepass dev` write only the stable files and leave hashes and `manifest.json` as the last `stagepass build` left them. That same scaffold's `stagepass build` still writes hashes, then deletes hashed names the previous manifest listed that the new one does not, including CLI 2.2.x string manifests (`"main.js": "main.<hash>.js"`) and later `{ "file", "integrity" }` entries. Only plain `<base>.<8 hex><ext>` files directly in `dist/` are removed. When `stagepass.json` has `"php": true`, that build also copies `api/` and `.php/config.php` into `dist/` (never `.env`, `.php/rate-limit/`, logs, or pid files). Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+
+## PHP
+
+Optional plain PHP 8.2 (no Composer, no mail). `stagepass new --php` writes `api/action.php` (the only public file), `api/actions.php`, `api/.env.example`, and `.php/config.php`. Copy the example to `.env` and set `ALLOWED_ORIGINS`, including `https://<name>.sp`. Linked sites serve `https://<name>.sp/api/action.php` through Caddy `php_fastcgi`. Hidden segments (`/.env`, `/api/.env`, `/.php/`) are 404. `doctor`, `dev`, and `watch` warn if PHP is missing, older than 8.2, or has no `php-fpm` / `php-cgi`, and the JS build continues. On macOS: `brew install php`, then `brew services start php`. `stagepass build` copies `api/` and `.php/config.php` into `dist/` for upload (document root `api/`, `.php/` beside it) and never copies `.env`, rate-limit files, logs, or pid files. Watch does not copy PHP; FastCGI reads the project root. The website guide is still a draft: [php.md](./php.md). That page is not live yet.
 
 ## `upgrade`
 

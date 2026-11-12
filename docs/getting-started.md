@@ -97,7 +97,7 @@ stagepass build
 stagepass dev
 ```
 
-`--staging` / `--production` are written to `stagepass.json` as `origin` / `production`, and `link` without `--origin` flags uses those hosts. `--site` still works for live-module detection and must match `--staging` when both are set. Optional `--php` / `--php-examples` add PHP. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` over calling the npm scripts directly. See [cli.md](./cli.md#new).
+`--staging` / `--production` are written to `stagepass.json` as `origin` / `production`, and `link` without `--origin` flags uses those hosts. `--site` still works for live-module detection and must match `--staging` when both are set. Optional `--php` adds the PHP boilerplate (`api/action.php` on `https://<name>.sp`). Prefer `stagepass build`, `stagepass watch` and `stagepass dev` over calling the npm scripts directly. See [cli.md](./cli.md#new) and [PHP](./cli.md#php).
 
 **Option B: link an existing folder**
 
