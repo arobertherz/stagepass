@@ -15,7 +15,7 @@ Stagepass bridges your local IDE and live Webflow (or any production) sites. The
 npm install -g @stagepass/cli@2
 ```
 
-macOS is required for system commands. Published CLI 2.3.1 needs Node.js `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. See [docs/getting-started.md](docs/getting-started.md).
+macOS is required for system commands. Published CLI 2.4.0 needs Node.js `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. See [docs/getting-started.md](docs/getting-started.md).
 
 ## Minimal example
 

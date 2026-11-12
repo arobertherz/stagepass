@@ -1,8 +1,8 @@
-# PHP on Stagepass (planned)
+# PHP on Stagepass
 
-Planned page: `https://stagepass.one/docs/php/`
+Live page: [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/)
 
-Status: outline only. The page is not live yet. This is the longer guide the boilerplate README points to.
+This file is the source outline for that site page. Secrets belong only in `api/.env` and are never copied into `dist`.
 
 ## 1. What this is
 
@@ -34,6 +34,7 @@ Status: outline only. The page is not live yet. This is the longer guide the boi
 ## 5. Configuration
 
 - Copy `api/.env.example` to the project root as `.env`
+- Secrets belong only in `api/.env` and are never copied into `dist`
 - `ALLOWED_ORIGINS`: exact origins, scheme included, no trailing slash (`.sp` domain, Webflow preview, live site)
 - `APP_ENV=local` vs `production` (the `boom` test action is local only)
 - Honeypot field name, rate limit max/window, body size cap, timezone

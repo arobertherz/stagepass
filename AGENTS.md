@@ -11,7 +11,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### 1. `packages/cli` (Node.js Environment)
 -   **Purpose:** Sets up the local environment (HTTPS, DNS, PHP).
--   **Tech:** Published CLI 2.3.1 requires Node 20.17+ (`engines.node` `>=20.17.0`). Node 18 is no longer supported. Development/CI: Node 22 or 24. Commander, Execa, Ora, `@inquirer/prompts`.
+-   **Tech:** Published CLI 2.4.0 requires Node 20.17+ (`engines.node` `>=20.17.0`). Node 18 is no longer supported. Development/CI: Node 22 or 24. Commander, Execa, Ora, `@inquirer/prompts`.
 -   **Platform:** macOS only for system commands. Guard in `src/lib/platform.js`; override with `STAGEPASS_SKIP_PLATFORM_CHECK=1` for tests/CI only.
 -   **Role:** The "Enabler". It creates the environment where local files are served.
 -   **Package Name:** `@stagepass/cli`
@@ -167,7 +167,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 -   `stagepass reload`: Reload Caddy configuration
 -   `stagepass start`: Start Caddy & PHP (certs check; kickstart when autostart is on)
 -   `stagepass stop`: Stop services (bootout until next login when autostart is on; `autostart off` removes permanently)
--   `stagepass doctor`: Read-only diagnostics (never sudo); `--json`; exit 1 on fail. Unpinned CDN warnings are included. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`).
+-   `stagepass doctor`: Read-only diagnostics (never sudo); `--json`; exit 1 on fail. Unpinned CDN warnings are included. Published CLI 2.3.1 and later fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`).
 -   `stagepass certs check`: Read-only Caddy local CA / trust / TLS checks
 -   `stagepass certs trust`: Run `caddy trust` after confirmation or `--yes`
 -   `stagepass certs renew`: Repair site certs; `--root` / `--remove-orphans` (confirmation-gated)

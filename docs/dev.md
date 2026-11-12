@@ -1,6 +1,6 @@
 # Live reload (`stagepass dev`)
 
-`stagepass dev` ships in published CLI **2.3.1** (npm `latest`). The client chunk `live.min.js` ships since published loader **2.4.0** (npm `latest` is **2.5.0**).
+`stagepass dev` ships in published CLI **2.3.1 and later** (npm `latest` is **2.4.0**). The client chunk `live.min.js` ships since published loader **2.4.0** (npm `latest` is **2.5.0**).
 
 ## Decision: no Vite in user projects
 
@@ -32,7 +32,7 @@ Then open the live site with `?stagepass=my-project.sp`.
 
 **Prerequisites (public origin):** for a public `https://` page that swaps to `https://<project>.sp` (typically `127.0.0.1`), allow Chrome **Local network** / **Loopback network** for that origin and trust the Stagepass local CA. These are separate failure modes (`LocalNetworkAccessPermissionDenied` vs `ERR_CERT_AUTHORITY_INVALID`). Details: [troubleshooting.md](./troubleshooting.md#public-origin-to-sp-err_failed).
 
-**Version split:** `dist/live.min.js` ships since published `@stagepass/loader` **2.4.0** (npm `latest` is **2.5.0**). Published **2.3.3** does **not** ship that chunk. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. Automatic CSS swap / JS reload requires a loader that includes `live.min.js` (pin `@2.5.0`), an active swap session, **and** the `stagepass dev` SSE server from CLI 2.3.0 (still in published CLI 2.3.1). Content-hash classification: CSS-only real changes emit `{type:"css"}` (stylesheet clone with `?t=` cache-bust); any other real change emits `{type:"reload"}` (`location.reload()`). Opt-in `data-stagepass-live-src` is a separate production-markup switch, not the live-reload server. Overlay of production assets still needs `data-stagepass` tags as in [getting-started.md](./getting-started.md) / [loader.md](./loader.md).
+**Version split:** `dist/live.min.js` ships since published `@stagepass/loader` **2.4.0** (npm `latest` is **2.5.0**). Published **2.3.3** does **not** ship that chunk. `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. Automatic CSS swap / JS reload requires a loader that includes `live.min.js` (pin `@2.5.0`), an active swap session, **and** the `stagepass dev` SSE server from CLI 2.3.0 (still in published CLI 2.4.0). Content-hash classification: CSS-only real changes emit `{type:"css"}` (stylesheet clone with `?t=` cache-bust); any other real change emits `{type:"reload"}` (`location.reload()`). Opt-in `data-stagepass-live-src` is a separate production-markup switch, not the live-reload server. Overlay of production assets still needs `data-stagepass` tags as in [getting-started.md](./getting-started.md) / [loader.md](./loader.md).
 
 ## Loader side
 

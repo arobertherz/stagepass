@@ -4,7 +4,7 @@ Plain PHP 8.2 or newer. No framework. No Composer. No mail.
 
 `api/action.php` is the only public entry. Every request names an `action`. That name is looked up in `api/actions.php` and then handed to a file in `api/actions/`. User input is never used as a file path or a function name.
 
-A longer guide is planned at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/). That page is not live yet.
+A longer guide is at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/). Secrets belong only in `api/.env` and are never copied into `dist`.
 
 ## Where to edit
 
