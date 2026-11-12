@@ -51,6 +51,18 @@ function suggestionLines(stderr) {
 }
 
 describe('t4SN4TuQ unknown option and typo suggestions', () => {
+  it('[F-7] does not repeat the subcommand when the rest of the line already starts with it', async () => {
+    const result = await capture(['--dry-run', 'upgrade']);
+    expect(result.called).toEqual([]);
+    expect(result.stdout).toBe('');
+    expect(result.error).toMatchObject({ exitCode: 1, code: 'commander.unknownOption' });
+    expect(suggestionLines(result.stderr)).toEqual([
+      'Did you mean: stagepass new --dry-run upgrade',
+      'Did you mean: stagepass upgrade --dry-run',
+    ]);
+    expect(result.stderr).not.toContain('stagepass upgrade --dry-run upgrade');
+  });
+
   it('t4SN4TuQ suggests the one subcommand for a top-level option and keeps the value', async () => {
     const result = await capture(['--origin', 'wln-widget.webflow.io']);
     expect(result.called).toEqual([]);
