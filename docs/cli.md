@@ -90,7 +90,7 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 
 Interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY).
 
-Generated projects write stable `dist/main.js` and `dist/styles.css` plus hashed files and SRI (`integrity` sha384) per file in `dist/manifest.json`. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+`stagepass build` writes stable `dist/main.js` and `dist/styles.css`, content-hashed copies, and SRI (`integrity` sha384) in `dist/manifest.json`, then deletes hashed names the previous manifest listed that the new one does not (plain `<base>.<8 hex><ext>` files directly in `dist/` only). `stagepass watch` and `stagepass dev` write only the stable files and do not write or delete hashes or `manifest.json` (it stays the last production build). `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`; copy the template by hand to pick this up. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
 
 ## `upgrade`
 

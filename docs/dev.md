@@ -4,7 +4,7 @@
 
 ## Decision: no Vite in user projects
 
-Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order, and the scaffold emits a hashed `dist/manifest.json` with stable `dist/main.js` / `dist/styles.css` copies. A Vite dev graph would change script-order semantics and fight that model.
+Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order. `stagepass build` emits a hashed `dist/manifest.json` plus stable `dist/main.js` / `dist/styles.css` copies. `stagepass watch` and `stagepass dev` write only those stable files (the loader swaps them with `?_cb=` and does not read hashes or the manifest). A Vite dev graph would change script-order semantics and fight that model.
 
 Instead, live reload is owned by the CLI and proxied on the existing `.sp` HTTPS site.
 
@@ -46,7 +46,7 @@ EventSource('https://<domain.sp>/__stagepass/live')
 
 On `css` events, every `<link rel="stylesheet">` whose `href` starts with the local base is replaced with a clone that has `?t=<timestamp>` (integrity removed; insert before remove). On `reload`, `location.reload()`. Stream payloads are JSON-parsed in try/catch; unknown types are ignored. Nothing from the stream is evaluated.
 
-Scaffolded projects (`scripts/build.mjs --watch`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a `dist` file only when its bytes changed, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload.
+Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a stable `dist` file only when its bytes changed. Watch does not write hashed files or `manifest.json`, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. The manifest stays as the last `stagepass build`. Existing projects keep their own `scripts/build.mjs` (`stagepass upgrade` does not rewrite it).
 
 ## Security notes
 

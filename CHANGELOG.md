@@ -48,6 +48,10 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - LaunchAgent plist uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path, so `brew upgrade node` does not leave login autostart pointed at a deleted binary (#74).
 - `stagepass doctor` fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Cellar path or the running daemon version differs from the CLI (`stagepass autostart on`) (#74).
 
+#### Changed
+
+- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only). `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`.
+
 ### [2.3.0] - 2026-11-11
 
 Stable release of the CLI 2.3 line, on top of `2.3.0-beta.1` (published npm dist-tag `next` on 10 November 2026, shasum `7853bce7d186673aba28a20f4529ee775d9f3f2b`) plus two fixes that landed after the beta published (N-1, N-2); no other behaviour change. Published on npm as `@stagepass/cli@2.3.0` on 11 November 2026, 10:47 Europe/Berlin, dist-tag `latest`. Source tag `cli-v2.3.0` (`89665d1`), npm shasum `db4042723d9c7becde90fd6afdbbaaaea974327c`. The monorepo `packages/loader` and `packages/modules` package.json files remain at the published **2.4.0** / **2.2.2** versions; this release publishes neither loader nor modules. Online `new`/`upgrade` resolve snippet pins from the registry (stable 2.x loader, offline fall back to bundled).
