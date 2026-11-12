@@ -20,6 +20,8 @@ import { readStagepassJson } from '../lib/project-sync.js';
 import { getCaddyfilePath, getProjectsPath, validateRoot } from '../lib/paths.js';
 import { isPidAlive, isValidDevPort } from '../lib/dev-port.js';
 import { ensureStagepassReady } from '../lib/ensure-running.js';
+import { warnPhpProject } from '../lib/php-runtime.js';
+import { ensurePhpFpm } from '../lib/php-fpm.js';
 import { start as defaultStart } from './start.js';
 
 /** Grace before SIGKILL after a forwarded stop signal (overridable in tests). */
@@ -327,6 +329,18 @@ export async function dev(options = {}, deps = {}) {
   }
 
   setupDone = true;
+
+  await warnPhpProject(cwd, {
+    fs: fse,
+    exec: deps.exec,
+    platform: deps.platform,
+    pathExists: deps.pathExists,
+    resolveCommand: deps.resolveCommand,
+    brewPrefix: deps.brewPrefix,
+    domain,
+    warn: (m) => log(chalk.yellow(m)),
+    ensurePhpFpm: deps.ensurePhpFpm || ensurePhpFpm,
+  });
 
   log(chalk.green(`Live reload on https://${domain}/__stagepass/live (127.0.0.1:${live.port})`));
   if (options.verbose) {

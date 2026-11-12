@@ -1,7 +1,174 @@
-# API (PHP)
+# Stagepass PHP boilerplate
 
-This folder is the project document root for PHP handlers served by Caddy `php_fastcgi` on your linked `.sp` domain.
+Plain PHP 8.2 or newer. No framework. No Composer. No mail.
 
-- Put scripts here (for example `api/contact.php` → `https://{{NAME}}.sp/api/contact.php`).
-- Do not commit secrets. Load credentials from environment variables.
-- Prefer JSON responses and escape any HTML you render (`htmlspecialchars`).
+`api/action.php` is the only public entry. Every request names an `action`. That name is looked up in `api/actions.php` and then handed to a file in `api/actions/`. User input is never used as a file path or a function name.
+
+A longer guide is planned at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/). That page is not live yet.
+
+## Where to edit
+
+Edit these:
+
+```
+api/actions.php         Allowlist: register a new action here
+api/actions/*.php       Your action logic (see contact.php)
+.env                    Origins, limits, APP_ENV (copy from api/.env.example)
+.php/config.php         Optional PHP overrides of the .env defaults
+```
+
+Leave these alone unless you are changing the core:
+
+```
+api/action.php          Front controller
+api/lib/*               Responses, request parsing, security, validation, config
+```
+
+## Layout
+
+```
+api/action.php          Public front controller (core)
+api/actions.php         Action allowlist (you edit this)
+api/actions/ping.php    GET health check
+api/actions/contact.php POST form handler (validates only, does not send mail)
+api/lib/                Shared helpers (core)
+api/.env.example        Copy to the project root as .env
+.php/config.php         Config outside the public api/ folder
+.php/rate-limit/        Created at runtime, not public
+.env                    Local environment (do not commit)
+```
+
+## Configure
+
+1. Copy `api/.env.example` to `.env` in the project root (the folder that contains `api/`).
+2. Set `ALLOWED_ORIGINS` to the exact site origins that may call this API, including the scheme and without a trailing slash. Typical values are `https://your-project.sp`, `https://your-site.webflow.io`, and `https://www.example.com`.
+3. Keep `.env` out of git. On Stagepass, Caddy already returns 404 for hidden path segments such as `.env` and `.php`. On shared hosting, point the document root at `api/` so `/.env` and `/.php/` are not web-accessible.
+
+`APP_ENV=local` turns on a hidden `boom` action used only to test error handling. Leave `APP_ENV=production` on a live host.
+
+## Add a new action
+
+1. Create `api/actions/newsletter.php`. The file must return a callable. Read fields with `input_string()`. Throw `ValidationException` when input is invalid (that is a 422 fail). Any other uncaught exception becomes a generic 500 error.
+
+```php
+<?php
+declare(strict_types=1);
+
+if (!defined('STAGEPASS_PHP_ENTRY')) {
+    http_response_code(404);
+    exit;
+}
+
+return static function (array $input, array $config): array {
+    $errors = [];
+    validate_required($input, 'email', $errors);
+    validate_email($input, 'email', $errors);
+    if ($errors !== []) {
+        throw new ValidationException($errors);
+    }
+    // Your logic here.
+    return ['subscribed' => true];
+};
+```
+
+2. Register the name in `api/actions.php`:
+
+```php
+'newsletter' => [
+    'file' => 'newsletter.php',
+    'methods' => ['POST'],
+    'honeypot' => true,
+    'rate_limit' => true,
+    'origin' => 'required',
+],
+```
+
+3. Call it from JavaScript with `action: 'newsletter'`. Do not add a second public PHP file unless you have a strong reason.
+
+## Call it from JavaScript
+
+Use the existing Stagepass loader helpers. When a local session is active, `sp.resolveLocalUrl` points at `https://your-project.sp/...`. Otherwise use the public URL of the same path on your host.
+
+```js
+const path = '/api/action.php';
+const url =
+  (sp.vars.isLocal && sp.resolveLocalUrl(path)) ||
+  new URL(path, window.location.origin).href;
+
+const response = await fetch(url, {
+  method: 'POST',
+  headers: {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    action: 'contact',
+    name: 'Ada Lovelace',
+    email: 'ada@example.com',
+    message: 'Hello',
+    website: '', // honeypot; leave empty, hide this field in CSS
+  }),
+});
+
+const result = await response.json();
+// result.status is "success", "fail", or "error"
+if (result.status === 'success') {
+  console.log('Saved', result.data);
+} else {
+  console.warn(result.message, result.data);
+}
+```
+
+A simple GET check:
+
+```js
+const url =
+  (sp.vars.isLocal && sp.resolveLocalUrl('/api/action.php')) ||
+  '/api/action.php';
+
+const result = await fetch(url + '?action=ping', {
+  headers: { Accept: 'application/json' },
+}).then((r) => r.json());
+```
+
+## Response shape
+
+Every response is JSON with `status`, `data`, and `message`, plus a matching HTTP status code.
+
+```json
+{ "status": "success", "data": { "pong": true }, "message": null }
+```
+
+```json
+{
+  "status": "fail",
+  "data": { "email": "A valid email is required." },
+  "message": "Validation failed."
+}
+```
+
+```json
+{
+  "status": "error",
+  "data": null,
+  "message": "An unexpected error occurred. Try again later."
+}
+```
+
+`fail` is a rejected request (validation 422, unknown action 404, wrong method 405, disallowed origin 403, too many requests 429). `error` is an unexpected server failure (500) and never includes internal details.
+
+## Security defaults
+
+POST actions require an `Origin` header that is on `ALLOWED_ORIGINS`. GET `ping` may omit `Origin`, but a present `Origin` still has to match the list. CORS headers are only sent for allowed origins. A filled honeypot field (`website` by default) returns a generic success and does not run the handler. Rate limiting is per IP and action, stored as files under `.php/rate-limit/`.
+
+## Local PHP server
+
+From the project root (the folder that contains `api/`):
+
+```bash
+php -S 127.0.0.1:8080 -t api
+```
+
+Then: `curl 'http://127.0.0.1:8080/action.php?action=ping'`
+
+On a linked Stagepass domain the same file is reached at `https://your-project.sp/api/action.php`.

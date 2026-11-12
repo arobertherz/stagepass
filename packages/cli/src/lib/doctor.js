@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { runProjectSiteChecks } from './doctor-site.js';
 import path from 'node:path';
 import { defaultExec, resolveCommand } from './exec.js';
+import { checkPhpRuntime } from './php-runtime.js';
 import {
   getCaddyfilePath,
   getProjectsPath,
@@ -210,33 +211,14 @@ export async function runDoctor(opts = {}) {
     checks.push(check('caddy', 'ok', `Caddy found (${caddyPath})`));
   }
 
-  // PHP / php-fpm
-  const phpPath = await resolveCommand('php', exec);
-  let phpFpmPath = await resolveCommand('php-fpm', exec);
-  if (!phpFpmPath && brewPrefix) {
-    const candidate = path.join(brewPrefix, 'sbin', 'php-fpm');
-    if (await pathExists(candidate)) phpFpmPath = candidate;
-  }
-  if (!phpPath && !phpFpmPath) {
-    checks.push(check('php', 'fail', 'PHP / php-fpm not found'));
-  } else if (!phpFpmPath) {
-    checks.push(
-      check(
-        'php',
-        'warn',
-        `PHP found (${phpPath}) but php-fpm binary not found`,
-        'Stagepass Caddy blocks use php_fastcgi 127.0.0.1:9000'
-      )
-    );
-  } else {
-    checks.push(
-      check(
-        'php',
-        'ok',
-        `PHP/php-fpm found (${phpFpmPath}${phpPath ? `; php=${phpPath}` : ''})`
-      )
-    );
-  }
+  // PHP / php-fpm (version >= 8.2, php-fpm or php-cgi)
+  const phpRuntime = await checkPhpRuntime({
+    exec,
+    pathExists,
+    brewPrefix,
+    platform: opts.platform,
+  });
+  checks.push(check('php', phpRuntime.status, phpRuntime.message, phpRuntime.detail || undefined));
 
   // dnsmasq
   let dnsmasqPath = await resolveCommand('dnsmasq', exec);
@@ -637,6 +619,10 @@ export async function runDoctor(opts = {}) {
         skipSite: opts.skipSite === true,
         detectSite: opts.detectSite,
         loadProjects: opts.loadProjects,
+        exec,
+        pathExists,
+        platform: opts.platform,
+        brewPrefix,
       });
       for (const c of projectChecks) checks.push(check(c.id, c.status, c.message, c.detail));
     } catch (error) {

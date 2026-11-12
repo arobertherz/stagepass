@@ -187,6 +187,18 @@ broken.sp {
 });
 
 describe('upsertBlock / removeBlock', () => {
+  it('cli-php: hidden segments 404 .php, .env, and api/.env and still allow action.php', () => {
+    const body = BLOCKED_PATH_REGEXP.replace(/^\(\?i\)/, '');
+    const re = new RegExp(body, 'i');
+    expect(re.test('/.php/config.php')).toBe(true);
+    expect(re.test('/.env')).toBe(true);
+    expect(re.test('/api/.env')).toBe(true);
+    expect(re.test('/api/action.php')).toBe(false);
+    const block = renderSiteBlock('app.sp', '/tmp/app', { php: true });
+    expect(block).toContain('php_fastcgi 127.0.0.1:9000');
+    expect(block).toContain(BLOCKED_PATH_REGEXP);
+  });
+
   it('upserts and removes while preserving foreign content', () => {
     let content = '# keep me\n';
     const block = renderSiteBlock('x.sp', '/Users/dev/Sites/x', {});

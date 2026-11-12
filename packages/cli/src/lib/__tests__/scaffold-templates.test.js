@@ -38,21 +38,24 @@ describe('scaffold templates', () => {
     expect(map.map((m) => m.out)).toContain('.gitignore');
   });
 
-  it('php templates exist when enabled', () => {
+  it('cli-php: boilerplate templates exist when enabled and examples are not a second copy', () => {
     expect(scaffoldPhpTemplateMap({ php: false })).toEqual([]);
-    const withApi = scaffoldPhpTemplateMap({ php: true });
-    expect(withApi.map((m) => m.out)).toEqual(['api/README.md']);
-    const withExamples = scaffoldPhpTemplateMap({ php: true, phpExamples: true });
-    for (const { template } of withExamples) {
+    const withApi = scaffoldPhpTemplateMap({ php: true, phpExamples: true });
+    for (const { template } of withApi) {
       expect(fs.existsSync(path.join(root, template)), template).toBe(true);
+      expect(template.split('/').some((part) => part.startsWith('.'))).toBe(false);
     }
-    expect(withExamples.map((m) => m.out)).toEqual(
+    const outs = withApi.map((m) => m.out);
+    expect(outs).toEqual(
       expect.arrayContaining([
         'api/README.md',
-        'examples/php/form.php',
-        'examples/php/proxy.php',
-        'examples/php/README.md',
+        'api/action.php',
+        'api/actions/ping.php',
+        'api/actions/contact.php',
+        'api/.env.example',
+        '.php/config.php',
       ])
     );
+    expect(outs.some((out) => out.startsWith('examples/php/'))).toBe(false);
   });
 });
