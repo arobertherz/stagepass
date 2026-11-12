@@ -83,13 +83,82 @@ describe('data-stagepass-nocache (per-asset permanent cache bust, production)', 
     expect(el.href).toMatch(/^https:\/\/cdn\.example\.com\/embed\.css\?_cb=\d+$/);
   });
 
-  it('="false" turns it off, same as not set', async () => {
+  it('="false" turns it off, same as not set, and is not copied onto the new element', async () => {
     document.body.innerHTML =
-      '<script data-stagepass data-stagepass-nocache="false" data-src="https://cdn.example.com/embed.js"></script>';
+      '<script data-stagepass data-custom="keep" data-stagepass-v="1.2.3" data-stagepass-nocache="false" data-src="https://cdn.example.com/embed.js?_cb=111"></script>';
     await bootAs(loaderTag());
     await new Promise((r) => setTimeout(r, 0));
     const el = document.querySelector('script[src*="cdn.example.com"]') as HTMLScriptElement;
-    expect(el.src).toBe('https://cdn.example.com/embed.js');
+    // Same as no attribute: existing _cb stays, v is appended, nocache is not copied
+    expect(el.src).toBe('https://cdn.example.com/embed.js?_cb=111&v=1.2.3');
+    expect(el.hasAttribute('data-stagepass-nocache')).toBe(false);
+    expect(el.getAttribute('data-custom')).toBe('keep');
+    expect(document.querySelector('[data-stagepass-nocache]')).toBeNull();
+  });
+
+  it('="true" is not copied onto the generated element either', async () => {
+    document.body.innerHTML =
+      '<script data-stagepass data-custom="keep" data-stagepass-nocache="true" data-src="https://cdn.example.com/embed.js"></script>';
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.querySelector('script[src*="cdn.example.com"]') as HTMLScriptElement;
+    expect(el.src).toMatch(/^https:\/\/cdn\.example\.com\/embed\.js\?_cb=\d+$/);
+    expect(el.hasAttribute('data-stagepass-nocache')).toBe(false);
+    expect(el.getAttribute('data-custom')).toBe('keep');
+  });
+
+  it('replaces a single existing _cb instead of appending a second', async () => {
+    const before = Date.now();
+    document.body.innerHTML =
+      '<script data-stagepass data-stagepass-nocache data-src="https://cdn.example.com/embed.js?_cb=111"></script>';
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.querySelector('script[src*="cdn.example.com"]') as HTMLScriptElement;
+    const m = el.src.match(/^https:\/\/cdn\.example\.com\/embed\.js\?_cb=(\d+)$/);
+    expect(m).toBeTruthy();
+    expect(Number(m![1])).toBeGreaterThanOrEqual(before);
+    expect(el.src).not.toContain('_cb=111');
+    expect((el.src.match(/_cb=/g) || []).length).toBe(1);
+  });
+
+  it('replaces every existing _cb and keeps other params, v, and the hash in that order', async () => {
+    document.body.innerHTML =
+      '<script data-stagepass data-stagepass-nocache data-stagepass-v="1.2.3" data-src="https://cdn.example.com/embed.js?_cb=111&a=1&_cb=222&b=2#frag"></script>';
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.querySelector('script[src*="cdn.example.com"]') as HTMLScriptElement;
+    expect(el.src).toMatch(
+      /^https:\/\/cdn\.example\.com\/embed\.js\?a=1&b=2&v=1\.2\.3&_cb=\d+#frag$/
+    );
+    expect((el.src.match(/_cb=/g) || []).length).toBe(1);
+    const keys = [...new URL(el.src).searchParams.keys()];
+    expect(keys).toEqual(['a', 'b', 'v', '_cb']);
+  });
+
+  it('leaves an existing _cb untouched when the attribute is absent (byte-identical to 2.4.0)', async () => {
+    document.body.innerHTML =
+      '<script data-stagepass data-stagepass-v="1.2.3" data-src="https://cdn.example.com/embed.js?_cb=111&x=1#frag"></script>';
+    await bootAs(loaderTag());
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.querySelector('script[src*="cdn.example.com"]') as HTMLScriptElement;
+    expect(el.src).toBe('https://cdn.example.com/embed.js?_cb=111&x=1&v=1.2.3#frag');
+  });
+
+  it('does not modify live-src assets in production when nocache is set', async () => {
+    document.body.innerHTML =
+      '<script data-stagepass data-stagepass-nocache src="https://cdn.example.com/js/a7.js" integrity="sha256-abc"></script>' +
+      '<script data-stagepass data-stagepass-nocache data-stagepass-v="1.2.3" src="https://cdn.example.com/js/a7-v.js"></script>' +
+      '<link rel="stylesheet" data-stagepass data-stagepass-nocache href="https://cdn.example.com/css/a7.css">';
+    await bootAs(loaderTag({ 'data-stagepass-live-src': 'true' }));
+    await new Promise((r) => setTimeout(r, 0));
+    const js = document.querySelector('script[src*="a7.js"]') as HTMLScriptElement;
+    const jsv = document.querySelector('script[src*="a7-v.js"]') as HTMLScriptElement;
+    const css = document.querySelector('link[href*="a7.css"]') as HTMLLinkElement;
+    expect(js.src).toBe('https://cdn.example.com/js/a7.js');
+    expect(js.getAttribute('integrity')).toBe('sha256-abc');
+    expect(jsv.src).toBe('https://cdn.example.com/js/a7-v.js');
+    expect(css.href).toBe('https://cdn.example.com/css/a7.css');
+    expect(js.src + jsv.src + css.href).not.toContain('_cb=');
   });
 
   it('combines with data-stagepass-v: ?v=<version>&_cb=<timestamp>, deterministic order', async () => {
