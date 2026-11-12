@@ -6,7 +6,7 @@ Local Stagepass project for Webflow.
 
 ```bash
 npm install
-npm run build
+stagepass build
 stagepass link {{NAME}}
 ```
 
@@ -16,9 +16,11 @@ stagepass link {{NAME}}
 
 | Script | Description |
 | :--- | :--- |
-| `npm run build` | Bundle JS/CSS into `dist/` with content hashes, SRI, and `manifest.json` |
-| `npm run watch` | Rebuild on change |
-| `npm run dev` | Alias of `watch` (until a real HMR server ships) |
+| `stagepass build` | Production bundle: content hashes, SRI, and `dist/manifest.json` |
+| `stagepass watch` | Rebuild stable `dist/main.js` and `dist/styles.css` only |
+| `stagepass dev` | Watch plus live reload |
+
+Hashes and `manifest.json` come only from `stagepass build`. `stagepass watch` and `stagepass dev` write only the stable files and leave the manifest as the last production build. `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`; copy the current template by hand to pick this up.
 
 ## Webflow Custom Code
 
@@ -38,11 +40,11 @@ Optional exact pin (replace `@2` in the URL if you need a locked version): `@{{L
 {{FOOTER_SNIPPET}}
 ```
 
-After each production upload, set `data-src` / `data-href` to your hosted URLs. For content-hashed uploads, read `file` from `dist/manifest.json`. Local Stagepass swapping can keep using the stable `dist/main.js` and `dist/styles.css` copies.
+After each production upload, set `data-src` / `data-href` to your hosted URLs. For content-hashed uploads, read `file` from `dist/manifest.json` (last `stagepass build`). Local swapping uses the stable `dist/main.js` and `dist/styles.css` copies.
 
 ### Subresource Integrity (SRI)
 
-`npm run build` writes a sha384 `integrity` per output in `dist/manifest.json`:
+`stagepass build` writes a sha384 `integrity` per output in `dist/manifest.json`:
 
 ```json
 {

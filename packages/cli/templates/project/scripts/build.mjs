@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
- * Stagepass project build: esbuild (+ optional sass) → content-hashed dist files + manifest.json.
- * Also writes stable dist/main.js and dist/styles.css copies for local Stagepass paths.
- * Manifest entries include Subresource Integrity (sha384) for production Webflow tags.
- *
- * Watch mode rebuilds only the affected part (JS entry/imports → JS, CSS entry → CSS)
- * and writes a dist file only when its bytes changed.
+ * Stagepass project build: esbuild (+ optional sass).
+ * Production: hashed files, stable copies, manifest.json (sha384 SRI), then drop stale hashes.
+ * `--watch`: stable dist/main.js and dist/styles.css only. Does not touch manifest.json.
+ * Writes a dist file only when its bytes changed. Watch rebuilds the affected part.
  */
 import { createHash } from 'node:crypto';
 import { watch as fsWatch, promises as fs } from 'node:fs';
@@ -66,12 +64,13 @@ async function writeHashed(stableName, contents, encoding = undefined) {
   const buf = Buffer.isBuffer(contents)
     ? contents
     : Buffer.from(contents, encoding || 'utf8');
+  await writeIfChanged(path.join(distDir, stableName), buf);
+  if (watchMode) return { file: stableName };
   const hash = hashContent(buf);
   const ext = path.extname(stableName);
   const base = path.basename(stableName, ext);
   const hashedName = `${base}.${hash}${ext}`;
   await writeIfChanged(path.join(distDir, hashedName), buf);
-  await writeIfChanged(path.join(distDir, stableName), buf);
   return {
     file: hashedName,
     integrity: sriSha384(buf),
@@ -79,7 +78,7 @@ async function writeHashed(stableName, contents, encoding = undefined) {
 }
 
 async function writeManifest() {
-  if (!manifestState['main.js'] || !manifestState['styles.css']) return;
+  if (watchMode || !manifestState['main.js'] || !manifestState['styles.css']) return;
   const text = `${JSON.stringify(
     {
       'main.js': manifestState['main.js'],
@@ -134,10 +133,49 @@ async function buildCss() {
   return manifestState['styles.css'];
 }
 
+function safeHashName(name) {
+  return typeof name === 'string'
+    && name === path.basename(name)
+    && !name.includes('..')
+    && !name.includes('\\')
+    && !path.isAbsolute(name)
+    && /^[\w-]+\.[0-9a-f]{8}\.[A-Za-z0-9]+$/.test(name);
+}
+
+async function priorHashNames() {
+  try {
+    const data = JSON.parse(await fs.readFile(path.join(distDir, 'manifest.json'), 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+    const names = [];
+    for (const entry of Object.values(data)) {
+      if (entry && typeof entry.file === 'string') names.push(entry.file);
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+async function removeStaleHashes(prev) {
+  const keep = new Set(['main.js', 'styles.css'].map((k) => manifestState[k] && manifestState[k].file));
+  for (const name of prev) {
+    if (keep.has(name) || !safeHashName(name)) continue;
+    try {
+      const file = path.join(distDir, name);
+      if (!(await fs.lstat(file)).isFile()) continue;
+      await fs.unlink(file);
+    } catch {
+      /* missing */
+    }
+  }
+}
+
 async function buildOnce() {
   await ensureDist();
+  const prev = watchMode ? null : await priorHashNames();
   await buildJsOnce();
   await buildCss();
+  if (prev) await removeStaleHashes(prev);
   return {
     'main.js': manifestState['main.js'],
     'styles.css': manifestState['styles.css'],
