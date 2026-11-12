@@ -20,7 +20,7 @@ stagepass link {{NAME}}
 | `stagepass watch` | Rebuild stable `dist/main.js` and `dist/styles.css` only |
 | `stagepass dev` | Watch plus live reload |
 
-Hashes and `manifest.json` come only from `stagepass build`. `stagepass watch` and `stagepass dev` write only the stable files and leave the manifest as the last production build. `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`; copy the current template by hand to pick this up.
+Hashes and `manifest.json` come only from `stagepass build`. `stagepass watch` and `stagepass dev` write only the stable files and leave the manifest as the last production build. `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified scaffold from an older CLI. A script you have edited is left in place; the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now.
 
 ## Webflow Custom Code
 

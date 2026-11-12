@@ -42,15 +42,17 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 #### Added
 
 - A top-level unknown option suggests the subcommand that declares it and keeps the rest of the command line (for example `stagepass --origin <host>` → `stagepass link --origin <host>`, including `--opt=value`). Command and option typos still use Commander's suggestion. Nothing is executed; the hint is stderr-only and the exit code stays non-zero.
+- `stagepass upgrade` replaces `scripts/build.mjs` when the file is still an unmodified scaffold from an earlier CLI (2.1.0–2.2.7 string manifests, the SRI template `f7afa80`, published 2.3.0 / 2.3.0-beta.1, and the watch-stable template `688dca9`). Line endings are normalized; scaffold entry paths (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged, with a hint that points at `docs/cli.md` and describes `stagepass build`, `stagepass watch` and `stagepass dev`. A missing script stays missing.
 
 #### Fixed
 
 - LaunchAgent plist uses the Homebrew `bin/node` shim when the running node is a versioned Cellar path, so `brew upgrade node` does not leave login autostart pointed at a deleted binary (#74).
+- Scaffold `scripts/build.mjs` also removes stale hashed files named by CLI 2.2.x `dist/manifest.json` entries (plain filename strings, not `{ file, integrity }` objects). Paths outside `dist/`, symlinks, and names that are not `<base>.<8 hex><ext>` directly in `dist/` stay in place.
 - `stagepass doctor` fails when a LaunchAgent node or CLI path is missing, and warns when that node path is a versioned Cellar path or the running daemon version differs from the CLI (`stagepass autostart on`) (#74).
 
 #### Changed
 
-- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only). `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`.
+- Scaffold `scripts/build.mjs`: `stagepass watch` / `stagepass dev` write only stable `dist/main.js` and `dist/styles.css` (no hashed files, no `manifest.json` writes or deletes). `stagepass build` still writes hashes, stable copies, and SRI `manifest.json`, then removes hashed files the previous manifest listed that the new one does not (plain hashed names directly in `dist/` only), including CLI 2.2.x manifests whose values are filename strings. `stagepass upgrade` replaces an unmodified copy of an older scaffold (see Added).
 
 ### [2.3.0] - 2026-11-11
 

@@ -456,6 +456,72 @@ describe('template build.mjs watch', () => {
     expect(fs.existsSync(jsPath)).toBe(true);
     expect(fs.existsSync(cssPath)).toBe(true);
   }, 20000);
+
+  it('prunes hashed names stored as CLI 2.2 filename strings and keeps everything else', async () => {
+    tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'sp-tmpl-build-'));
+    await setupProject(tmp);
+    let result = await runBuild(tmp);
+    expect(result.code).toBe(0);
+    const first = await readManifest(tmp);
+    const oldJs = first['main.js'].file;
+    const oldCss = first['styles.css'].file;
+    expect(typeof oldJs).toBe('string');
+    expect(oldJs).toMatch(/^main\.[0-9a-f]{8}\.js$/);
+
+    const outside = path.join(tmp, 'secret.txt');
+    const abs = path.join(tmp, 'abs-target.js');
+    const linkTarget = path.join(tmp, 'link-target.txt');
+    await fsp.writeFile(outside, 'outside');
+    await fsp.writeFile(abs, 'abs');
+    await fsp.writeFile(linkTarget, 'target');
+    await fsp.mkdir(path.join(tmp, 'dist', 'images'), { recursive: true });
+    await fsp.writeFile(path.join(tmp, 'dist', 'images', 'x.png'), 'png');
+    await fsp.writeFile(path.join(tmp, 'dist', 'plain.js'), 'plain');
+    await fsp.writeFile(path.join(tmp, 'dist', 'other.12345678.js'), 'keep');
+    await fsp.writeFile(path.join(tmp, 'dist', 'main.DEADBEEF.js'), 'upper');
+    await fsp.symlink(linkTarget, path.join(tmp, 'dist', 'main.abcdef01.js'));
+    await fsp.writeFile(
+      path.join(tmp, 'dist', 'manifest.json'),
+      `${JSON.stringify(
+        {
+          'main.js': oldJs,
+          'styles.css': oldCss,
+          outside: '../secret.txt',
+          abs,
+          plain: 'plain.js',
+          stable: 'main.js',
+          nested: 'images/x.png',
+          upper: 'main.DEADBEEF.js',
+          link: 'main.abcdef01.js',
+        },
+        null,
+        2
+      )}\n`
+    );
+
+    await fsp.writeFile(path.join(tmp, 'src', 'main.js'), 'console.log("changed");\n');
+    result = await runBuild(tmp);
+    expect(result.code).toBe(0);
+    const second = await readManifest(tmp);
+    expect(second['main.js'].file).not.toBe(oldJs);
+    expect(second['main.js'].file).toMatch(/^main\.[0-9a-f]{8}\.js$/);
+    expect(second['main.js'].integrity).toMatch(/^sha384-/);
+    expect(second['styles.css'].file).toBe(oldCss);
+    expect(second['styles.css'].integrity).toMatch(/^sha384-/);
+    expect(fs.existsSync(path.join(tmp, 'dist', oldJs))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'dist', oldCss))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'dist', second['main.js'].file))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'dist', 'main.js'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'dist', 'styles.css'))).toBe(true);
+    expect(await fsp.readFile(outside, 'utf8')).toBe('outside');
+    expect(await fsp.readFile(abs, 'utf8')).toBe('abs');
+    expect(await fsp.readFile(path.join(tmp, 'dist', 'plain.js'), 'utf8')).toBe('plain');
+    expect(await fsp.readFile(path.join(tmp, 'dist', 'images', 'x.png'), 'utf8')).toBe('png');
+    expect(await fsp.readFile(path.join(tmp, 'dist', 'other.12345678.js'), 'utf8')).toBe('keep');
+    expect(await fsp.readFile(path.join(tmp, 'dist', 'main.DEADBEEF.js'), 'utf8')).toBe('upper');
+    expect(await fsp.readFile(linkTarget, 'utf8')).toBe('target');
+    expect((await fsp.lstat(path.join(tmp, 'dist', 'main.abcdef01.js'))).isSymbolicLink()).toBe(true);
+  }, 20000);
 });
 
 const HASHED_NAME = /^[\w-]+\.[0-9a-f]{8}\.[A-Za-z0-9]+$/;

@@ -26,7 +26,7 @@ Typical order: `setup` → `start` → `link`, then `stagepass build` / `stagepa
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
 | `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
-| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. |
+| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, replace an unmodified `scripts/build.mjs`, print Webflow snippets. `--dry-run` writes nothing. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).
 
@@ -90,7 +90,7 @@ Scaffold a lean Webflow project (TypeScript + SCSS by default). Flags for every 
 
 Interactive macOS doctor preflight can offer `setup` (never automatic, never under `--yes` / no-TTY).
 
-`stagepass build` writes stable `dist/main.js` and `dist/styles.css`, content-hashed copies, and SRI (`integrity` sha384) in `dist/manifest.json`, then deletes hashed names the previous manifest listed that the new one does not (plain `<base>.<8 hex><ext>` files directly in `dist/` only). `stagepass watch` and `stagepass dev` write only the stable files and do not write or delete hashes or `manifest.json` (it stays the last production build). `stagepass upgrade` does not rewrite an existing `scripts/build.mjs`; copy the template by hand to pick this up. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
+`stagepass build` writes stable `dist/main.js` and `dist/styles.css`, content-hashed copies, and SRI (`integrity` sha384) in `dist/manifest.json`, then deletes hashed names the previous manifest listed that the new one does not. CLI 2.2.x manifests store those names as strings (`"main.js": "main.<hash>.js"`); later manifests store `{ "file", "integrity" }`. Both forms are pruned. Only plain `<base>.<8 hex><ext>` files directly in `dist/` are removed. `stagepass watch` and `stagepass dev` write only the stable files and leave hashes and `manifest.json` as the last `stagepass build` left them. Prefer `stagepass build`, `stagepass watch` and `stagepass dev` (the last also starts live reload). `npm run dev` still aliases `watch`. Generated projects depend on `@stagepass/loader` / `@stagepass/modules` `^2` (same major as the CDN pin `@2`).
 
 ## `upgrade`
 
@@ -98,11 +98,13 @@ Interactive macOS doctor preflight can offer `setup` (never automatic, never und
 * `--site <host>`: live Webflow site to detect loaded modules from (https)
 * `--site-modules <list>`: modules the site loads (`none`, `all`, or `inject,cookies,maintenance`)
 * `--skip-site`: do not fetch the live site
-* `-y, --yes`: non-interactive; accept detected or existing modules
+* `-y, --yes`: non-interactive; accept detected or existing modules and replace an unmodified `scripts/build.mjs`
 * `--target <version>`: docs often say `--version`; the CLI rewrites that to `--target` so it does not collide with `stagepass --version`
 * `-v, --verbose`
 
 `upgrade` only writes ranges that a published version satisfies. An explicit `--target` that is not published is refused before any file is written. Without a TTY it maps the legacy `"modules": true` to `["all"]` instead of `[]`, and prints a hint for narrowing (`--site-modules cookies`).
+
+`scripts/build.mjs` is replaced when it is still an unmodified scaffold from an earlier CLI. The check hashes the file against known templates from this repo after normalizing line endings. The scaffold entry lines (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. On a TTY the prompt defaults to yes. Without a TTY, and with `-y` / `--yes`, the replacement is applied. `--dry-run` prints that plan and writes nothing. An edited script is left in place. The CLI then prints what `stagepass build`, `stagepass watch` and `stagepass dev` do in the current scaffold and points at this section. A missing `scripts/build.mjs` is left missing. A symlink is left unchanged.
 
 ## Config locations
 
