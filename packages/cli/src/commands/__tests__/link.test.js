@@ -270,4 +270,25 @@ kept.sp {
     expect(caddyWrites.at(-1)[1]).toContain('php_fastcgi 127.0.0.1:9000');
     expect(caddyWrites.at(-1)[1]).toContain('php=true');
   });
+
+  it('[caddy-2.9] warns on link when Caddy is older than 2.9 and still writes v3', async () => {
+    const logs = [];
+    await link('my-domain', {}, {
+      log: (m) => logs.push(String(m)),
+      exec: async () => ({ stdout: 'v2.8.4 h1:old\n', stderr: '' }),
+    });
+    expect(logs.join('\n')).toContain('brew upgrade caddy');
+    const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
+    expect(caddyWrites.at(-1)[1]).toContain('stagepass-block: v3');
+    expect(caddyWrites.at(-1)[1]).toContain('>Access-Control-Allow-Origin');
+  });
+
+  it('[caddy-2.9] does not warn on link when Caddy is 2.10.2', async () => {
+    const logs = [];
+    await link('my-domain', {}, {
+      log: (m) => logs.push(String(m)),
+      exec: async () => ({ stdout: 'v2.10.2 h1:new\n', stderr: '' }),
+    });
+    expect(logs.join('\n')).not.toContain('brew upgrade caddy');
+  });
 });

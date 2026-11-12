@@ -82,7 +82,12 @@ function suggestMisplacedOption(program, errorText) {
   const bin = program.name();
   hits.sort((a, b) => (a.join(' ') < b.join(' ') ? -1 : a.join(' ') > b.join(' ') ? 1 : 0));
   return hits
-    .map((path) => `Did you mean: ${bin} ${path.join(' ')} ${args.join(' ')}\n`)
+    .map((cmdPath) => {
+      const rest = args.slice(1);
+      const echoed = cmdPath.every((part, i) => rest[i] === part);
+      const tail = echoed ? [flag, ...rest.slice(cmdPath.length)] : args;
+      return `Did you mean: ${bin} ${cmdPath.join(' ')} ${tail.join(' ')}\n`;
+    })
     .join('');
 }
 

@@ -134,6 +134,9 @@ describe('renderSiteBlock', () => {
     expect(fileIdx).toBeGreaterThan(liveIdx);
     expect(block).toContain('>Access-Control-Allow-Origin "{http.request.header.Origin}"');
     expect(block).toContain('match status 2xx');
+    expect(block).not.toContain('\n\n\n    handle {');
+    const asV2 = block.replace('stagepass-block: v3', 'stagepass-block: v2');
+    expect(migrateLegacyContent(asV2).content.trim()).toBe(block.trim());
   });
 
   it('rejects invalid devPort before writing Caddyfile text', () => {

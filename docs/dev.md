@@ -4,7 +4,7 @@
 
 ## Decision: no Vite in user projects
 
-Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order. Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. `stagepass build` emits a hashed `dist/manifest.json` plus stable `dist/main.js` / `dist/styles.css` copies. The loader swaps the stable files with `?_cb=` and does not read hashes or the manifest. **(unreleased, next CLI)** `stagepass watch` and `stagepass dev` write only those stable files (no hashed files, no `manifest.json` writes). Published CLI 2.3.1 still writes hashes and `manifest.json` from watch when bytes change. A Vite dev graph would change script-order semantics and fight that model.
+Stagepass does **not** add Vite (or an ESM HMR graph) to scaffolded projects. Webflow pages load bundled classic scripts in a fixed order. Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. `stagepass build` emits a hashed `dist/manifest.json` plus stable `dist/main.js` / `dist/styles.css` copies. The loader swaps the stable files with `?_cb=` and does not read hashes or the manifest. CLI 2.4.0 `stagepass watch` and `stagepass dev` write only those stable files (no hashed files, no `manifest.json` writes). Published CLI 2.3.1 still writes hashes and `manifest.json` from watch when bytes change. A Vite dev graph would change script-order semantics and fight that model.
 
 Instead, live reload is owned by the CLI and proxied on the existing `.sp` HTTPS site.
 
@@ -46,7 +46,7 @@ EventSource('https://<domain.sp>/__stagepass/live')
 
 On `css` events, every `<link rel="stylesheet">` whose `href` starts with the local base is replaced with a clone that has `?t=<timestamp>` (integrity removed; insert before remove). On `reload`, `location.reload()`. Stream payloads are JSON-parsed in try/catch; unknown types are ignored. Nothing from the stream is evaluated.
 
-Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a dist file only when its bytes changed, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. **(unreleased, next CLI)** watch does not write hashed files or `manifest.json` (the manifest stays as the last `stagepass build`), and `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified older scaffold, leaving an edited script in place with a hint. Published CLI 2.3.1 does not do that replacement.
+Prefer `stagepass build`, `stagepass watch` and `stagepass dev`. Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a dist file only when its bytes changed, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. CLI 2.4.0 watch does not write hashed files or `manifest.json` (the manifest stays as the last `stagepass build`), and `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified older scaffold, leaving an edited script in place with a hint. Published CLI 2.3.1 does not do that replacement.
 
 ## Security notes
 

@@ -350,7 +350,7 @@ export async function start(options = {}) {
   // 3. Migrate legacy Caddyfile blocks before boot; drop dead live-reload ports
   await fs.ensureDir(caddyDir);
   if (await fs.pathExists(caddyFile)) {
-    await ensureCaddyfileMigrated({ caddyfilePath: caddyFile, projectsPath });
+    await ensureCaddyfileMigrated({ caddyfilePath: caddyFile, projectsPath, exec });
     const stale = await clearStaleDevPorts(projectsPath);
     for (const domain of stale) {
       const project = await getProject(domain, projectsPath);

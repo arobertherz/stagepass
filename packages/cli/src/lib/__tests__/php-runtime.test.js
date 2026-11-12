@@ -10,6 +10,7 @@ import {
   phpProjectWarning,
   phpVersionOk,
   plainLine,
+  warnPhpProject,
 } from '../php-runtime.js';
 
 function which(present) {
@@ -58,6 +59,36 @@ describe('cli-php runtime check', () => {
     expect(result.detail).toMatch(/apt install php-fpm/);
     expect(JSON.stringify(result)).not.toMatch(/\u0001/);
     expect(JSON.stringify(result)).not.toContain('SECRET');
+  });
+
+  it('[F-1] PHP 8.3 with neither php-fpm nor php-cgi is not ok and warnPhpProject warns', async () => {
+    const result = await checkPhpRuntime({
+      platform: 'darwin',
+      resolveCommand: which(['php']),
+      exec: async () => ({ stdout: 'PHP 8.3.1 (cli)\n', stderr: '' }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('warn');
+    expect(result.message).toContain('neither php-fpm nor php-cgi');
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-php-f1-'));
+    const warns = [];
+    try {
+      await fs.writeJson(path.join(dir, 'stagepass.json'), { php: true });
+      const warned = await warnPhpProject(dir, {
+        platform: 'linux',
+        resolveCommand: which(['php']),
+        exec: async () => ({ stdout: 'PHP 8.3.1 (cli)\n', stderr: '' }),
+        warn: (msg) => warns.push(String(msg)),
+        ensure: false,
+      });
+      expect(warned).toMatchObject({ applicable: true, ok: false });
+      expect(warned.result.ok).toBe(false);
+      expect(warned.result.status).toBe('warn');
+      expect(warns.join('\n')).toContain('neither php-fpm nor php-cgi');
+    } finally {
+      await fs.remove(dir);
+    }
   });
 
   it('cli-php: php-cgi satisfies fastcgi when php-fpm is absent', async () => {

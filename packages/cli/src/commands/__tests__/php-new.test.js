@@ -168,6 +168,46 @@ describe('cli-php new', () => {
     }
   });
 
+  it('[F-11] new --php does not write through a parent symlink outside the project', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-php-f11-'));
+    const target = path.join(tmp, 'php-app');
+    const outside = path.join(tmp, 'outside');
+    const errors = [];
+    try {
+      await fs.ensureDir(outside);
+      await fs.writeFile(path.join(outside, 'keep.txt'), 'keep');
+      let swapped = false;
+      const wrapped = Object.assign(Object.create(fs), {
+        mkdir: async (dir, opts) => {
+          if (!swapped && path.basename(String(dir)) === 'api') {
+            swapped = true;
+            await fs.symlink(outside, dir);
+            return;
+          }
+          return fs.mkdir(dir, opts);
+        },
+      });
+      const code = await createNew('php-app', {
+        yes: true,
+        dir: target,
+        git: false,
+        lang: 'js',
+        styles: 'css',
+        siteModules: 'none',
+      }, deps(tmp, {
+        fs: wrapped,
+        error: (m) => errors.push(String(m)),
+      }));
+      expect(swapped).toBe(true);
+      expect(code).toBe(1);
+      expect(errors.join('\n')).toMatch(/Refusing to write outside project directory/);
+      expect(await fs.readdir(outside)).toEqual(['keep.txt']);
+      expect(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).toBe('keep');
+    } finally {
+      await fs.remove(tmp);
+    }
+  });
+
   it('cli-php: refuses to overwrite an existing PHP file and reports it', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-php-keep-'));
     const target = path.join(tmp, 'php-app');

@@ -42,7 +42,7 @@ api/.env.example        Copy to the project root as .env
 
 1. Copy `api/.env.example` to `.env` in the project root (the folder that contains `api/`).
 2. Set `ALLOWED_ORIGINS` to the exact site origins that may call this API, including the scheme and without a trailing slash. Typical values are `https://your-project.sp`, `https://your-site.webflow.io`, and `https://www.example.com`.
-3. Keep `.env` out of git. On Stagepass, Caddy already returns 404 for hidden path segments such as `.env` and `.php`. On shared hosting, point the document root at `api/` so `/.env` and `/.php/` are not web-accessible.
+3. Keep `.env` out of git. On Stagepass, Caddy already returns 404 for hidden path segments such as `.env` and `.php`. On shared hosting, the document root is the folder that contains `api/` (the uploaded `dist/` contents), so the public URL stays `/api/action.php`. Deny hidden paths such as `/.env` and `/.php/` in the host config when you can.
 
 `APP_ENV=local` turns on a hidden `boom` action used only to test error handling. Leave `APP_ENV=production` on a live host.
 
@@ -166,9 +166,9 @@ POST actions require an `Origin` header that is on `ALLOWED_ORIGINS`. GET `ping`
 From the project root (the folder that contains `api/`):
 
 ```bash
-php -S 127.0.0.1:8080 -t api
+php -S 127.0.0.1:8080 -t .
 ```
 
-Then: `curl 'http://127.0.0.1:8080/action.php?action=ping'`
+Then: `curl 'http://127.0.0.1:8080/api/action.php?action=ping'`
 
 On a linked Stagepass domain the same file is reached at `https://your-project.sp/api/action.php`.

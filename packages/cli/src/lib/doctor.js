@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { runProjectSiteChecks } from './doctor-site.js';
 import path from 'node:path';
 import { defaultExec, resolveCommand } from './exec.js';
+import { CADDY_UPGRADE_HINT, readCaddyVersion } from './caddy-version.js';
 import { checkPhpRuntime } from './php-runtime.js';
 import {
   getCaddyfilePath,
@@ -203,12 +204,26 @@ export async function runDoctor(opts = {}) {
     }
   }
 
-  // Caddy
+  // Caddy (v3 site blocks need 2.9+; unknown version keeps the previous ok check)
   const caddyPath = await resolveCommand('caddy', exec);
   if (!caddyPath) {
     checks.push(check('caddy', 'fail', 'Caddy not found on PATH'));
   } else {
-    checks.push(check('caddy', 'ok', `Caddy found (${caddyPath})`));
+    const rel = await readCaddyVersion(exec);
+    if (rel.known && !rel.ok) {
+      checks.push(
+        check(
+          'caddy',
+          'warn',
+          `Caddy ${rel.version} is older than 2.9 (v3 site block needs 2.9 or newer)`,
+          CADDY_UPGRADE_HINT
+        )
+      );
+    } else if (rel.known) {
+      checks.push(check('caddy', 'ok', `Caddy ${rel.version} found (${caddyPath})`));
+    } else {
+      checks.push(check('caddy', 'ok', `Caddy found (${caddyPath})`));
+    }
   }
 
   // PHP / php-fpm (version >= 8.2, php-fpm or php-cgi)

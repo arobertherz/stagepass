@@ -51,12 +51,12 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | Command | Description |
 | :--- | :--- |
 | `stagepass setup` | Install Caddy, PHP, Dnsmasq via Homebrew and configure the local `.sp` resolver (`address=/.sp/127.0.0.1` + `/etc/resolver/sp`). |
-| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL; sudo only if unprivileged kill fails). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). Migrates legacy Caddyfile blocks if needed. |
-| `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. |
+| `stagepass start` | Start Caddy & PHP. Runs `certs check` (offers repair when interactive). No unconditional root warm-up: inspects port 443 without sudo; signals only after confirm (TERM then optional KILL; sudo only if unprivileged kill fails). With autostart installed, bootstraps/kickstarts the LaunchAgent (else direct `caddy start`). Migrates legacy Caddyfile blocks if needed, except when Caddy is known to be older than 2.9 (`brew upgrade caddy`). |
+| `stagepass link [domain]` | Link the current directory to a `.sp` domain, write/update the Caddyfile + `~/.stagepass/projects.json`, reload Caddy. The linked block is v3. On Caddy older than 2.9, other existing blocks are left unchanged and CORS on success responses may be missing (`brew upgrade caddy`). |
 | `stagepass unlink [domain]` | Remove the site block and `projects.json` entry, reload Caddy. |
-| `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed. |
+| `stagepass reload` | Reload Caddy configuration. Migrates legacy Caddyfile blocks if needed, except when Caddy is known to be older than 2.9 (`brew upgrade caddy`). |
 | `stagepass stop` | Stop Caddy & PHP. If autostart is installed/loaded, `launchctl bootout` first (until next login); use `autostart off` to disable permanently. |
-| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
+| `stagepass doctor` | Read-only diagnostics (Homebrew, Caddy, PHP/php-fpm, dnsmasq, resolver, port 443, Caddyfile, projects, certs, LaunchAgent, declared modules vs. live site). CDN pin warnings in docs + project files. Reports the Caddy version and warns (does not fail) when it is older than 2.9 (`brew upgrade caddy`); the v3 site block needs 2.9 or newer. Published CLI 2.3.1 fails when a LaunchAgent node or CLI path is missing, and warns on a versioned Homebrew Cellar node path or a daemon version that differs from the CLI (fix hint: `stagepass autostart on`). Never uses sudo. `--json`, `--skip-site`. Exit `1` if any fail. |
 | `stagepass certs check` | Read-only Caddy local CA check (validity, System keychain trust, orphans, optional TLS handshake per linked domain). `--json`, `--skip-handshake`. |
 | `stagepass certs trust` | Run `caddy trust` after interactive confirmation (or `--yes`). |
 | `stagepass certs renew` | Repair failing linked site certs; `--root` moves the CA folder to a backup (double confirm, or `--yes --i-understand-root-renewal`); `--remove-orphans` deletes keychain orphans by SHA-1 after confirm. |
@@ -130,7 +130,7 @@ Interactively (macOS), `new` runs a read-only `doctor` preflight and can offer `
 
 ### PHP
 
-`--php` writes a plain PHP 8.2 boilerplate: `api/action.php` is the only public entry, actions are an allowlist in `api/actions.php`, and `.php/config.php` stays outside that folder. Copy `api/.env.example` to `.env` and set `ALLOWED_ORIGINS` (include `https://<name>.sp`). There is no mail. Caddy already returns 404 for hidden segments such as `/.env`, `/api/.env`, and `/.php/`. `stagepass new`, `doctor`, `dev`, and `watch` warn when `php` is missing, older than 8.2, or has no `php-fpm` / `php-cgi` (`brew install php`, then `brew services start php` on macOS). The JS build still runs. `stagepass build` copies `api/` and `.php/config.php` into `dist/` and skips `.env`, `.php/rate-limit/`, logs, and pid files. `stagepass dev` / `watch` serve PHP from the project root, so edits show up on the next request. A longer draft for the website lives in [`docs/php.md`](../../docs/php.md); that page is not live yet.
+`--php` writes a plain PHP 8.2 boilerplate: `api/action.php` is the only public entry, actions are an allowlist in `api/actions.php`, and `.php/config.php` stays outside that folder. Copy `api/.env.example` to `.env` and set `ALLOWED_ORIGINS` (include `https://<name>.sp`). There is no mail. Caddy already returns 404 for hidden segments such as `/.env`, `/api/.env`, and `/.php/`. `stagepass new` and `doctor` warn when `php` is missing, older than 8.2, or has no `php-fpm` / `php-cgi` (`brew install php` on macOS). `stagepass dev` and `stagepass watch` on a `"php": true` project do the same check and start Homebrew php-fpm (`brew services start php`, and `brew services restart php` only if start fails), the same helper `stagepass start` has used since 2.3. The JS build still runs. `stagepass build` copies `api/` and `.php/config.php` into `dist/` and skips `.env`, `.php/rate-limit/`, logs, pid files, and key, certificate, or database files (`.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.cer`, `.sqlite`, `.db`). It keeps `.htaccess` and `.env.example`. `stagepass dev` / `watch` serve PHP from the project root, so edits show up on the next request. A longer draft for the website lives in [docs/php.md](https://github.com/arobertherz/stagepass/blob/master/docs/php.md); that page is not live yet.
 
 ### Declared modules (`stagepass.json`)
 
@@ -163,7 +163,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 | `--site <host>` | Live site to detect modules from (default: the origin linked in `~/.stagepass/projects.json` for this folder). Stored in `stagepass.json` when given. |
 | `--site-modules <list>` | Set the modules list directly (`none`, `all`, or a comma list). |
 | `--skip-site` | Do not fetch the live site. |
-| `-y, --yes` | Accept the detected or existing list without asking. Replacing an unmodified `scripts/build.mjs` is **(unreleased, next CLI)**. |
+| `-y, --yes` | Accept the detected or existing list without asking. With `--yes`, CLI 2.4.0 also replaces an unmodified `scripts/build.mjs`. |
 | `--dry-run` | Print every planned change; write no file. |
 
 `upgrade` bumps `@stagepass/*` in `package.json`, then resolves the modules list (`--site-modules`, else live detection, confirmed interactively; if the site is unreachable or no origin is known it asks; without a TTY it keeps the existing list or `[]` and prints a hint). It then syncs the project:
@@ -172,7 +172,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 - `AGENTS.md`: created if missing, otherwise only the managed block is replaced (or appended when there is none). Your own text stays. Broken markers are left alone with a hint.
 - `.cursor/rules/stagepass.mdc`: created if missing, otherwise only its managed block is refreshed.
 - `tsconfig.json` / `jsconfig.json`: only `compilerOptions.types` changes, the rest of the JSON is preserved. Files with comments, or without a `types` array, are skipped with a hint.
-- `scripts/build.mjs`: **(unreleased, next CLI)** replaced when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing. Published CLI 2.3.1 does not replace that file.
+- `scripts/build.mjs`: CLI 2.4.0 replaces it when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing. Published CLI 2.3.1 does not replace that file.
 
 Every change is printed as `file: action` (unchanged files are not listed; skipped files appear as hints). `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 
@@ -283,6 +283,8 @@ stagepass link --no-allow-all-origins
 ```
 
 Hand-written content outside `# START:` / `# END:` markers is left untouched. Unparsable legacy blocks are left unchanged with a warning. Migration is idempotent (second run does nothing and creates no new backup).
+
+The v3 block needs Caddy 2.9 or newer (`brew upgrade caddy`). Homebrew does not upgrade an existing Caddy when you `brew install caddy`. On a known older Caddy, `link`, `reload`, and `start` do not rewrite existing blocks. `link` still writes that project's block as v3 and warns that CORS on success responses may be missing until you upgrade. If `caddy version` cannot be read, the rewrite stays as before. `stagepass doctor` reports the version and warns below 2.9.
 
 ## Troubleshooting (CLI)
 

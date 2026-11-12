@@ -275,6 +275,65 @@ describe('stagepass dev command', () => {
     await fs.remove(tmp);
   });
 
+  it('dev on a PHP project warns when PHP is missing, runs watch, and returns its exit code', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev-php-'));
+    const root = path.join(tmp, 'app');
+    const projectsPath = path.join(tmp, 'projects.json');
+    const marker = path.join(root, 'sp-dev-ran');
+    await fs.ensureDir(root);
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          watch: "node -e \"require('fs').writeFileSync('sp-dev-ran','1');process.exit(3)\"",
+        },
+      })
+    );
+    await fs.writeFile(
+      path.join(root, 'stagepass.json'),
+      JSON.stringify({ name: 'app', php: true })
+    );
+    await saveProjects(
+      {
+        version: 1,
+        projects: {
+          'app.sp': {
+            root,
+            origins: ['example.com'],
+            allowAllOrigins: false,
+            php: true,
+          },
+        },
+      },
+      projectsPath
+    );
+    const logs = [];
+    const code = await dev(
+      {},
+      {
+        cwd: root,
+        projectsPath,
+        caddyfilePath: path.join(tmp, 'Caddyfile'),
+        log: (m) => logs.push(String(m)),
+        error: () => {},
+        ensureStagepassReady: readyOk,
+        reloadCaddy: async () => {},
+        platform: 'linux',
+        resolveCommand: async () => null,
+        createLiveServer: () => ({
+          listen: async () => ({ port: 34567, close: async () => {} }),
+        }),
+        spawnWatch: defaultSpawnWatch,
+      }
+    );
+    expect(code).toBe(3);
+    expect(await fs.readFile(marker, 'utf8')).toBe('1');
+    const text = logs.join('\n');
+    expect(text).toContain('PHP / php-fpm not found');
+    expect(text).toContain('JavaScript build and live reload will continue');
+    await fs.remove(tmp);
+  }, 20000);
+
   it('rejects when watch script is missing', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-dev-'));
     const root = path.join(tmp, 'app');

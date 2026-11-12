@@ -188,7 +188,12 @@ async function removeStaleHashes(prev) {
 
 function skipPublishName(name) {
   if (name === '.env' || (name.startsWith('.env') && name !== '.env.example')) return true;
-  return name === 'rate-limit' || name.endsWith('.log') || name.endsWith('.pid');
+  return (
+    name === 'rate-limit' ||
+    name.endsWith('.log') ||
+    name.endsWith('.pid') ||
+    /\.(pem|key|p12|pfx|crt|cer|sqlite|db)$/i.test(name)
+  );
 }
 
 async function copyFiltered(src, dest) {

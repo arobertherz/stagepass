@@ -7,6 +7,7 @@ import {
   migrateLegacyContent,
   parseBlocks,
 } from './caddyfile.js';
+import { CADDY_UPGRADE_HINT, readCaddyVersion } from './caddy-version.js';
 import { ensureMigratedProject } from './projects.js';
 import { getCaddyfilePath, getProjectsPath } from './paths.js';
 
@@ -18,6 +19,8 @@ import { getCaddyfilePath, getProjectsPath } from './paths.js';
  * @param {string} [options.caddyfilePath]
  * @param {string} [options.projectsPath]
  * @param {boolean} [options.silent]
+ * @param {import('./exec.js').ExecFn} [options.exec]
+ * @param {Awaited<ReturnType<typeof readCaddyVersion>>} [options.caddy]
  * @returns {Promise<{ changed: boolean, migrated: Array, skipped: Array, backupPath: string|null }>}
  */
 export async function ensureCaddyfileMigrated(options = {}) {
@@ -30,6 +33,20 @@ export async function ensureCaddyfileMigrated(options = {}) {
   }
 
   const original = await fs.readFile(caddyfilePath, 'utf-8');
+  const caddy = options.caddy || (await readCaddyVersion(options.exec));
+  const current = new RegExp(`# stagepass-block:\\s*${BLOCK_VERSION}\\b`);
+  const stale = parseBlocks(original).some((block) => !current.test(block.full));
+  if (caddy.known && !caddy.ok && stale) {
+    if (!silent) {
+      console.log(
+        chalk.yellow(
+          `   Caddy ${caddy.version} is older than 2.9, so existing site blocks were left unchanged. ${CADDY_UPGRADE_HINT}`
+        )
+      );
+    }
+    return { changed: false, migrated: [], upgraded: [], skipped: [], backupPath: null };
+  }
+
   const result = migrateLegacyContent(original, {
     warn: silent
       ? () => {}
