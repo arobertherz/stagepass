@@ -45,7 +45,7 @@ This file is the source outline for that site page. It describes published `@sta
 ## 6. Document root
 
 - Caddy v3 (`src/lib/caddyfile.js`) sets `root *` to the project path, then `php_fastcgi 127.0.0.1:9000` and `file_server`. The public URL is `/api/action.php`.
-- Upload document root is `dist/` after `stagepass build`: the folder that contains `api/`. The URL stays `/api/action.php`.
+- Upload document root is `dist/` after `stagepass build`: the folder that contains `api/` and `.php/config.php`. The URL stays `/api/action.php`. On Apache and nginx that upload is the public web root.
 - From that same folder, the matching built-in server command is `php -S 127.0.0.1:8080 -t .` (URL `/api/action.php`).
 - `php -S 127.0.0.1:8080 -t api` serves `/action.php`. That command does not match this layout.
 - The published npm 2.4.0 package README already uses `-t .`.
@@ -53,12 +53,40 @@ This file is the source outline for that site page. It describes published `@sta
 
 ## 7. Hosting hidden files
 
+- After `stagepass build`, upload `dist/`. That folder is the web root. It contains `api/` and `.php/config.php`. `.php/` is therefore public on Apache and nginx unless hidden paths are denied.
+- The starter comments that say the config sits "outside the public root" (`api/lib/config.php`) and "outside the public api/ directory" (`.php/config.php`; `api/README.md` says "outside the public api/ folder") describe the layout relative to `api/`. They do not describe a second directory outside the web root. Those comments will be corrected in the next patch: [quYArF43](https://trello.com/c/quYArF43).
 - Caddy already returns 404 for any path segment that starts with `.` (`/.env`, `/.php/`, `/api/.env`).
-- The scaffold does not ship a `.htaccess` or an nginx deny snippet. `stagepass build` keeps a `.htaccess` if you add one.
-- After a normal deploy of `dist/`, the paths `load_config()` reads (`.env` and `.php/.env`) sit in the web root if you place those files there. Apache and nginx serve `.env` as text unless the host denies hidden paths.
-- On Apache or nginx you must deny hidden path segments, at least `/.env` and `/.php/`.
-- Prefer real environment variables on the host so a `.env` file is not required in the web root.
-- This is a security bug for the next patch: [quYArF43](https://trello.com/c/quYArF43). Published 2.4.0 does not include the deny rules.
+- Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Until that patch, add one on the host.
+- Prefer real environment variables so a `.env` file is not required in the web root. `load_config()` reads the project-root `.env` and `.php/.env`. It never reads `api/.env`. `stagepass build` does not copy those files into `dist/`. It does copy `.php/config.php`.
+- The scaffold still does not ship a `.htaccess`. `stagepass build` keeps a `.htaccess` if you add one today.
+- The security gap remains for the next patch: [quYArF43](https://trello.com/c/quYArF43).
+
+Apache, in the web root `.htaccess`. The host needs `AllowOverride All` and `mod_rewrite`. The rule follows HTML5 Boilerplate [`file_access.conf`](https://github.com/h5bp/server-configs-apache/blob/main/h5bp/security/file_access.conf), wrapped in `IfModule`:
+
+```apache
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} "!(^|/)\.well-known/([^./]+./?)+$" [NC]
+    RewriteCond %{SCRIPT_FILENAME} -d [OR]
+    RewriteCond %{SCRIPT_FILENAME} -f
+    RewriteRule "(^|/)\." - [F]
+</IfModule>
+```
+
+nginx, inside the server block, before the PHP `location ~ \.php$` block. If this location comes later, `/.php/config.php` can be passed to php-fpm. The rule follows HTML5 Boilerplate [`security_file_access.conf`](https://github.com/h5bp/server-configs-nginx/blob/main/h5bp/location/security_file_access.conf):
+
+```nginx
+location ~* /\.(?!well-known\/) {
+    deny all;
+}
+```
+
+Both rules were tested on 12 November 2026 on php:8.2-apache (`AllowOverride All`, `a2enmod rewrite`) and on nginx 1.27 with php:8.2-fpm. The results were the same on both servers:
+
+- `/.env`, `/.php/config.php`, `/api/.env.example`, `/.git/HEAD`: HTTP 403, no secret or config leak
+- `/api/action.php?action=ping`: HTTP 200, `{"status":"success","data":{"pong":true},"message":null}`
+- `/.well-known/test.txt`: HTTP 200, body `well-known-ok`
+- `/.well-known/` as a directory with no index file: HTTP 403 on both servers (no DirectoryIndex). Visible files under `/.well-known/` stay reachable.
 
 ## 8. Adding an action
 
