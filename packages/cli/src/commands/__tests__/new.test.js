@@ -1062,7 +1062,10 @@ describe('new: origins, php, preflight', () => {
       expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(false);
       const readme = await fs.readFile(path.join(target, 'api/README.md'), 'utf8');
       expect(readme).toContain('https://stagepass.one/docs/php/');
-      expect(readme).toContain('Secrets belong only in `api/.env`');
+      expect(readme).toContain('https://php.example.com/api/action.php');
+      expect(readme).toContain('Copy `api/.env.example` to `.env` in the project root');
+      expect(readme).not.toContain('window.location.origin');
+      expect(readme).not.toContain('Secrets belong only in `api/.env`');
       expect(readme).not.toContain('not live yet');
       expect(readme).not.toContain('not part of the Stagepass repository yet');
       expect(logs.join('\n')).toMatch(/deprecated/i);
