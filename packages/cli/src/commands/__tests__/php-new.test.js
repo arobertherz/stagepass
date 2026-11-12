@@ -175,9 +175,9 @@ describe('cli-php new', () => {
     const errors = [];
     try {
       await fs.ensureDir(outside);
+      await fs.writeFile(path.join(outside, 'keep.txt'), 'keep');
       let swapped = false;
-      const wrapped = {
-        ...fs,
+      const wrapped = Object.assign(Object.create(fs), {
         mkdir: async (dir, opts) => {
           if (!swapped && path.basename(String(dir)) === 'api') {
             swapped = true;
@@ -186,7 +186,7 @@ describe('cli-php new', () => {
           }
           return fs.mkdir(dir, opts);
         },
-      };
+      });
       const code = await createNew('php-app', {
         yes: true,
         dir: target,
@@ -201,9 +201,8 @@ describe('cli-php new', () => {
       expect(swapped).toBe(true);
       expect(code).toBe(1);
       expect(errors.join('\n')).toMatch(/Refusing to write outside project directory/);
-      expect(await fs.readdir(outside)).toEqual([]);
-      expect(await fs.pathExists(path.join(outside, 'README.md'))).toBe(false);
-      expect(await fs.pathExists(path.join(outside, 'action.php'))).toBe(false);
+      expect(await fs.readdir(outside)).toEqual(['keep.txt']);
+      expect(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).toBe('keep');
     } finally {
       await fs.remove(tmp);
     }
