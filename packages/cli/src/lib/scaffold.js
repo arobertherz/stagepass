@@ -47,30 +47,22 @@ export function scaffoldTemplateMap(lang, styles) {
 }
 
 /**
- * Boilerplate files when PHP is enabled.
- * Dot paths are renamed in the package (npm pack drops dotfiles) and restored on write.
- * `phpExamples` is ignored: sample actions live in api/actions/.
+ * Extra files when PHP is enabled for the project.
  * @param {{ php?: boolean, phpExamples?: boolean }} options
  * @returns {{ template: string, out: string }[]}
  */
 export function scaffoldPhpTemplateMap(options = {}) {
   if (options.php !== true) return [];
-  return [
-    { template: 'api/README.md.tmpl', out: 'api/README.md' },
-    { template: 'api/action.php', out: 'api/action.php' },
-    { template: 'api/actions.php', out: 'api/actions.php' },
-    { template: 'api/actions/ping.php', out: 'api/actions/ping.php' },
-    { template: 'api/actions/contact.php', out: 'api/actions/contact.php' },
-    { template: 'api/actions/boom.php', out: 'api/actions/boom.php' },
-    { template: 'api/lib/bootstrap.php', out: 'api/lib/bootstrap.php' },
-    { template: 'api/lib/config.php', out: 'api/lib/config.php' },
-    { template: 'api/lib/request.php', out: 'api/lib/request.php' },
-    { template: 'api/lib/response.php', out: 'api/lib/response.php' },
-    { template: 'api/lib/security.php', out: 'api/lib/security.php' },
-    { template: 'api/lib/validate.php', out: 'api/lib/validate.php' },
-    { template: 'api/env.example', out: 'api/.env.example' },
-    { template: 'php-private/config.php', out: '.php/config.php' },
-  ];
+  /** @type {{ template: string, out: string }[]} */
+  const files = [{ template: 'api/README.md.tmpl', out: 'api/README.md' }];
+  if (options.phpExamples === true) {
+    files.push(
+      { template: 'examples/php/form.php', out: 'examples/php/form.php' },
+      { template: 'examples/php/proxy.php', out: 'examples/php/proxy.php' },
+      { template: 'examples/php/README.md.tmpl', out: 'examples/php/README.md' }
+    );
+  }
+  return files;
 }
 
 /**
@@ -85,7 +77,7 @@ export function scaffoldPhpTemplateMap(options = {}) {
  * @property {string} [origin] Staging / primary live host (stagepass.json `origin`)
  * @property {string} [production] Optional production host (stagepass.json `production`)
  * @property {boolean} [php] Enable PHP FastCGI for the linked .sp site (default false for new)
- * @property {boolean} [phpExamples] Deprecated. Accepted and ignored; actions ship in api/actions/.
+ * @property {boolean} [phpExamples] Include examples/php samples (requires php)
  * @property {boolean} git
  * @property {string} [remote]
  * @property {boolean} install
@@ -221,8 +213,10 @@ export async function planScaffoldFiles(options, deps = {}) {
       ? [
           '## PHP',
           '',
-          `PHP is on. Caddy serves \`https://${options.name}.sp/api/action.php\` with \`php_fastcgi\`.`,
-          'Read `api/README.md`. Copy `api/.env.example` to `.env` (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL.',
+          'This project enables PHP for the linked `.sp` site (`php_fastcgi`). Put handlers under `api/`.',
+          options.phpExamples
+            ? 'Optional samples live in `examples/php/` (copy or adapt; do not expose secrets).'
+            : 'Optional samples: re-run scaffolding with `--php --php-examples`, or copy from the Stagepass docs.',
           '',
         ].join('\n')
       : [

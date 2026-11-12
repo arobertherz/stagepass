@@ -46,8 +46,7 @@ demo.sp {
 
     const after = await fs.readFile(caddyfilePath, 'utf-8');
     expect(after).toContain('foreign comment');
-    expect(after).toContain('stagepass-block: v3');
-    expect(after).toContain('>Access-Control-Allow-Origin');
+    expect(after).toContain('stagepass-block: v2');
     expect(after).toContain('allowAllOrigins=true');
 
     const projects = JSON.parse(await fs.readFile(projectsPath, 'utf-8'));
@@ -69,44 +68,6 @@ demo.sp {
       f.startsWith('Caddyfile.bak-')
     );
     expect(backupsAfter).toEqual(backupsBefore);
-  });
-
-  it('cli-php: rewrites v2 blocks without enabling allow-all or writing projects.json', async () => {
-    const root = path.join(tmpDir, 'app');
-    const block = `# START: app.sp
-# stagepass-block: v2
-# stagepass-options: allowAllOrigins=false php=true origins=example.com
-app.sp {
-    root * "${root}"
-    file_server
-}
-# END: app.sp
-`;
-    await fs.writeFile(caddyfilePath, block);
-    const first = await ensureCaddyfileMigrated({
-      caddyfilePath,
-      projectsPath,
-      silent: true,
-    });
-    expect(first.changed).toBe(true);
-    expect(first.migrated).toEqual([]);
-    expect(first.upgraded.map((item) => item.domain)).toEqual(['app.sp']);
-    expect(await fs.pathExists(projectsPath)).toBe(false);
-
-    const after = await fs.readFile(caddyfilePath, 'utf-8');
-    expect(after).toContain('stagepass-block: v3');
-    expect(after).toContain('allowAllOrigins=false');
-    expect(after).toContain('origins=example.com');
-    expect(after).toContain('>Access-Control-Allow-Origin');
-    expect(after).not.toContain('allowAllOrigins=true');
-
-    const second = await ensureCaddyfileMigrated({
-      caddyfilePath,
-      projectsPath,
-      silent: true,
-    });
-    expect(second.changed).toBe(false);
-    expect(second.backupPath).toBeNull();
   });
 
   it('no-ops when Caddyfile is missing', async () => {

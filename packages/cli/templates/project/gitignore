@@ -5,7 +5,3 @@ dist/
 .env
 .env.*
 !.env.example
-.php/rate-limit/
-.php/*.log
-.php/server-*.log
-.php/server-*.pid

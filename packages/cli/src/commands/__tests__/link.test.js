@@ -55,7 +55,7 @@ describe('link command', () => {
     const caddyWrites = fs.writeFile.mock.calls.filter((c) => c[0] === mockCaddyFile);
     expect(caddyWrites.length).toBeGreaterThan(0);
     expect(caddyWrites.at(-1)[1]).toContain('project.sp');
-    expect(caddyWrites.at(-1)[1]).toContain('stagepass-block: v3');
+    expect(caddyWrites.at(-1)[1]).toContain('stagepass-block: v2');
     expect(caddyWrites.at(-1)[1]).toContain('allowAllOrigins=false');
   });
 

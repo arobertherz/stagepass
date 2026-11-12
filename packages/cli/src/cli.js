@@ -62,30 +62,6 @@ export function rewriteArgvForUpgrade(argv) {
   return out;
 }
 
-// Suggest subcommands for a top-level unknown option. Strip control chars. Do not run.
-function suggestMisplacedOption(program, errorText) {
-  if (!errorText.startsWith("error: unknown option '")) return '';
-  const args = (program.args || []).map((s) => String(s).replace(/\p{C}/gu, ''));
-  const flag = args[0];
-  if (!flag || flag[0] !== '-' || flag === '--') return '';
-  const name = flag.split('=')[0];
-  const hits = [];
-  const walk = (cmd, prefix) => {
-    for (const sub of cmd.commands) {
-      const path = prefix.concat(sub.name());
-      if (sub.options.some((o) => o.long === name || o.short === name)) hits.push(path);
-      walk(sub, path);
-    }
-  };
-  walk(program, []);
-  if (!hits.length) return '';
-  const bin = program.name();
-  hits.sort((a, b) => (a.join(' ') < b.join(' ') ? -1 : a.join(' ') > b.join(' ') ? 1 : 0));
-  return hits
-    .map((path) => `Did you mean: ${bin} ${path.join(' ')} ${args.join(' ')}\n`)
-    .join('');
-}
-
 /**
  * Build the Commander program (no parse). Injectable handlers for unit tests.
  *
@@ -318,13 +294,13 @@ export function createProgram(deps = {}) {
   program
     .command('upgrade')
     .description(
-      'Bump @stagepass/*, sync project files, replace an unmodified scripts/build.mjs, print Webflow snippets'
+      'Bump @stagepass/*, sync modules, AGENTS.md, Cursor rule and types, print Webflow snippets'
     )
     .option('--dry-run', 'Show changes without writing any file')
     .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
     .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
     .option('--skip-site', 'Do not fetch the live site')
-    .option('-y, --yes', 'Non-interactive; accept detected or existing modules and an unmodified scripts/build.mjs')
+    .option('-y, --yes', 'Non-interactive; accept detected or existing modules')
     .option(
       '--target <version>',
       'Target version, range or dist-tag; must be published on npm (default: ^<latest published 2.x>, ^2 offline)'
@@ -383,10 +359,10 @@ export function createProgram(deps = {}) {
     .option('--staging <domain>', 'Staging hostname written to stagepass.json as origin')
     .option('--production <domain>', 'Optional production hostname written to stagepass.json')
     .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
-    .option('--php', 'Enable PHP (api/ boilerplate + php_fastcgi on link)')
+    .option('--php', 'Enable PHP (api/ + php_fastcgi on link)')
     .option('--no-php', 'Disable PHP for this project (default)')
-    .option('--php-examples', 'Deprecated: sample actions ship with --php under api/actions/')
-    .option('--no-php-examples', 'Deprecated no-op (examples are not a separate copy)')
+    .option('--php-examples', 'Include examples/php samples (requires --php)')
+    .option('--no-php-examples', 'Skip PHP examples (default)')
     .option('--link', 'Run stagepass link after scaffolding (macOS)')
     .option('--no-link', 'Do not link after scaffolding (default)')
     .option('--git', 'Initialize a git repository')
@@ -401,20 +377,6 @@ export function createProgram(deps = {}) {
       const code = await createNew(name, options);
       process.exitCode = code;
     });
-
-  // Typo suggestions (commander). Root-only writer: subcommands already copied output config.
-  const enableSuggest = (cmd) => {
-    cmd.showSuggestionAfterError();
-    cmd.commands.forEach(enableSuggest);
-  };
-  enableSuggest(program);
-  program.configureOutput({
-    outputError(str, write) {
-      write(str);
-      const hint = suggestMisplacedOption(program, str);
-      if (hint) write(hint);
-    },
-  });
 
   return program;
 }

@@ -5,5 +5,5 @@
  * Sourced from packages/loader and packages/modules package.json at generate time.
  * The published CLI ships this snapshot; it cannot read the monorepo at runtime.
  */
-export const LOADER_VERSION = "2.5.0";
+export const LOADER_VERSION = "2.4.0";
 export const MODULES_VERSION = "2.2.2";

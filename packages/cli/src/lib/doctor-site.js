@@ -16,7 +16,6 @@ import {
   resolveProjectOrigin,
 } from './project-sync.js';
 import { resolveCommand } from './exec.js';
-import { checkPhpRuntime } from './php-runtime.js';
 
 /**
  * @param {object} [opts]
@@ -58,33 +57,29 @@ export async function runProjectSiteChecks(opts = {}) {
       message: 'PHP is off for this project (no php_fastcgi on link)',
     });
   } else if (php === true) {
-    const runtime = await checkPhpRuntime({
-      exec: opts.exec,
-      resolveCommand: opts.resolveCommand || resolveCommand,
-      pathExists: opts.pathExists,
-      platform: opts.platform,
-      brewPrefix: opts.brewPrefix,
-    });
-    const apiOk = await fs.pathExists(path.join(cwd, 'api'));
-    if (!runtime.ok) {
+    const resolve = opts.resolveCommand || resolveCommand;
+    const phpPath = await resolve('php', opts.exec);
+    const apiDir = path.join(cwd, 'api');
+    const apiOk = await fs.pathExists(apiDir);
+    if (!phpPath) {
       checks.push({
         id: 'project.php',
-        status: runtime.status,
-        message: `Project enables PHP but ${runtime.message}`,
-        detail: runtime.detail || 'Install PHP (stagepass setup) or set "php": false in stagepass.json',
+        status: 'fail',
+        message: 'Project enables PHP but php was not found on PATH',
+        detail: 'Install PHP (stagepass setup) or set "php": false in stagepass.json',
       });
     } else if (!apiOk) {
       checks.push({
         id: 'project.php',
         status: 'warn',
-        message: `PHP ${runtime.version.label} is installed but api/ is missing`,
+        message: `PHP enabled (php=${phpPath}) but api/ folder is missing`,
         detail: 'Create api/ for handlers served via php_fastcgi',
       });
     } else {
       checks.push({
         id: 'project.php',
         status: 'ok',
-        message: `PHP ${runtime.version.label} enabled for this project (php=${runtime.phpPath}, api/ present)`,
+        message: `PHP enabled for this project (php=${phpPath}, api/ present)`,
       });
     }
   }

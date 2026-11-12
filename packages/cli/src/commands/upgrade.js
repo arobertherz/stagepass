@@ -26,10 +26,6 @@ import {
   readStagepassJson,
   resolveUpgradeModules,
 } from '../lib/project-sync.js';
-import {
-  defaultBuildScriptTemplatePath,
-  planBuildScriptUpgrade,
-} from '../lib/build-script-upgrade.js';
 
 const STAGEPASS_SCOPE = '@stagepass/';
 
@@ -170,8 +166,7 @@ export function applyStagepassVersions(pkg, target) {
 /**
  * Upgrade @stagepass/* deps in the current project's package.json and sync
  * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
- * tsconfig/jsconfig types. Replaces scripts/build.mjs when it is still an
- * unmodified scaffold from an earlier CLI.
+ * tsconfig/jsconfig types.
  *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
@@ -275,22 +270,6 @@ export async function upgrade(options = {}, deps = {}) {
     if (!rl) rl = deps.createReadline?.() || readline.createInterface({ input, output });
     return rl;
   };
-  const closeRl = () => {
-    if (!rl) return;
-    rl.close();
-    rl = null;
-  };
-  const ask = async (question, def) => {
-    const answer = await getRl().question(`${question} (${def}): `);
-    const trimmed = String(answer || '').trim();
-    return trimmed === '' ? def : trimmed;
-  };
-  const confirmFn = async (question, defYes) => {
-    const answer = await getRl().question(`${question} (${defYes ? 'Y/n' : 'y/N'}): `);
-    const t = String(answer || '').trim().toLowerCase();
-    if (t === '') return defYes;
-    return ['y', 'yes'].includes(t);
-  };
   let resolved;
   try {
     resolved = await resolveUpgradeModules(
@@ -300,12 +279,21 @@ export async function upgrade(options = {}, deps = {}) {
         loadProjects: deps.loadProjects,
         interactive,
         log,
-        ask,
-        confirm: confirmFn,
+        ask: async (question, def) => {
+          const answer = await getRl().question(`${question} (${def}): `);
+          const trimmed = String(answer || '').trim();
+          return trimmed === '' ? def : trimmed;
+        },
+        confirm: async (question, defYes) => {
+          const answer = await getRl().question(`${question} (${defYes ? 'Y/n' : 'y/N'}): `);
+          const t = String(answer || '').trim().toLowerCase();
+          if (t === '') return defYes;
+          return ['y', 'yes'].includes(t);
+        },
       }
     );
   } finally {
-    closeRl();
+    if (rl) rl.close();
   }
   if (!resolved.ok) {
     log(chalk.red(resolved.error));
@@ -323,7 +311,25 @@ export async function upgrade(options = {}, deps = {}) {
     fse
   );
 
-  // Refuse an unpublished --version before asking about scripts/build.mjs or writing.
+  log(chalk.bold(`\nProject files for modules: ${resolved.modules.length ? resolved.modules.join(', ') : 'none'}`));
+  if (plan.writes.length === 0) {
+    log('  Everything is up to date.');
+  }
+  for (const w of plan.writes) {
+    log(`  ${w.file}: ${w.action}`);
+  }
+  for (const note of plan.notes) {
+    log(chalk.yellow(`  note: ${note}`));
+  }
+  if (perModuleTypes === false && resolved.modules.length > 0 && !resolved.modules.includes('all')) {
+    log(
+      chalk.yellow(
+        '  note: the published @stagepass/modules has no per-module types yet (needs 2.2.0); types use "@stagepass/modules". Run `stagepass upgrade` again once it is published.'
+      )
+    );
+  }
+
+  // Snippet: --version pin of loader on 2.x wins; resolve before writing so a failure changes nothing.
   let loaderPub = '@stagepass/loader' in published ? published['@stagepass/loader'] : undefined;
   const getLoaderPub = async () => {
     if (loaderPub !== undefined) return loaderPub;
@@ -343,64 +349,6 @@ export async function upgrade(options = {}, deps = {}) {
       }
     }
     if (t.resolved && satisfiesSimple(t.resolved, PACKAGES_MAJOR_RANGE)) snippetVersion = t.resolved;
-  }
-
-  /** @type {{ action: string, from?: string, content?: string, note?: string }} */
-  let buildUpgrade = { action: 'skipped' };
-  try {
-    let currentBuild;
-    try {
-      currentBuild = await fse.readFile(defaultBuildScriptTemplatePath(), 'utf8');
-    } catch (error) {
-      buildUpgrade = {
-        action: 'unreadable',
-        note: `Could not read the scaffold build script (${error instanceof Error ? error.message : String(error)}). The project script was left unchanged.`,
-      };
-      currentBuild = null;
-    }
-    if (currentBuild != null) {
-      buildUpgrade = await planBuildScriptUpgrade({
-        cwd,
-        currentSource: currentBuild,
-        interactive,
-        confirm: confirmFn,
-        fse,
-      });
-    }
-    if (buildUpgrade.action === 'update' && buildUpgrade.content) {
-      plan.writes.push({
-        file: 'scripts/build.mjs',
-        content: buildUpgrade.content,
-        action: `replace unmodified scaffold (${buildUpgrade.from})`,
-      });
-    }
-  } finally {
-    closeRl();
-  }
-
-  log(chalk.bold(`\nProject files for modules: ${resolved.modules.length ? resolved.modules.join(', ') : 'none'}`));
-  if (plan.writes.length === 0) {
-    log('  Everything is up to date.');
-  }
-  for (const w of plan.writes) {
-    log(`  ${w.file}: ${w.action}`);
-  }
-  for (const note of plan.notes) {
-    log(chalk.yellow(`  note: ${note}`));
-  }
-  if (buildUpgrade.action === 'custom') {
-    log(chalk.yellow(buildUpgrade.note));
-  } else if (buildUpgrade.action !== 'update' && buildUpgrade.note) {
-    const warn = buildUpgrade.action === 'declined' || buildUpgrade.action === 'symlink' || buildUpgrade.action === 'unreadable';
-    const line = `  ${buildUpgrade.note}`;
-    log(warn ? chalk.yellow(line) : line);
-  }
-  if (perModuleTypes === false && resolved.modules.length > 0 && !resolved.modules.includes('all')) {
-    log(
-      chalk.yellow(
-        '  note: the published @stagepass/modules has no per-module types yet (needs 2.2.0); types use "@stagepass/modules". Run `stagepass upgrade` again once it is published.'
-      )
-    );
   }
 
   if (options.dryRun) {

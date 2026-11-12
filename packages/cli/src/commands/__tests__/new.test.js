@@ -963,21 +963,14 @@ describe('new: origins, php, preflight', () => {
     expect(detectSite).not.toHaveBeenCalled();
   });
 
-  it('cli-php: --php-examples is deprecated and does not fail without --php', async () => {
-    const logs = [];
+  it('rejects --php-examples without --php', async () => {
     const r = await resolveNewOptions(
       'shop',
       { yes: true, php: false, phpExamples: true },
-      {
-        isTTY: false,
-        argv: ['--yes', '--no-php', '--php-examples'],
-        exec: async () => ({ stdout: '' }),
-        log: (m) => logs.push(String(m)),
-      }
+      { isTTY: false, argv: ['--yes', '--no-php', '--php-examples'], exec: async () => ({ stdout: '' }) }
     );
-    expect(r.ok).toBe(true);
-    expect(r.config.php).toBe(false);
-    expect(logs.join('\n')).toMatch(/deprecated/i);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/php-examples/i);
   });
 
   it('dry-run lists php examples and production hint', async () => {
@@ -1011,11 +1004,8 @@ describe('new: origins, php, preflight', () => {
       );
       expect(code).toBe(0);
       const joined = logs.join('\n');
-      expect(joined).toContain('api/action.php');
-      expect(joined).toContain('api/.env.example');
-      expect(joined).toContain('.php/config.php');
-      expect(joined).not.toContain('examples/php/form.php');
-      expect(joined).toMatch(/deprecated/);
+      expect(joined).toContain('examples/php/form.php');
+      expect(joined).toContain('examples/php/proxy.php');
       expect(joined).toContain('api/README.md');
       expect(joined).toMatch(/Production domain skipped/i);
       expect(await fs.pathExists(path.join(tmp, 'dry-php'))).toBe(false);
@@ -1055,16 +1045,16 @@ describe('new: origins, php, preflight', () => {
         }
       );
       expect(code).toBe(0);
-      expect(await fs.pathExists(path.join(target, 'api/action.php'))).toBe(true);
-      expect(await fs.pathExists(path.join(target, 'api/.env.example'))).toBe(true);
-      expect(await fs.pathExists(path.join(target, '.php/config.php'))).toBe(true);
-      expect(await fs.pathExists(path.join(target, '.env'))).toBe(false);
-      expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(false);
-      const readme = await fs.readFile(path.join(target, 'api/README.md'), 'utf8');
-      expect(readme).toContain('is not live yet');
-      expect(readme).not.toContain('not part of the Stagepass repository yet');
-      expect(logs.join('\n')).toMatch(/deprecated/i);
-      expect(logs.join('\n')).toMatch(/https:\/\/php-app\.sp/);
+      expect(await fs.pathExists(path.join(target, 'api/README.md'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, 'examples/php/form.php'))).toBe(true);
+      expect(await fs.pathExists(path.join(target, 'examples/php/proxy.php'))).toBe(true);
+      const form = await fs.readFile(path.join(target, 'examples/php/form.php'), 'utf8');
+      expect(form).toContain('htmlspecialchars');
+      expect(form).toContain('REQUEST_METHOD');
+      const proxy = await fs.readFile(path.join(target, 'examples/php/proxy.php'), 'utf8');
+      expect(proxy).toContain('STAGEPASS_PROXY_ALLOWLIST');
+      expect(proxy).toContain('CURLOPT_FOLLOWLOCATION');
+      expect(proxy).toContain('CURLPROTO_HTTPS');
       const sp = await fs.readJson(path.join(target, 'stagepass.json'));
       expect(sp).toMatchObject({
         origin: 'php-app.webflow.io',
@@ -1433,135 +1423,6 @@ describe('new: origins, php, preflight', () => {
         expect.any(Object),
         expect.objectContaining({ cwd: target })
       );
-    } finally {
-      await fs.remove(tmp);
-    }
-  });
-
-  it('interactive macOS --no-link creates the project without asking or linking', async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-nolink-'));
-    const target = path.join(tmp, 'nolink');
-    const link = vi.fn(async () => 0);
-    const questions = [];
-    try {
-      const code = await createNew(
-        'nolink-app',
-        {
-          dir: target,
-          lang: 'ts',
-          styles: 'scss',
-          git: false,
-          install: false,
-          php: false,
-          author: 'Ada',
-          staging: 'nolink-app.webflow.io',
-          production: 'www.example.com',
-          siteModules: 'none',
-        },
-        {
-          isTTY: true,
-          argv: [
-            '--no-link',
-            '--no-modules',
-            '--no-git',
-            '--no-install',
-            '--no-php',
-            '--lang',
-            'ts',
-            '--styles',
-            'scss',
-          ],
-          templatesRoot: defaultTemplatesRoot(),
-          cwd: tmp,
-          log: () => {},
-          error: () => {},
-          exec: vi.fn(),
-          spawn: vi.fn(),
-          platform: 'darwin',
-          runDoctor: vi.fn(async () => ({
-            checks: [{ id: 'caddy', status: 'ok', message: 'ok' }],
-            summary: { ok: 1, warn: 0, fail: 0, info: 0 },
-            exitCode: 0,
-            hints: [],
-          })),
-          link,
-          createReadline: () => ({
-            question: vi.fn(async (q) => {
-              questions.push(String(q));
-              return 'n';
-            }),
-            close: vi.fn(),
-          }),
-        }
-      );
-      expect(code).toBe(0);
-      expect(await fs.pathExists(path.join(target, 'stagepass.json'))).toBe(true);
-      expect(link).not.toHaveBeenCalled();
-      expect(questions.join('\n')).not.toMatch(/Link this project/);
-    } finally {
-      await fs.remove(tmp);
-    }
-  });
-
-  it('interactive macOS without a link flag still asks to link', async () => {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-asklink-'));
-    const target = path.join(tmp, 'asklink');
-    const link = vi.fn(async () => 0);
-    const questions = [];
-    try {
-      const code = await createNew(
-        'asklink-app',
-        {
-          dir: target,
-          lang: 'ts',
-          styles: 'scss',
-          git: false,
-          install: false,
-          php: false,
-          author: 'Ada',
-          staging: 'asklink-app.webflow.io',
-          production: 'www.example.com',
-          siteModules: 'none',
-        },
-        {
-          isTTY: true,
-          argv: [
-            '--no-modules',
-            '--no-git',
-            '--no-install',
-            '--no-php',
-            '--lang',
-            'ts',
-            '--styles',
-            'scss',
-          ],
-          templatesRoot: defaultTemplatesRoot(),
-          cwd: tmp,
-          log: () => {},
-          error: () => {},
-          exec: vi.fn(),
-          spawn: vi.fn(),
-          platform: 'darwin',
-          runDoctor: vi.fn(async () => ({
-            checks: [{ id: 'caddy', status: 'ok', message: 'ok' }],
-            summary: { ok: 1, warn: 0, fail: 0, info: 0 },
-            exitCode: 0,
-            hints: [],
-          })),
-          link,
-          createReadline: () => ({
-            question: vi.fn(async (q) => {
-              questions.push(String(q));
-              return 'n';
-            }),
-            close: vi.fn(),
-          }),
-        }
-      );
-      expect(code).toBe(0);
-      expect(await fs.pathExists(path.join(target, 'stagepass.json'))).toBe(true);
-      expect(link).not.toHaveBeenCalled();
-      expect(questions.join('\n')).toMatch(/Link this project as asklink-app\.sp now\?/);
     } finally {
       await fs.remove(tmp);
     }
