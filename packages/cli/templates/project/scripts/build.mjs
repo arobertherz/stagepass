@@ -2,6 +2,7 @@
 /**
  * Stagepass project build: esbuild (+ optional sass).
  * Production: hashed files, stable copies, manifest.json (sha384 SRI), then drop stale hashes.
+ * Older manifests store a filename string (CLI 2.2.x) or `{ file, integrity }`.
  * `--watch`: stable dist/main.js and dist/styles.css only. Does not touch manifest.json.
  * Writes a dist file only when its bytes changed. Watch rebuilds the affected part.
  */
@@ -142,13 +143,28 @@ function safeHashName(name) {
     && /^[\w-]+\.[0-9a-f]{8}\.[A-Za-z0-9]+$/.test(name);
 }
 
+/**
+ * Filename recorded for one manifest entry.
+ * CLI 2.2.x stored a string. Later scaffolds store `{ file, integrity }`.
+ * @param {unknown} entry
+ * @returns {string}
+ */
+function manifestEntryName(entry) {
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry === 'object' && !Array.isArray(entry) && typeof entry.file === 'string') {
+    return entry.file;
+  }
+  return '';
+}
+
 async function priorHashNames() {
   try {
     const data = JSON.parse(await fs.readFile(path.join(distDir, 'manifest.json'), 'utf8'));
     if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
     const names = [];
     for (const entry of Object.values(data)) {
-      if (entry && typeof entry.file === 'string') names.push(entry.file);
+      const name = manifestEntryName(entry);
+      if (name) names.push(name);
     }
     return names;
   } catch {

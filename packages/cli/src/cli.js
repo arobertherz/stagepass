@@ -318,13 +318,13 @@ export function createProgram(deps = {}) {
   program
     .command('upgrade')
     .description(
-      'Bump @stagepass/*, sync modules, AGENTS.md, Cursor rule and types, print Webflow snippets'
+      'Bump @stagepass/*, sync project files, replace an unmodified scripts/build.mjs, print Webflow snippets'
     )
     .option('--dry-run', 'Show changes without writing any file')
     .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
     .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
     .option('--skip-site', 'Do not fetch the live site')
-    .option('-y, --yes', 'Non-interactive; accept detected or existing modules')
+    .option('-y, --yes', 'Non-interactive; accept detected or existing modules and an unmodified scripts/build.mjs')
     .option(
       '--target <version>',
       'Target version, range or dist-tag; must be published on npm (default: ^<latest published 2.x>, ^2 offline)'

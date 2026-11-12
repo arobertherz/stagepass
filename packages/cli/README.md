@@ -158,7 +158,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 | `--site <host>` | Live site to detect modules from (default: the origin linked in `~/.stagepass/projects.json` for this folder). Stored in `stagepass.json` when given. |
 | `--site-modules <list>` | Set the modules list directly (`none`, `all`, or a comma list). |
 | `--skip-site` | Do not fetch the live site. |
-| `-y, --yes` | Accept the detected or existing list without asking. |
+| `-y, --yes` | Accept the detected or existing list, and replace an unmodified `scripts/build.mjs`, without asking. |
 | `--dry-run` | Print every planned change; write no file. |
 
 `upgrade` bumps `@stagepass/*` in `package.json`, then resolves the modules list (`--site-modules`, else live detection, confirmed interactively; if the site is unreachable or no origin is known it asks; without a TTY it keeps the existing list or `[]` and prints a hint). It then syncs the project:
@@ -167,6 +167,7 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 - `AGENTS.md`: created if missing, otherwise only the managed block is replaced (or appended when there is none). Your own text stays. Broken markers are left alone with a hint.
 - `.cursor/rules/stagepass.mdc`: created if missing, otherwise only its managed block is refreshed.
 - `tsconfig.json` / `jsconfig.json`: only `compilerOptions.types` changes, the rest of the JSON is preserved. Files with comments, or without a `types` array, are skipped with a hint.
+- `scripts/build.mjs`: replaced when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing.
 
 Every change is printed as `file: action` (unchanged files are not listed; skipped files appear as hints). `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 

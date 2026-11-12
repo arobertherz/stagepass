@@ -46,7 +46,7 @@ EventSource('https://<domain.sp>/__stagepass/live')
 
 On `css` events, every `<link rel="stylesheet">` whose `href` starts with the local base is replaced with a clone that has `?t=<timestamp>` (integrity removed; insert before remove). On `reload`, `location.reload()`. Stream payloads are JSON-parsed in try/catch; unknown types are ignored. Nothing from the stream is evaluated.
 
-Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a stable `dist` file only when its bytes changed. Watch does not write hashed files or `manifest.json`, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. The manifest stays as the last `stagepass build`. Existing projects keep their own `scripts/build.mjs` (`stagepass upgrade` does not rewrite it).
+Scaffolded projects (`scripts/build.mjs --watch`, via `stagepass watch` / `stagepass dev`) rebuild only the affected part (JS entry/imports → JS, CSS entry → CSS) and write a stable `dist` file only when its bytes changed. Watch does not write hashed files or `manifest.json`, so a CSS-only edit does not rewrite `main.js` and does not trigger a full reload. The manifest stays as the last `stagepass build`. `stagepass upgrade` replaces `scripts/build.mjs` when it is still an unmodified older scaffold, and leaves an edited script in place with a hint.
 
 ## Security notes
 
