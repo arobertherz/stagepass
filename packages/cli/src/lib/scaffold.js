@@ -222,7 +222,7 @@ export async function planScaffoldFiles(options, deps = {}) {
           '## PHP',
           '',
           `PHP is on. Caddy serves \`https://${options.name}.sp/api/action.php\` with \`php_fastcgi\`.`,
-          'Read `api/README.md`. Copy `api/.env.example` to `.env` (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL.',
+          'Read `api/README.md`. Copy `api/.env.example` to `.env` in the project root (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL. From Webflow, call the PHP host with its absolute URL.',
           '',
         ].join('\n')
       : [

@@ -16,10 +16,14 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
 - The peer range is now `>=2.0.0 || >=2.3.0-beta.0`, so the 2.3 loader prerelease satisfies it (prereleases never match a plain `>=2.0.0`). Ships with the next modules release; 2.2.0 is unchanged.
 
+### `@stagepass/cli`
+
+- Scaffold and package README text only, for the next patch. Published `@stagepass/cli@2.4.0` is unchanged. The monorepo templates now state the document root (`dist/` contains `api/`), the absolute PHP host URL, the Apache and nginx hidden-path deny, the `php -S` hidden-path gap, and the fail-open rate limit.
+
 ### Repo
 
 - Stable package releases now stage directly on npm dist-tag `latest` (one 2FA approval, no separate promotion); prereleases still stage on `next`.
-- master packages now match the published releases: `@stagepass/loader` 2.5.0 (dist byte-identical to npm) and `@stagepass/modules` 2.2.2 plus the unreleased cookie events; CLI pins (`LOADER_VERSION`/`MODULES_VERSION`) synced to 2.5.0 / 2.2.2. Published `@stagepass/cli@2.3.1` still bundles the 2.4.0 loader pin.
+- master packages now match the published releases: `@stagepass/loader` 2.5.0 (dist byte-identical to npm) and `@stagepass/modules` 2.2.2 plus the unreleased cookie events; CLI pins (`LOADER_VERSION`/`MODULES_VERSION`) synced to 2.5.0 / 2.2.2. Published `@stagepass/cli@2.4.0` pins loader 2.5.0 and modules 2.2.2.
 - Packed smoke test: the expected `upgrade` types follow the newest published modules of the major, as the CLI does; also covers CSS hot-swap SSE on a generated js project (`node scripts/build.mjs --watch` + packed `createLiveServer`, with hard timeout and process-group cleanup).
 - Docs: always embed the full `/dist/loader.min.js` path on unpkg / redirecting CDNs (or set `data-stagepass-flag-base`); short package URLs break session chunk resolution. Live reload docs note content-hash classification and selective watch builds.
 - Docs split under `docs/` (#11): getting started, CLI, loader, modules, migration pointer, troubleshooting, live reload. README keeps a short intro and index.
@@ -33,7 +37,7 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### [2.4.0] - 2026-11-12
 
-Minor release on top of 2.3.1: command suggestions for a misplaced top-level option (#78), `stagepass watch` and `stagepass dev` write only stable files with no hash files (#79), `stagepass upgrade` replaces an unmodified scaffold `scripts/build.mjs` (#80), PHP boilerplate with a PHP 8.2 check and the Caddy v3 CORS fix (#82), and interactive `stagepass new` honours `--no-link` (#83). Loader and modules are not part of this release. Not yet published on npm.
+Minor release on top of 2.3.1: command suggestions for a misplaced top-level option (#78), `stagepass watch` and `stagepass dev` write only stable files with no hash files (#79), `stagepass upgrade` replaces an unmodified scaffold `scripts/build.mjs` (#80), PHP boilerplate with a PHP 8.2 check and the Caddy v3 CORS fix (#82), and interactive `stagepass new` honours `--no-link` (#83). Loader and modules are not part of this release. Published on npm as `@stagepass/cli@2.4.0` on 12 November 2026, 18:38 Europe/Berlin, dist-tag `latest`. Source tag `cli-v2.4.0` (`9886c4a`), npm gitHead `9886c4a541a52cea5e39c828d40980b32eff1d78`, npm shasum `43d883c87a97d0efe16332cadc122a402634c07e`, integrity `sha512-WXaKsuNdnFd6xab/nXUOGvXXzlxxvsr+mg3l8swU0eCb3PQKNcAjfUgigEz/ldCzJn5xbpIxPEQudLJSdc/kAQ==`, tarball sha256 `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`.
 
 #### Notes for upgraders
 
