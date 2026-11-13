@@ -76,3 +76,15 @@ jobs:
       - name: Run Playwright (Chromium only)
         working-directory: e2e
         run: npx playwright test --project=chromium
+
+  php-behaviour:
+    # Fork PRs must not run on the self-hosted runner. The runner has no php binary;
+    # behaviour tests run in php:8.2-cli. npm test skips them when php and docker are absent.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, cerebro]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: PHP rate-limit and client IP behaviour
+        run: docker run --rm -v "$PWD":/src:ro -w /src php:8.2-cli php packages/cli/src/lib/__tests__/php-security-behaviour.php
