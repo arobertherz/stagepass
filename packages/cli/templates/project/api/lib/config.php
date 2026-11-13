@@ -138,7 +138,9 @@ function env_list(string $key): array
  *   rate_limit_max: int,
  *   rate_limit_window: int,
  *   max_body_bytes: int,
- *   timezone: string
+ *   timezone: string,
+ *   trusted_proxies: list<string>,
+ *   trusted_proxy_header: string
  * }
  */
 function load_config(): array
@@ -154,6 +156,8 @@ function load_config(): array
         'rate_limit_window' => env_int('RATE_LIMIT_WINDOW', 60),
         'max_body_bytes' => env_int('MAX_BODY_BYTES', 65536),
         'timezone' => env_string('APP_TIMEZONE', 'Europe/Berlin'),
+        'trusted_proxies' => env_list('TRUSTED_PROXIES'),
+        'trusted_proxy_header' => env_string('TRUSTED_PROXY_HEADER', 'x-forwarded-for'),
     ];
 
     $file = null;

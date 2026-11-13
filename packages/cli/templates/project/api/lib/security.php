@@ -49,66 +49,116 @@ function honeypot_is_filled(array $input, string $field): bool
 
 /**
  * File-based fixed-window limiter, keyed by IP and action.
+ * Production storage faults exit with HTTP 503. Other environments allow the request.
  *
  * @return bool True when the request may proceed.
  */
-function rate_limit_allows(string $ip, string $action, int $max, int $window): bool
+function rate_limit_allows(string $ip, string $action, int $max, int $window, ?string $env = null): bool
 {
     if ($max <= 0 || $window <= 0) {
         return true;
     }
 
+    $env = rate_limit_env($env);
     $dir = private_dir() . '/rate-limit';
-    if (!is_dir($dir) && !mkdir($dir, 0700, true) && !is_dir($dir)) {
-        error_log('stagepass-php: could not create the rate-limit directory.');
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        rate_limit_refuse_storage($env, 'could not create the rate-limit directory.');
         return true;
     }
 
     $file = $dir . '/' . hash('sha256', $ip . '|' . $action) . '.json';
-    $handle = fopen($file, 'c+');
+    $handle = @fopen($file, 'c+');
     if ($handle === false) {
-        error_log('stagepass-php: could not open a rate-limit file.');
+        rate_limit_refuse_storage($env, 'could not open a rate-limit file.');
         return true;
     }
 
+    $decision = 'allow';
     try {
         if (!flock($handle, LOCK_EX)) {
-            return true;
-        }
-        $raw = stream_get_contents($handle);
-        $decoded = [];
-        if (is_string($raw) && $raw !== '') {
-            $parsed = json_decode($raw, true);
-            if (is_array($parsed)) {
-                $decoded = $parsed;
+            error_log('stagepass-php: could not lock a rate-limit file.');
+            $decision = 'unavailable';
+        } else {
+            $raw = stream_get_contents($handle);
+            $decoded = [];
+            if (is_string($raw) && $raw !== '') {
+                $parsed = json_decode($raw, true);
+                if (is_array($parsed)) {
+                    $decoded = $parsed;
+                }
+            }
+
+            $now = time();
+            $cutoff = $now - $window;
+            $hits = [];
+            foreach ($decoded as $ts) {
+                if (is_numeric($ts) && (int) $ts > $cutoff) {
+                    $hits[] = (int) $ts;
+                }
+            }
+
+            if (count($hits) >= $max) {
+                $decision = 'deny';
+            } else {
+                $hits[] = $now;
+                rewind($handle);
+                ftruncate($handle, 0);
+                fwrite($handle, json_encode($hits, JSON_THROW_ON_ERROR));
+                fflush($handle);
             }
         }
-
-        $now = time();
-        $cutoff = $now - $window;
-        $hits = [];
-        foreach ($decoded as $ts) {
-            if (is_numeric($ts) && (int) $ts > $cutoff) {
-                $hits[] = (int) $ts;
-            }
-        }
-
-        if (count($hits) >= $max) {
-            return false;
-        }
-
-        $hits[] = $now;
-        rewind($handle);
-        ftruncate($handle, 0);
-        fwrite($handle, json_encode($hits, JSON_THROW_ON_ERROR));
-        fflush($handle);
-
-        return true;
     } catch (Throwable $e) {
         error_log('stagepass-php: rate-limit error: ' . $e->getMessage());
-        return true;
+        $decision = 'unavailable';
     } finally {
         flock($handle, LOCK_UN);
         fclose($handle);
     }
+
+    if ($decision === 'unavailable') {
+        if ($env === 'production') {
+            rate_limit_unavailable_response();
+        }
+        return true;
+    }
+
+    return $decision === 'allow';
+}
+
+function rate_limit_storage_available(string $env): bool
+{
+    $dir = private_dir() . '/rate-limit';
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+        return rate_limit_refuse_storage($env, 'could not create the rate-limit directory.');
+    }
+    if (!is_writable($dir)) {
+        return rate_limit_refuse_storage($env, 'could not open a rate-limit file.');
+    }
+    return true;
+}
+
+function rate_limit_env(?string $env): string
+{
+    if (is_string($env)) {
+        return $env;
+    }
+    $loaded = load_config();
+    return (string) ($loaded['env'] ?? 'production');
+}
+
+function rate_limit_refuse_storage(string $env, string $message): bool
+{
+    error_log('stagepass-php: ' . $message);
+    if ($env === 'production') {
+        rate_limit_unavailable_response();
+    }
+    return false;
+}
+
+function rate_limit_unavailable_response(): never
+{
+    if (!headers_sent()) {
+        header('Retry-After: 60');
+    }
+    respond_error('The service is temporarily unavailable. Try again later.', 503);
 }

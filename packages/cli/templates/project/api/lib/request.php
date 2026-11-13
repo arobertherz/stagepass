@@ -25,10 +25,351 @@ function request_origin(): string
     return trim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''));
 }
 
-function client_ip(): string
+function client_ip(?array $config = null): string
 {
-    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
-    return $ip !== '' ? $ip : '0.0.0.0';
+    if ($config === null) {
+        $config = load_config();
+    }
+
+    $remoteRaw = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    $remote = normalize_ip($remoteRaw);
+    if ($remote === null) {
+        return $remoteRaw !== '' ? $remoteRaw : '0.0.0.0';
+    }
+
+    $rules = compile_trusted_proxies(trusted_proxy_entries($config));
+    if ($rules === [] || !ip_in_trusted($remote, $rules)) {
+        return $remote;
+    }
+
+    $header = trusted_proxy_header_name($config);
+    if ($header === null) {
+        error_log('stagepass-php: unknown TRUSTED_PROXY_HEADER; using REMOTE_ADDR.');
+        return $remote;
+    }
+
+    $serverKey = $header === 'forwarded' ? 'HTTP_FORWARDED' : 'HTTP_X_FORWARDED_FOR';
+    $raw = trim((string) ($_SERVER[$serverKey] ?? ''));
+    if ($raw === '') {
+        return $remote;
+    }
+
+    // Walk right to left. The first address outside the allowlist is the client.
+    // An invalid hop ignores the header and does not log the raw value.
+    $hops = $header === 'forwarded' ? forwarded_hops($raw) : xff_hops($raw);
+    if ($hops === null || $hops === []) {
+        error_log('stagepass-php: invalid proxy hop; using REMOTE_ADDR.');
+        return $remote;
+    }
+
+    $chosen = $hops[0];
+    for ($i = count($hops) - 1; $i >= 0; $i--) {
+        $chosen = $hops[$i];
+        if (!ip_in_trusted($chosen, $rules)) {
+            return $chosen;
+        }
+    }
+    return $chosen;
+}
+
+function trusted_proxy_entries(array $config): array
+{
+    if (!array_key_exists('trusted_proxies', $config)) {
+        return [];
+    }
+    $raw = $config['trusted_proxies'];
+    if (is_string($raw)) {
+        $split = preg_split('/\s*,\s*/', $raw);
+        $raw = $split === false ? [] : $split;
+    }
+    if (!is_array($raw)) {
+        error_log('stagepass-php: ignoring invalid trusted proxy list.');
+        return [];
+    }
+    $entries = [];
+    foreach ($raw as $entry) {
+        if (!is_string($entry)) {
+            log_invalid_proxy_entry('');
+            continue;
+        }
+        $entries[] = $entry;
+    }
+    return $entries;
+}
+
+function trusted_proxy_header_name(array $config): ?string
+{
+    $name = strtolower(trim((string) ($config['trusted_proxy_header'] ?? 'x-forwarded-for')));
+    if ($name === '' || $name === 'x-forwarded-for') {
+        return 'x-forwarded-for';
+    }
+    if ($name === 'forwarded') {
+        return 'forwarded';
+    }
+    return null;
+}
+
+function normalize_ip(string $value): ?string
+{
+    $value = trim($value);
+    if (filter_var($value, FILTER_VALIDATE_IP) === false) {
+        return null;
+    }
+    $packed = inet_pton($value);
+    if ($packed === false) {
+        return null;
+    }
+    $text = inet_ntop($packed);
+    return $text === false ? null : $text;
+}
+
+function compile_trusted_proxies(array $entries): array
+{
+    $rules = [];
+    foreach ($entries as $entry) {
+        $entry = trim($entry);
+        if ($entry === '') {
+            continue;
+        }
+        $addr = $entry;
+        $bits = null;
+        if (str_contains($entry, '/')) {
+            [$addr, $prefix] = explode('/', $entry, 2);
+            if ($prefix === '' || preg_match('/^\d+$/', $prefix) !== 1) {
+                log_invalid_proxy_entry($entry);
+                continue;
+            }
+            $bits = (int) $prefix;
+        }
+        $norm = normalize_ip(trim($addr));
+        if ($norm === null) {
+            log_invalid_proxy_entry($entry);
+            continue;
+        }
+        $packed = inet_pton($norm);
+        if ($packed === false) {
+            log_invalid_proxy_entry($entry);
+            continue;
+        }
+        $max = strlen($packed) * 8;
+        if ($bits === null) {
+            $bits = $max;
+        }
+        if ($bits > $max) {
+            log_invalid_proxy_entry($entry);
+            continue;
+        }
+        $rules[] = ['packed' => $packed, 'bits' => $bits];
+    }
+    return $rules;
+}
+
+function log_invalid_proxy_entry(string $entry): void
+{
+    static $seen = [];
+    $safe = preg_replace('/[^\x20-\x7E]/', '', $entry) ?? '';
+    $safe = substr($safe, 0, 80);
+    if (isset($seen[$safe])) {
+        return;
+    }
+    $seen[$safe] = true;
+    error_log('stagepass-php: ignoring invalid trusted proxy entry: ' . $safe);
+}
+
+function ip_in_trusted(string $ip, array $rules): bool
+{
+    $packed = inet_pton($ip);
+    if ($packed === false) {
+        return false;
+    }
+    foreach ($rules as $rule) {
+        if (strlen($packed) !== strlen($rule['packed'])) {
+            continue;
+        }
+        if (ip_prefix_match($packed, $rule['packed'], $rule['bits'])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function ip_prefix_match(string $ip, string $network, int $bits): bool
+{
+    $full = intdiv($bits, 8);
+    if ($full > 0 && substr($ip, 0, $full) !== substr($network, 0, $full)) {
+        return false;
+    }
+    $rest = $bits % 8;
+    if ($rest === 0) {
+        return true;
+    }
+    $mask = (0xff << (8 - $rest)) & 0xff;
+    return (ord($ip[$full]) & $mask) === (ord($network[$full]) & $mask);
+}
+
+function ip_from_hop(string $hop): ?string
+{
+    $hop = trim($hop);
+    if ($hop === '') {
+        return null;
+    }
+    if ($hop[0] === '"' && str_ends_with($hop, '"') && strlen($hop) >= 2) {
+        $hop = substr($hop, 1, -1);
+    }
+    if (strcasecmp($hop, 'unknown') === 0 || str_starts_with($hop, '_')) {
+        return null;
+    }
+    if ($hop[0] === '[') {
+        $end = strpos($hop, ']');
+        if ($end === false) {
+            return null;
+        }
+        $ip = substr($hop, 1, $end - 1);
+        $rest = substr($hop, $end + 1);
+        if ($rest !== '' && preg_match('/^:\d{1,5}$/', $rest) !== 1) {
+            return null;
+        }
+        return normalize_ip($ip);
+    }
+    if (preg_match('/^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/', $hop, $match) === 1) {
+        return normalize_ip($match[1]);
+    }
+    return normalize_ip($hop);
+}
+
+function xff_hops(string $header): ?array
+{
+    if (strlen($header) > 8192) {
+        return null;
+    }
+    $parts = explode(',', $header);
+    if (count($parts) > 32) {
+        return null;
+    }
+    $ips = [];
+    foreach ($parts as $part) {
+        $ip = ip_from_hop($part);
+        if ($ip === null) {
+            return null;
+        }
+        $ips[] = $ip;
+    }
+    return $ips;
+}
+
+function forwarded_hops(string $header): ?array
+{
+    if (strlen($header) > 8192) {
+        return null;
+    }
+    $elements = split_outside_quotes($header, ',');
+    if ($elements === null || count($elements) > 32) {
+        return null;
+    }
+    $ips = [];
+    foreach ($elements as $element) {
+        if ($element === '') {
+            return null;
+        }
+        $value = forwarded_for_value($element);
+        if ($value === null) {
+            return null;
+        }
+        $ip = ip_from_hop($value);
+        if ($ip === null) {
+            return null;
+        }
+        $ips[] = $ip;
+    }
+    return $ips;
+}
+
+function forwarded_for_value(string $element): ?string
+{
+    $len = strlen($element);
+    $i = 0;
+    $found = null;
+    while ($i < $len) {
+        while ($i < $len && ($element[$i] === ' ' || $element[$i] === "\t" || $element[$i] === ';')) {
+            $i++;
+        }
+        if ($i >= $len) {
+            break;
+        }
+        $start = $i;
+        while ($i < $len && $element[$i] !== '=' && $element[$i] !== ';') {
+            $i++;
+        }
+        if ($i >= $len || $element[$i] !== '=') {
+            return null;
+        }
+        $name = strtolower(trim(substr($element, $start, $i - $start)));
+        $i++;
+        if ($i < $len && $element[$i] === '"') {
+            $i++;
+            $val = '';
+            $closed = false;
+            while ($i < $len) {
+                if ($element[$i] === '\\' && $i + 1 < $len) {
+                    $val .= $element[$i + 1];
+                    $i += 2;
+                    continue;
+                }
+                if ($element[$i] === '"') {
+                    $i++;
+                    $closed = true;
+                    break;
+                }
+                $val .= $element[$i];
+                $i++;
+            }
+            if (!$closed) {
+                return null;
+            }
+        } else {
+            $start = $i;
+            while ($i < $len && $element[$i] !== ';') {
+                $i++;
+            }
+            $val = trim(substr($element, $start, $i - $start));
+        }
+        if ($name === 'for' && $found === null) {
+            $found = $val;
+        }
+    }
+    return $found;
+}
+
+function split_outside_quotes(string $value, string $separator): ?array
+{
+    $parts = [];
+    $buf = '';
+    $quoted = false;
+    $len = strlen($value);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $value[$i];
+        if ($ch === '\\' && $quoted && $i + 1 < $len) {
+            $buf .= $ch . $value[$i + 1];
+            $i++;
+            continue;
+        }
+        if ($ch === '"') {
+            $quoted = !$quoted;
+            $buf .= $ch;
+            continue;
+        }
+        if ($ch === $separator && !$quoted) {
+            $parts[] = trim($buf);
+            $buf = '';
+            continue;
+        }
+        $buf .= $ch;
+    }
+    if ($quoted) {
+        return null;
+    }
+    $parts[] = trim($buf);
+    return $parts;
 }
 
 /**

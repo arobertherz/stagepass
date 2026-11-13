@@ -59,6 +59,13 @@ if ($action === '' || !isset($catalog[$action])) {
 
 $spec = $catalog[$action];
 $allowedMethods = $spec['methods'];
+$env = (string) ($config['env'] ?? 'production');
+$limitMax = (int) $config['rate_limit_max'];
+$limitWindow = (int) $config['rate_limit_window'];
+$rateLimit = $spec['rate_limit'] && $limitMax > 0 && $limitWindow > 0;
+if ($rateLimit && !rate_limit_storage_available($env)) {
+    $rateLimit = false;
+}
 
 if (!in_array($method, $allowedMethods, true)) {
     if (!headers_sent()) {
@@ -82,9 +89,9 @@ if ($allowedOrigins === [] && $originRequired) {
     respond_fail(['origin' => 'No origins are configured.'], 'Origin is not allowed.', 403);
 }
 
-if ($spec['rate_limit'] && !rate_limit_allows(client_ip(), $action, (int) $config['rate_limit_max'], (int) $config['rate_limit_window'])) {
+if ($rateLimit && !rate_limit_allows(client_ip($config), $action, $limitMax, $limitWindow, $env)) {
     if (!headers_sent()) {
-        header('Retry-After: ' . (string) $config['rate_limit_window']);
+        header('Retry-After: ' . (string) $limitWindow);
     }
     respond_fail(['rate_limit' => 'Too many requests. Try again later.'], 'Too many requests.', 429);
 }
