@@ -329,7 +329,7 @@ export function createProgram(deps = {}) {
     .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
     .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
     .option('--skip-site', 'Do not fetch the live site')
-    .option('-y, --yes', 'Non-interactive; accept detected or existing modules and an unmodified scripts/build.mjs')
+    .option('-y, --yes', 'Non-interactive; accept detected or existing modules and replace an unmodified scripts/build.mjs')
     .option(
       '--target <version>',
       'Target version, range or dist-tag; must be published on npm (default: ^<latest published 2.x>, ^2 offline)'

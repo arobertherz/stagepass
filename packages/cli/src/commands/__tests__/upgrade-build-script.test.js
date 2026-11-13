@@ -7,6 +7,7 @@ import { applyTemplate } from '../../lib/scaffold.js';
 import {
   BUILD_SCRIPT_CUSTOM_HINT,
   BUILD_SCRIPT_MISSING_NOTE,
+  buildScriptUnattendedHint,
   defaultBuildScriptTemplatePath,
   renderCurrentBuildScript,
 } from '../../lib/build-script-upgrade.js';
@@ -64,7 +65,25 @@ describe('upgrade scripts/build.mjs', () => {
     };
   }
 
-  it('replaces an unmodified scaffold without a TTY and leaves a second run unchanged', async () => {
+  it('without a TTY and without --yes leaves an unmodified scaffold and prints a hint', async () => {
+    const raw = applyTemplate(await fs.readFile(oldTemplate, 'utf8'), {
+      ENTRY_JS: 'src/main.ts',
+      ENTRY_CSS: 'src/styles.scss',
+      USE_SASS: 'true',
+    });
+    const stored = raw.replace(/\n/g, '\r\n');
+    const dir = await project(stored);
+    const logs = [];
+    const code = await upgrade({ siteModules: 'none', skipSite: true }, deps(dir, logs));
+    expect(code).toBe(0);
+    expect(await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8')).toBe(stored);
+    const out = logs.join('\n');
+    expect(out).toContain(buildScriptUnattendedHint('2.1.0-2.2.7'));
+    expect(out).not.toContain('scripts/build.mjs: replace unmodified scaffold');
+    expect(out).not.toContain('Everything is up to date.');
+  });
+
+  it('without a TTY and with --yes replaces an unmodified scaffold', async () => {
     const raw = applyTemplate(await fs.readFile(oldTemplate, 'utf8'), {
       ENTRY_JS: 'src/main.ts',
       ENTRY_CSS: 'src/styles.scss',
@@ -72,7 +91,7 @@ describe('upgrade scripts/build.mjs', () => {
     });
     const dir = await project(raw.replace(/\n/g, '\r\n'));
     const logs = [];
-    const code = await upgrade({ siteModules: 'none', skipSite: true }, deps(dir, logs));
+    const code = await upgrade({ yes: true, siteModules: 'none', skipSite: true }, deps(dir, logs));
     expect(code).toBe(0);
     const current = await fs.readFile(defaultBuildScriptTemplatePath(), 'utf8');
     const written = await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8');
@@ -89,12 +108,30 @@ describe('upgrade scripts/build.mjs', () => {
     expect(again.join('\n')).toContain('scripts/build.mjs already matches the current scaffold.');
   });
 
-  it('--dry-run prints the replacement and writes nothing', async () => {
+  it('--dry-run without --yes writes nothing and does not plan a replacement', async () => {
     const raw = await fs.readFile(oldTemplate, 'utf8');
     const dir = await project(raw);
     const before = await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8');
     const logs = [];
     const code = await upgrade({ dryRun: true, siteModules: 'none', skipSite: true }, deps(dir, logs));
+    expect(code).toBe(0);
+    expect(await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8')).toBe(before);
+    expect(await fs.pathExists(path.join(dir, 'AGENTS.md'))).toBe(false);
+    const out = logs.join('\n');
+    expect(out).toContain(buildScriptUnattendedHint('2.1.0-2.2.7'));
+    expect(out).not.toContain('scripts/build.mjs: replace unmodified scaffold');
+    expect(out).toContain('Dry run');
+  });
+
+  it('--dry-run with --yes prints the replacement and writes nothing', async () => {
+    const raw = await fs.readFile(oldTemplate, 'utf8');
+    const dir = await project(raw);
+    const before = await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8');
+    const logs = [];
+    const code = await upgrade(
+      { dryRun: true, yes: true, siteModules: 'none', skipSite: true },
+      deps(dir, logs)
+    );
     expect(code).toBe(0);
     expect(await fs.readFile(path.join(dir, 'scripts', 'build.mjs'), 'utf8')).toBe(before);
     expect(await fs.pathExists(path.join(dir, 'AGENTS.md'))).toBe(false);

@@ -13,6 +13,7 @@ import {
   defaultBuildScriptTemplatePath,
   hashBuildScript,
   inspectProjectBuildScript,
+  buildScriptUnattendedHint,
   planBuildScriptUpgrade,
   readScaffoldTokens,
   renderCurrentBuildScript,
@@ -108,10 +109,23 @@ describe('scaffold build.mjs detection', () => {
     const confirm = async () => {
       throw new Error('non-interactive upgrade must not ask');
     };
+    const hinted = await planBuildScriptUpgrade({
+      cwd: dir,
+      currentSource: current,
+      interactive: false,
+      assumeYes: false,
+      confirm,
+      fse: fs,
+    });
+    expect(hinted.action).toBe('hint');
+    expect(hinted.content).toBeUndefined();
+    expect(hinted.note).toBe(buildScriptUnattendedHint('2.1.0-2.2.7'));
+
     const planned = await planBuildScriptUpgrade({
       cwd: dir,
       currentSource: current,
       interactive: false,
+      assumeYes: true,
       confirm,
       fse: fs,
     });
