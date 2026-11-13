@@ -355,6 +355,10 @@ describe('upgrade: editor types retrofit', () => {
     const out = logs.join('\n');
     expect(out).toContain('npm install');
     expect(out).toContain('TypeScript: Restart TS Server');
+    expect(out).toContain(
+      'No tsconfig.json or jsconfig.json: editors only load stagepass.d.ts as part of a project. Add a jsconfig.json (or tsconfig.json) that includes your sources, for example {"include": ["src", "stagepass.d.ts"]}, then run stagepass upgrade again.'
+    );
+    expect(await fsx.pathExists(path.join(dir, 'jsconfig.json'))).toBe(false);
   });
 
   it('(b) jsconfig without a types array is left unchanged and a covered stagepass.d.ts is written', async () => {
@@ -435,6 +439,7 @@ describe('upgrade: editor types retrofit', () => {
     expect(out).toContain('@stagepass/loader: add ^2.2.0');
     expect(out).toContain('Dry run');
     expect(out).toContain('npm install');
+    expect(out).toContain('No tsconfig.json or jsconfig.json: editors only load stagepass.d.ts as part of a project.');
   });
 
   it('(g) retrofits types when stagepass.json is missing', async () => {

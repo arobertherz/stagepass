@@ -91,6 +91,7 @@ describe('planProjectSync / applyProjectSync', () => {
     ]);
     expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toBe(renderStagepassTypesFile(['@stagepass/loader']));
     expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toContain(STAGEPASS_TYPES_MARKER);
+    expect(plan.notes.join('\n')).toContain('No tsconfig.json or jsconfig.json:');
     await applyProjectSync(dir, plan.writes);
     expect(await fs.readJson(path.join(dir, 'stagepass.json'))).toEqual({ name: 'demo', modules: [], version: 1 });
     const again = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });

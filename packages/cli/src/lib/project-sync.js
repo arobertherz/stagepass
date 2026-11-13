@@ -492,6 +492,10 @@ function hasTypesMarker(raw) {
     .some((line) => line.includes(STAGEPASS_TYPES_MARKER));
 }
 
+/** Printed when neither tsconfig.json nor jsconfig.json exists. The root file stays. */
+const NO_CONFIG_TYPES_NOTE =
+  'No tsconfig.json or jsconfig.json: editors only load stagepass.d.ts as part of a project. Add a jsconfig.json (or tsconfig.json) that includes your sources, for example {"include": ["src", "stagepass.d.ts"]}, then run stagepass upgrade again.';
+
 async function planEditorTypes(input) {
   const { cwd, modules, modulesDependency, perModuleTypes, skipSymlink, fse } = input;
   /** @type {{ file: string, content: string, action: string }[]} */
@@ -545,6 +549,7 @@ async function planEditorTypes(input) {
 
   if (configs.length === 0) {
     await writeTypesFile('stagepass.d.ts');
+    notes.push(NO_CONFIG_TYPES_NOTE);
     return { writes, notes };
   }
 
