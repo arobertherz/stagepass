@@ -1,5 +1,17 @@
 # Troubleshooting
 
+## Editor reports Cannot find name 'sp'
+
+The page can run while the editor reports `Cannot find name 'sp'. ts(2304)`. `sp` is typed by `@stagepass/loader` (and `@stagepass/modules` for declared modules). Published CLI 2.4.0 only fills `compilerOptions.types` when that array already exists in plain JSON.
+
+On the unreleased CLI (2.5.0):
+
+1. `stagepass upgrade`
+2. `npm install`
+3. Command palette: `TypeScript: Restart TS Server`
+
+`--dry-run` prints the plan and writes nothing. Upgrade adds `@stagepass/loader` to `devDependencies` when it is missing, and `@stagepass/modules` only when the project declares modules. It updates a plain `types` array when one exists. Otherwise it writes `stagepass.d.ts` (marker `// @stagepass-types`) with `/// <reference types="..." />` lines, if the config already includes that path. With no `tsconfig.json` or `jsconfig.json` it still writes that file at the project root and does not create a config. That file alone does not clear the editor error: add a `jsconfig.json` or `tsconfig.json` that includes your sources and `stagepass.d.ts`, for example `{"include": ["src", "stagepass.d.ts"]}`, then run `stagepass upgrade` again. The command prints that note, including on `--dry-run`. It does not edit a config that has comments or is invalid JSON, and it does not add a `types` array. If `include` or `files` would not cover the reference file, the command says so and leaves the config unchanged. A `stagepass.d.ts` you wrote yourself, without the marker, is left unchanged. A missing `stagepass.json` does not skip the step. `stagepass doctor` does not check editor types.
+
 ## Local assets do not load
 
 1. Confirm a session is active (`?stagepass=your-project.sp`) and the domain matches the linked project.
