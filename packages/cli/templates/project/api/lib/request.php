@@ -54,20 +54,11 @@ function client_ip(?array $config = null): string
         return $remote;
     }
 
-    // Walk right to left. The first address outside the allowlist is the client.
-    // An invalid hop ignores the header and does not log the raw value.
-    $hops = $header === 'forwarded' ? forwarded_hops($raw) : xff_hops($raw);
-    if ($hops === null || $hops === []) {
+    // Stop at the first untrusted hop. Left of it is ignored; a bad hop in this suffix falls back.
+    $chosen = select_client_hop($raw, $header, $rules);
+    if ($chosen === null) {
         error_log('stagepass-php: invalid proxy hop; using REMOTE_ADDR.');
         return $remote;
-    }
-
-    $chosen = $hops[0];
-    for ($i = count($hops) - 1; $i >= 0; $i--) {
-        $chosen = $hops[$i];
-        if (!ip_in_trusted($chosen, $rules)) {
-            return $chosen;
-        }
     }
     return $chosen;
 }
@@ -237,51 +228,114 @@ function ip_from_hop(string $hop): ?string
     return normalize_ip($hop);
 }
 
-function xff_hops(string $header): ?array
+function select_client_hop(string $header, string $kind, array $rules): ?string
 {
-    if (strlen($header) > 8192) {
-        return null;
-    }
-    $parts = explode(',', $header);
-    if (count($parts) > 32) {
-        return null;
-    }
-    $ips = [];
-    foreach ($parts as $part) {
-        $ip = ip_from_hop($part);
+    // Only the rightmost hops are read, so a long prefix cannot change the result.
+    $maxHops = 32;
+    $maxScan = 8192;
+    $maxHop = 512;
+    $end = strlen($header);
+    $scanned = 0;
+    $seen = 0;
+    $leftmost = null;
+    while ($end > 0 && $seen < $maxHops && $scanned < $maxScan) {
+        $budget = $maxScan - $scanned;
+        $hop = $kind === 'forwarded'
+            ? forwarded_hop_before($header, $end, $maxHop, $budget)
+            : xff_hop_before($header, $end, $maxHop, $budget);
+        if ($hop['kind'] === 'invalid') {
+            return null;
+        }
+        $seen++;
+        $scanned += $hop['consumed'];
+        $end = $hop['end'];
+        $ip = $kind === 'forwarded' ? ip_from_forwarded_element($hop['text']) : ip_from_hop($hop['text']);
         if ($ip === null) {
             return null;
         }
-        $ips[] = $ip;
+        $leftmost = $ip;
+        if (!ip_in_trusted($ip, $rules)) {
+            return $ip;
+        }
+        if ($hop['kind'] === 'start') {
+            break;
+        }
     }
-    return $ips;
+    return $leftmost;
 }
 
-function forwarded_hops(string $header): ?array
+function xff_hop_before(string $header, int $end, int $maxHop, int $budget): array
 {
-    if (strlen($header) > 8192) {
+    $i = $end - 1;
+    $n = 0;
+    while ($i >= 0 && $header[$i] !== ',') {
+        $n++;
+        if ($n > $maxHop || $n > $budget) {
+            return ['kind' => 'invalid', 'text' => '', 'end' => $end, 'consumed' => $n];
+        }
+        $i--;
+    }
+    $start = $i + 1;
+    return [
+        'kind' => $i < 0 ? 'start' : 'next',
+        'text' => substr($header, $start, $end - $start),
+        'end' => $i < 0 ? 0 : $i,
+        'consumed' => $end - ($i < 0 ? 0 : $i),
+    ];
+}
+
+function forwarded_hop_before(string $header, int $end, int $maxHop, int $budget): array
+{
+    $i = $end - 1;
+    $n = 0;
+    $inQuote = false;
+    while ($i >= 0) {
+        $n++;
+        if ($n > $maxHop || $n > $budget) {
+            return ['kind' => 'invalid', 'text' => '', 'end' => $end, 'consumed' => $n];
+        }
+        $ch = $header[$i];
+        if ($ch === '"') {
+            $slashes = 0;
+            $j = $i - 1;
+            while ($j >= 0 && $header[$j] === '\\' && $slashes < 8) {
+                $slashes++;
+                $j--;
+            }
+            if ($slashes % 2 === 0) {
+                $inQuote = !$inQuote;
+            }
+        } elseif ($ch === ',' && !$inQuote) {
+            return [
+                'kind' => 'next',
+                'text' => substr($header, $i + 1, $end - $i - 1),
+                'end' => $i,
+                'consumed' => $end - $i,
+            ];
+        }
+        $i--;
+    }
+    if ($inQuote) {
+        return ['kind' => 'invalid', 'text' => '', 'end' => 0, 'consumed' => $n];
+    }
+    return [
+        'kind' => 'start',
+        'text' => substr($header, 0, $end),
+        'end' => 0,
+        'consumed' => $end,
+    ];
+}
+
+function ip_from_forwarded_element(string $element): ?string
+{
+    if (trim($element) === '') {
         return null;
     }
-    $elements = split_outside_quotes($header, ',');
-    if ($elements === null || count($elements) > 32) {
+    $value = forwarded_for_value($element);
+    if ($value === null || $value === '') {
         return null;
     }
-    $ips = [];
-    foreach ($elements as $element) {
-        if ($element === '') {
-            return null;
-        }
-        $value = forwarded_for_value($element);
-        if ($value === null) {
-            return null;
-        }
-        $ip = ip_from_hop($value);
-        if ($ip === null) {
-            return null;
-        }
-        $ips[] = $ip;
-    }
-    return $ips;
+    return ip_from_hop($value);
 }
 
 function forwarded_for_value(string $element): ?string
@@ -338,38 +392,6 @@ function forwarded_for_value(string $element): ?string
         }
     }
     return $found;
-}
-
-function split_outside_quotes(string $value, string $separator): ?array
-{
-    $parts = [];
-    $buf = '';
-    $quoted = false;
-    $len = strlen($value);
-    for ($i = 0; $i < $len; $i++) {
-        $ch = $value[$i];
-        if ($ch === '\\' && $quoted && $i + 1 < $len) {
-            $buf .= $ch . $value[$i + 1];
-            $i++;
-            continue;
-        }
-        if ($ch === '"') {
-            $quoted = !$quoted;
-            $buf .= $ch;
-            continue;
-        }
-        if ($ch === $separator && !$quoted) {
-            $parts[] = trim($buf);
-            $buf = '';
-            continue;
-        }
-        $buf .= $ch;
-    }
-    if ($quoted) {
-        return null;
-    }
-    $parts[] = trim($buf);
-    return $parts;
 }
 
 /**

@@ -47,6 +47,19 @@ function honeypot_is_filled(array $input, string $field): bool
     return $field !== '' && input_string($input, $field) !== '';
 }
 
+/** Swallow storage warnings so they cannot become HTTP 500. */
+function rate_limit_call(callable $fn)
+{
+    set_error_handler(static function (): bool {
+        return true;
+    });
+    try {
+        return $fn();
+    } finally {
+        restore_error_handler();
+    }
+}
+
 /**
  * File-based fixed-window limiter, keyed by IP and action.
  * Storage faults fail closed unless APP_ENV is local, development, or dev.
@@ -61,13 +74,18 @@ function rate_limit_allows(string $ip, string $action, int $max, int $window, ?s
 
     $env = rate_limit_env($env);
     $dir = private_dir() . '/rate-limit';
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+    $ready = rate_limit_call(static function () use ($dir): bool {
+        return is_dir($dir) || mkdir($dir, 0700, true) || is_dir($dir);
+    });
+    if ($ready !== true) {
         rate_limit_refuse_storage($env, 'could not create the rate-limit directory.');
         return true;
     }
 
     $file = $dir . '/' . hash('sha256', $ip . '|' . $action) . '.json';
-    $handle = @fopen($file, 'c+');
+    $handle = rate_limit_call(static function () use ($file) {
+        return fopen($file, 'c+');
+    });
     if ($handle === false) {
         rate_limit_refuse_storage($env, 'could not open a rate-limit file.');
         return true;
@@ -111,8 +129,12 @@ function rate_limit_allows(string $ip, string $action, int $max, int $window, ?s
         error_log('stagepass-php: rate-limit error: ' . $e->getMessage());
         $decision = 'unavailable';
     } finally {
-        flock($handle, LOCK_UN);
-        fclose($handle);
+        if (is_resource($handle)) {
+            rate_limit_call(static function () use ($handle): void {
+                flock($handle, LOCK_UN);
+                fclose($handle);
+            });
+        }
     }
 
     if ($decision === 'unavailable') {
@@ -128,10 +150,14 @@ function rate_limit_allows(string $ip, string $action, int $max, int $window, ?s
 function rate_limit_storage_available(string $env): bool
 {
     $dir = private_dir() . '/rate-limit';
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+    $state = rate_limit_call(static function () use ($dir): array {
+        $ok = is_dir($dir) || mkdir($dir, 0700, true) || is_dir($dir);
+        return ['ok' => $ok, 'writable' => $ok && is_writable($dir)];
+    });
+    if ($state['ok'] !== true) {
         return rate_limit_refuse_storage($env, 'could not create the rate-limit directory.');
     }
-    if (!is_writable($dir)) {
+    if ($state['writable'] !== true) {
         return rate_limit_refuse_storage($env, 'could not open a rate-limit file.');
     }
     return true;

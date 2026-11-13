@@ -63,9 +63,6 @@ $env = (string) ($config['env'] ?? 'production');
 $limitMax = (int) $config['rate_limit_max'];
 $limitWindow = (int) $config['rate_limit_window'];
 $rateLimit = $spec['rate_limit'] && $limitMax > 0 && $limitWindow > 0;
-if ($rateLimit && !rate_limit_storage_available($env)) {
-    $rateLimit = false;
-}
 
 if (!in_array($method, $allowedMethods, true)) {
     if (!headers_sent()) {
@@ -87,6 +84,11 @@ if ($origin !== '' && !origin_is_allowed($origin, $allowedOrigins)) {
 }
 if ($allowedOrigins === [] && $originRequired) {
     respond_fail(['origin' => 'No origins are configured.'], 'Origin is not allowed.', 403);
+}
+
+// Storage faults apply only after method and origin checks.
+if ($rateLimit && !rate_limit_storage_available($env)) {
+    $rateLimit = false;
 }
 
 if ($rateLimit && !rate_limit_allows(client_ip($config), $action, $limitMax, $limitWindow, $env)) {
