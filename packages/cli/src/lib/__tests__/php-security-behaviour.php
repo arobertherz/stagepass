@@ -43,6 +43,7 @@ function rm_tree(string $dir): void
     if (!is_dir($dir)) {
         return;
     }
+    @chmod($dir, 0700);
     $items = scandir($dir);
     if ($items === false) {
         return;
@@ -52,6 +53,7 @@ function rm_tree(string $dir): void
             continue;
         }
         $path = $dir . '/' . $item;
+        @chmod($path, 0700);
         if (is_dir($path) && !is_link($path)) {
             rm_tree($path);
         } else {
@@ -129,6 +131,33 @@ function block_rate_file(string $root, string $ip, string $action = 'ping'): voi
     if (!is_dir($path)) {
         mkdir($path, 0700);
     }
+}
+
+function chmod_rate_dir(string $root): void
+{
+    $dir = $root . '/.php/rate-limit';
+    if (is_file($dir)) {
+        unlink($dir);
+    }
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+    chmod($dir, 0555);
+}
+
+function chmod_rate_file(string $root, string $ip, string $action = 'ping'): void
+{
+    $dir = $root . '/.php/rate-limit';
+    if (is_file($dir)) {
+        unlink($dir);
+    }
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+    chmod($dir, 0755);
+    $path = $dir . '/' . hash('sha256', $ip . '|' . $action) . '.json';
+    file_put_contents($path, "[]\n");
+    chmod($path, 0444);
 }
 
 function header_value(array $headers, string $name): ?string
@@ -288,6 +317,9 @@ function http_call(string $root, array $server, array $get = ['action' => 'ping'
     if (isset($server['HTTP_FORWARDED'])) {
         $headers['Forwarded'] = (string) $server['HTTP_FORWARDED'];
     }
+    if (isset($server['HTTP_ORIGIN'])) {
+        $headers['Origin'] = (string) $server['HTTP_ORIGIN'];
+    }
     $method = (string) ($server['REQUEST_METHOD'] ?? 'GET');
     $query = http_build_query($get);
     $path = '/api/action.php' . ($query !== '' ? '?' . $query : '');
@@ -429,13 +461,34 @@ assert_storage(
     true,
     'could not create the rate-limit directory.'
 );
-assert_storage(
-    'production POST ping directory blocked is 503',
-    env_file($baseLimits + ['APP_ENV' => 'production']),
-    'POST',
-    true,
-    'could not create the rate-limit directory.'
-);
+$postBlock = make_project(env_file($baseLimits + ['APP_ENV' => 'production']), 'block_rate_dir');
+try {
+    $postRes = http_call($postBlock, server(['REQUEST_METHOD' => 'POST']));
+    expect_true(
+        $postRes['code'] === 405
+            && ($postRes['json']['status'] ?? '') === 'fail'
+            && ($postRes['json']['message'] ?? '') === 'Method not allowed.'
+            && header_value($postRes['headers'], 'Allow') === 'GET'
+            && header_value($postRes['headers'], 'Retry-After') === null
+            && !str_contains($postRes['log'], 'rate-limit')
+            && !str_contains($postRes['body'], 'unavailable'),
+        'wrong method is 405 before a storage fault',
+        detail_http($postRes)
+    );
+    $originRes = http_call($postBlock, server(['HTTP_ORIGIN' => 'https://evil.example']));
+    expect_true(
+        $originRes['code'] === 403
+            && ($originRes['json']['status'] ?? '') === 'fail'
+            && ($originRes['json']['message'] ?? '') === 'Origin is not allowed.'
+            && header_value($originRes['headers'], 'Retry-After') === null
+            && !str_contains($originRes['log'], 'rate-limit')
+            && !str_contains($originRes['body'], 'unavailable'),
+        'disallowed origin is 403 before a storage fault',
+        detail_http($originRes)
+    );
+} finally {
+    rm_tree($postBlock);
+}
 assert_storage(
     'unset APP_ENV directory blocked is 503',
     env_file($baseLimits),
@@ -525,6 +578,49 @@ try {
     );
 } finally {
     rm_tree($openLocal);
+}
+
+$modeAsRoot = function_exists('posix_geteuid') && posix_geteuid() === 0;
+if ($modeAsRoot) {
+    expect_true(true, 'directory and file mode checks run only when PHP is not root');
+} else {
+$modeCases = [
+    ['production rate-limit directory mode 0555 is 503', 'production', 'chmod_rate_dir', true, 'could not open a rate-limit file.'],
+    ['local rate-limit directory mode 0555 is allowed and logged', 'local', 'chmod_rate_dir', false, 'could not open a rate-limit file.'],
+    ['production read-only rate-limit file is 503', 'production', 'chmod_rate_file_client', true, 'could not open a rate-limit file.'],
+    ['local read-only rate-limit file is allowed and logged', 'local', 'chmod_rate_file_client', false, 'could not open a rate-limit file.'],
+];
+foreach ($modeCases as [$modeName, $modeEnv, $modeMutate, $modeClosed, $modeLog]) {
+    $mutate = $modeMutate === 'chmod_rate_dir'
+        ? 'chmod_rate_dir'
+        : static function (string $root): void {
+            chmod_rate_file($root, '203.0.113.10');
+        };
+    $modeRoot = make_project(env_file($baseLimits + ['APP_ENV' => $modeEnv]), $mutate);
+    try {
+        $modeRes = http_call($modeRoot, server());
+        if ($modeClosed) {
+            $modeOk = $modeRes['code'] === 503
+                && ($modeRes['json']['status'] ?? '') === 'error'
+                && is_array($modeRes['json'])
+                && array_key_exists('data', $modeRes['json'])
+                && $modeRes['json']['data'] === null
+                && header_value($modeRes['headers'], 'Retry-After') === '60'
+                && !str_contains($modeRes['body'], 'rate-limit')
+                && !str_contains($modeRes['body'], 'Permission')
+                && !str_contains($modeRes['body'], 'Warning')
+                && str_contains($modeRes['log'], $modeLog);
+        } else {
+            $modeOk = $modeRes['code'] === 200
+                && ($modeRes['json']['status'] ?? '') === 'success'
+                && ($modeRes['json']['data']['pong'] ?? false) === true
+                && str_contains($modeRes['log'], $modeLog);
+        }
+        expect_true($modeOk, $modeName, detail_http($modeRes));
+    } finally {
+        rm_tree($modeRoot);
+    }
+}
 }
 
 $disabled = make_project(env_file([
@@ -823,24 +919,93 @@ assert_ip(
 $marker = 'MARKHEADER999';
 $long = $marker . str_repeat(',1.1.1.1', 1200);
 assert_ip(
-    'overlong X-Forwarded-For falls back without logging the header',
+    'overlong left padding does not change the rightmost client',
     $proxyEnv,
     server(['REMOTE_ADDR' => '10.0.0.1', 'HTTP_X_FORWARDED_FOR' => $long]),
+    '1.1.1.1',
+    null,
+    [$marker, 'invalid proxy hop']
+);
+assert_ip(
+    'garbage left of the client is ignored behind a trusted proxy',
+    $proxyEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => 'not-a-hop, LEFTPAD777, 198.51.100.21',
+    ]),
+    '198.51.100.21',
+    null,
+    ['not-a-hop', 'LEFTPAD777', 'invalid proxy hop']
+);
+assert_ip(
+    'invalid hop in the proxy suffix falls back and does not log the header',
+    $proxyEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => $marker . ', 203.0.113.5, not-a-hop, 10.0.0.1',
+    ]),
     '10.0.0.1',
     'invalid proxy hop; using REMOTE_ADDR.',
-    [$marker]
+    [$marker, 'not-a-hop', '203.0.113.5']
+);
+assert_ip(
+    'a single overlong hop falls back without logging the header',
+    $proxyEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => str_repeat('Q', 6000),
+    ]),
+    '10.0.0.1',
+    'invalid proxy hop; using REMOTE_ADDR.',
+    ['QQQQ']
 );
 
-$many = [];
-for ($i = 0; $i < 33; $i++) {
-    $many[] = '203.0.113.' . ($i % 200 + 1);
+$many = ['not-a-hop'];
+for ($i = 0; $i < 40; $i++) {
+    $many[] = '9.9.9.9';
 }
+$many[] = '198.51.100.77';
+$many[] = '10.0.0.1';
 assert_ip(
-    'more than 32 hops fall back to REMOTE_ADDR',
+    'more than 32 hops keep the client on the right',
     $proxyEnv,
     server(['REMOTE_ADDR' => '10.0.0.1', 'HTTP_X_FORWARDED_FOR' => implode(',', $many)]),
+    '198.51.100.77',
+    null,
+    ['not-a-hop', 'invalid proxy hop']
+);
+assert_ip(
+    'garbage left of an IPv6 X-Forwarded-For client is ignored',
+    $proxyEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => 'bogus, [2001:db8:2::30]:443',
+    ]),
+    norm('2001:db8:2::30'),
+    null,
+    ['bogus', 'invalid proxy hop']
+);
+assert_ip(
+    'garbage left of a Forwarded IPv6 client is ignored',
+    $forwardedEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_FORWARDED' => 'for="unbalanced, for=not-a-hop, for="[2001:db8:2::31]:443", for=10.0.0.1',
+    ]),
+    norm('2001:db8:2::31'),
+    null,
+    ['unbalanced', 'not-a-hop', 'invalid proxy hop']
+);
+assert_ip(
+    'broken Forwarded hop in the proxy suffix falls back without the header',
+    $forwardedEnv,
+    server([
+        'REMOTE_ADDR' => '10.0.0.1',
+        'HTTP_FORWARDED' => 'for=203.0.113.80, for="_broken',
+    ]),
     '10.0.0.1',
-    'invalid proxy hop; using REMOTE_ADDR.'
+    'invalid proxy hop; using REMOTE_ADDR.',
+    ['203.0.113.80', '_broken']
 );
 
 $configRoot = make_project(env_file($baseLimits + ['APP_ENV' => 'production']), static function (string $root): void {
