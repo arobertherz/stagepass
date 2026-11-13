@@ -28,7 +28,7 @@ This reference describes the published CLI **2.4.0** (npm `latest`).
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
 | `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
-| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. `--dry-run` writes nothing. CLI 2.4.0 replaces an unmodified `scripts/build.mjs`. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
+| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and editor types (`types` or `stagepass.d.ts`), print Webflow snippets. `--dry-run` writes nothing. CLI 2.4.0 replaces an unmodified `scripts/build.mjs`. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).
 
@@ -147,6 +147,16 @@ The document root is the folder that contains `api/`. Caddy sets `root *` to the
 CLI 2.4.0 replaces `scripts/build.mjs` when it is still an unmodified scaffold from an earlier CLI. The check hashes the file against known templates from this repo after normalizing line endings. The scaffold entry lines (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. On a TTY the prompt defaults to yes. Without a TTY, and with `-y` / `--yes`, the replacement is applied. `--dry-run` prints that plan and writes nothing. An edited script is left in place. The CLI then prints what `stagepass build`, `stagepass watch` and `stagepass dev` do in the current scaffold and points at this section. A missing `scripts/build.mjs` is left missing. A symlink is left unchanged. Published CLI 2.3.1 does not replace `scripts/build.mjs`. Without a TTY and without `--yes`, an unmodified scaffold script is still replaced (Trello `jd36WpR1`). Customised scripts stay untouched.
 
 Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, `upgrade` writes the shipped template. An existing file is left unchanged. If it has no `RewriteRule "(^|/)\." - [F]` line, a hint is printed and the command still exits 0. A symlink or directory named `.htaccess` is left in place. Published CLI 2.4.0 does not write that file.
+
+### Types in existing projects
+
+Unreleased (ships in CLI 2.5.0). Published CLI 2.4.0 only updates a plain `compilerOptions.types` array and otherwise prints a hint. The next CLI, still via `stagepass upgrade`:
+
+1. `stagepass upgrade` (`--dry-run` writes nothing). Adds a missing `@stagepass/loader` devDependency, and `@stagepass/modules` only when modules are declared. Does not run `npm install`. A plain config that already has a `types` array is updated. Otherwise it writes `stagepass.d.ts` (`// @stagepass-types` plus `/// <reference types="..." />`) where `include` already covers it, or at the project root when there is no config. Comments and invalid JSON are not edited. If `include` or `files` would miss the file, the command reports that and leaves the config unchanged. A `stagepass.d.ts` without the marker is left unchanged. Missing `stagepass.json` does not skip this step.
+2. `npm install`
+3. Editor command palette: `TypeScript: Restart TS Server`.
+
+See [Troubleshooting](./troubleshooting.md#editor-reports-cannot-find-name-sp).
 
 ## Config locations
 

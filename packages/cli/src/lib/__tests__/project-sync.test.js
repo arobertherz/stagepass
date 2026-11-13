@@ -7,11 +7,27 @@ import {
   declaredModules,
   originsFromStagepassConfig,
   phpFromStagepassConfig,
+  configCoversTypesFile,
   planProjectSync,
+  renderStagepassTypesFile,
   resolveProjectOrigin,
   resolveUpgradeModules,
+  STAGEPASS_TYPES_MARKER,
   updateConfigTypes,
 } from '../project-sync.js';
+
+describe('configCoversTypesFile', () => {
+  it('covers a root file when include and files are omitted, and a nested file under a directory include', () => {
+    expect(configCoversTypesFile({ compilerOptions: {} }, 'stagepass.d.ts')).toBe(true);
+    expect(configCoversTypesFile({ include: ['src'] }, 'src/stagepass.d.ts')).toBe(true);
+    expect(configCoversTypesFile({ include: ['src/**/*.ts'] }, 'src/stagepass.d.ts')).toBe(true);
+    expect(configCoversTypesFile({ include: ['src/**/*.ts'] }, 'stagepass.d.ts')).toBe(false);
+    expect(configCoversTypesFile({ include: ['src/**/*.js'] }, 'src/stagepass.d.ts')).toBe(false);
+    expect(configCoversTypesFile({ files: ['src/main.ts'] }, 'stagepass.d.ts')).toBe(false);
+    expect(configCoversTypesFile({ files: ['stagepass.d.ts'], include: ['src'] }, 'stagepass.d.ts')).toBe(true);
+    expect(configCoversTypesFile({ include: ['src'], exclude: ['src'] }, 'src/stagepass.d.ts')).toBe(false);
+  });
+});
 
 describe('updateConfigTypes', () => {
   const ts = (types, extra = {}) =>
@@ -67,8 +83,14 @@ describe('planProjectSync / applyProjectSync', () => {
 
   it('creates stagepass.json, AGENTS.md and the rule in an empty project', async () => {
     const plan = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
-    expect(plan.writes.map((w) => w.file).sort()).toEqual(['.cursor/rules/stagepass.mdc', 'AGENTS.md', 'stagepass.json']);
-    expect(plan.notes.join('\n')).toContain('No tsconfig.json');
+    expect(plan.writes.map((w) => w.file).sort()).toEqual([
+      '.cursor/rules/stagepass.mdc',
+      'AGENTS.md',
+      'stagepass.d.ts',
+      'stagepass.json',
+    ]);
+    expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toBe(renderStagepassTypesFile(['@stagepass/loader']));
+    expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toContain(STAGEPASS_TYPES_MARKER);
     await applyProjectSync(dir, plan.writes);
     expect(await fs.readJson(path.join(dir, 'stagepass.json'))).toEqual({ name: 'demo', modules: [], version: 1 });
     const again = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
@@ -79,7 +101,7 @@ describe('planProjectSync / applyProjectSync', () => {
     await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'my own rule\n');
     await fs.writeFile(path.join(dir, 'AGENTS.md'), '<!-- stagepass:begin -->\nhalf\n');
     const plan = await planProjectSync({ cwd: dir, modules: ['cookies'], pkg: {} });
-    expect(plan.writes.map((w) => w.file)).toEqual(['stagepass.json']);
+    expect(plan.writes.map((w) => w.file)).toEqual(['stagepass.json', 'stagepass.d.ts']);
     const notes = plan.notes.join('\n');
     expect(notes).toContain('without stagepass markers');
     expect(notes).toContain('markers are incomplete');

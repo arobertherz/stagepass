@@ -6,7 +6,8 @@
  * - stagepass.json `modules` (and `origin` when passed via --site)
  * - AGENTS.md managed block (created when missing)
  * - .cursor/rules/stagepass.mdc (created when missing, managed block refreshed)
- * - tsconfig.json / jsconfig.json `compilerOptions.types` (plain JSON only)
+ * - tsconfig.json / jsconfig.json `compilerOptions.types` (plain JSON with a types array)
+ * - stagepass.d.ts triple-slash references when that array cannot be edited
  */
 
 import path from 'node:path';
@@ -321,6 +322,323 @@ export function updateConfigTypes(raw, modules, opts) {
   return { status: 'updated', content: `${JSON.stringify(json, null, 2)}${trailing}`, types: nextTypes };
 }
 
+/** First-line marker. Upgrade rewrites the file only when this is present. */
+export const STAGEPASS_TYPES_MARKER = '@stagepass-types';
+
+export function renderStagepassTypesFile(types) {
+  const refs = types.map((entry) => `/// <reference types="${entry}" />`);
+  return `// ${STAGEPASS_TYPES_MARKER}\n${refs.join('\n')}\n`;
+}
+
+/** True when `dtsRel` is a root file. A directory include (`src`) expands to everything under it. */
+export function configCoversTypesFile(json, dtsRel) {
+  const rel = normalizeConfigRel(dtsRel);
+  if (!rel || !json || typeof json !== 'object') return false;
+  const files = Array.isArray(json.files) ? json.files : [];
+  for (const entry of files) {
+    if (normalizeConfigRel(entry) === rel) return true;
+  }
+  const include = Array.isArray(json.include) ? json.include : [];
+  if (files.length === 0 && include.length === 0) return !isConfigExcluded(rel, json);
+  if (include.some((pattern) => includePatternMatches(rel, pattern)) && !isConfigExcluded(rel, json)) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeConfigRel(value) {
+  let rel = String(value ?? '').trim().replace(/\\/g, '/');
+  if (rel.startsWith('./')) rel = rel.slice(2);
+  if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) return '';
+  return rel.replace(/\/+/g, '/');
+}
+
+function expandIncludePattern(pattern) {
+  const rel = normalizeConfigRel(pattern);
+  if (!rel) return '';
+  const last = rel.split('/').pop() || '';
+  if (!/[?*]/.test(last) && !last.includes('.')) return `${rel}/**/*`;
+  return rel;
+}
+
+function includePatternMatches(rel, pattern) {
+  const expanded = expandIncludePattern(pattern);
+  if (!expanded) return false;
+  return globToRegExp(expanded).test(rel);
+}
+
+function includeDirPrefix(pattern) {
+  const expanded = expandIncludePattern(pattern);
+  if (!expanded) return null;
+  const idx = expanded.search(/[*?]/);
+  if (idx === -1) return null;
+  const head = expanded.slice(0, idx).replace(/\/$/, '');
+  if (/[*?]/.test(head)) return null;
+  return head;
+}
+
+function globToRegExp(pattern) {
+  let re = '';
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern.startsWith('**/', i)) {
+      re += '(?:.*/)?';
+      i += 3;
+      continue;
+    }
+    if (pattern.startsWith('**', i)) {
+      re += '.*';
+      i += 2;
+      continue;
+    }
+    const ch = pattern[i];
+    if (ch === '*') {
+      re += '[^/]*';
+      i += 1;
+      continue;
+    }
+    if (ch === '?') {
+      re += '[^/]';
+      i += 1;
+      continue;
+    }
+    re += /[\\^$+()|[\]{}.]/.test(ch) ? `\\${ch}` : ch;
+    i += 1;
+  }
+  return new RegExp(`^${re}$`);
+}
+
+function isConfigExcluded(rel, json) {
+  /** @type {unknown[]} */
+  const patterns = ['node_modules', 'bower_components', 'jspm_packages'];
+  const outDir = /** @type {{ outDir?: unknown }} */ (json.compilerOptions || {}).outDir;
+  if (typeof outDir === 'string' && normalizeConfigRel(outDir)) patterns.push(normalizeConfigRel(outDir));
+  if (Array.isArray(json.exclude)) patterns.push(...json.exclude);
+  for (const pattern of patterns) {
+    const normalized = normalizeConfigRel(pattern);
+    if (!normalized) continue;
+    if (rel === normalized || rel.startsWith(`${normalized}/`)) return true;
+    if (/[*?]/.test(normalized) && globToRegExp(normalized).test(rel)) return true;
+  }
+  return false;
+}
+
+function parseConfigSource(raw) {
+  const asObject = (/** @type {unknown} */ value, kind) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: 'invalid', json: null };
+    return { kind, json: /** @type {Record<string, unknown>} */ (value) };
+  };
+  try {
+    return asObject(JSON.parse(raw), 'json');
+  } catch {
+    try {
+      return asObject(JSON.parse(stripJsonComments(raw)), 'jsonc');
+    } catch {
+      return { kind: 'invalid', json: null };
+    }
+  }
+}
+
+function stripJsonComments(raw) {
+  let out = '';
+  let i = 0;
+  let inString = false;
+  while (i < raw.length) {
+    const ch = raw[i];
+    const next = raw[i + 1];
+    if (inString) {
+      out += ch;
+      if (ch === '\\') {
+        out += next || '';
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      i += 2;
+      while (i < raw.length && raw[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < raw.length && !(raw[i] === '*' && raw[i + 1] === '/')) i += 1;
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out.replace(/,\s*([}\]])/g, '$1');
+}
+
+function hasTypesArray(json) {
+  const co = json && /** @type {{ types?: unknown }} */ (json.compilerOptions);
+  return !!(co && typeof co === 'object' && Array.isArray(co.types));
+}
+
+function hasTypesMarker(raw) {
+  return String(raw)
+    .split(/\r?\n/)
+    .slice(0, 8)
+    .some((line) => line.includes(STAGEPASS_TYPES_MARKER));
+}
+
+async function planEditorTypes(input) {
+  const { cwd, modules, modulesDependency, perModuleTypes, skipSymlink, fse } = input;
+  /** @type {{ file: string, content: string, action: string }[]} */
+  const writes = [];
+  /** @type {string[]} */
+  const notes = [];
+  const wanted = typesForModules(modules, { modulesDependency, perModuleTypes });
+  const content = renderStagepassTypesFile(wanted);
+
+  /** @type {{ name: string, symlink?: boolean, needsDts?: boolean, kind?: string, json?: Record<string, unknown> | null }[]} */
+  const configs = [];
+  for (const name of ['tsconfig.json', 'jsconfig.json']) {
+    const file = path.join(cwd, name);
+    if (!(await fse.pathExists(file))) continue;
+    if (await skipSymlink(name)) {
+      configs.push({ name, symlink: true });
+      continue;
+    }
+    const raw = await fse.readFile(file, 'utf8');
+    const parsed = parseConfigSource(raw);
+    if (parsed.kind === 'json' && hasTypesArray(parsed.json)) {
+      const result = updateConfigTypes(raw, modules, { modulesDependency, perModuleTypes });
+      if (result.status === 'updated' && result.content) {
+        writes.push({ file: name, content: result.content, action: `types: ${(result.types || []).join(', ')}` });
+      }
+      configs.push({ name, needsDts: false, json: parsed.json });
+      continue;
+    }
+    configs.push({ name, needsDts: true, kind: parsed.kind, json: parsed.json });
+  }
+
+  /**
+   * @param {string} rel
+   * @returns {Promise<'placed' | 'current' | 'blocked'>}
+   */
+  const writeTypesFile = async (rel) => {
+    if (writes.some((item) => item.file === rel)) return 'placed';
+    if (await skipSymlink(rel)) return 'blocked';
+    const abs = path.join(cwd, rel);
+    if (await fse.pathExists(abs)) {
+      const previous = await fse.readFile(abs, 'utf8');
+      if (!hasTypesMarker(previous)) {
+        notes.push(`${rel} has no ${STAGEPASS_TYPES_MARKER} marker; left unchanged.`);
+        return 'blocked';
+      }
+      if (previous === content) return 'current';
+    }
+    writes.push({ file: rel, content, action: `references ${wanted.join(', ')}` });
+    return 'placed';
+  };
+
+  if (configs.length === 0) {
+    await writeTypesFile('stagepass.d.ts');
+    return { writes, notes };
+  }
+
+  const needing = configs.filter((config) => config.needsDts);
+  if (needing.length === 0) {
+    const rels = new Set(['stagepass.d.ts']);
+    for (const config of configs) {
+      const include = config.json && Array.isArray(config.json.include) ? config.json.include : [];
+      for (const pattern of include) {
+        const dir = includeDirPrefix(pattern);
+        if (dir == null) continue;
+        rels.add(dir === '' ? 'stagepass.d.ts' : `${dir}/stagepass.d.ts`);
+      }
+    }
+    for (const rel of rels) {
+      const abs = path.join(cwd, rel);
+      let previous = '';
+      try {
+        const st = await fse.lstat(abs);
+        if (!st.isFile()) continue;
+        previous = await fse.readFile(abs, 'utf8');
+      } catch {
+        continue;
+      }
+      if (hasTypesMarker(previous)) await writeTypesFile(rel);
+    }
+    return { writes, notes };
+  }
+
+  /** @type {{ rel: string, score: number }[]} */
+  const ranked = [];
+  /** @type {string[]} */
+  const candidates = ['stagepass.d.ts'];
+  for (const config of needing) {
+    const include = config.json && Array.isArray(config.json.include) ? config.json.include : [];
+    for (const pattern of include) {
+      const dir = includeDirPrefix(pattern);
+      if (dir == null) continue;
+      const rel = dir === '' ? 'stagepass.d.ts' : `${dir}/stagepass.d.ts`;
+      if (!candidates.includes(rel)) candidates.push(rel);
+    }
+  }
+  for (const rel of candidates) {
+    const score = needing.filter((config) => coversTypesPath(config, rel)).length;
+    if (score > 0) ranked.push({ rel, score });
+  }
+  ranked.sort((a, b) => b.score - a.score || candidates.indexOf(a.rel) - candidates.indexOf(b.rel));
+
+  /** @type {string | null} */
+  let placedRel = null;
+  for (const item of ranked) {
+    const status = await writeTypesFile(item.rel);
+    if (status === 'placed' || status === 'current') {
+      placedRel = item.rel;
+      break;
+    }
+  }
+
+  for (const config of needing) {
+    notes.push(typesConfigNote(config, placedRel));
+    const ownInclude = Array.isArray(config.json?.include) && config.json.include.length > 0;
+    const ownFiles = Array.isArray(config.json?.files) && config.json.files.length > 0;
+    if (placedRel && config.json && config.json.extends && !ownInclude && !ownFiles) {
+      notes.push(
+        `${config.name} extends another config and does not set include or files. Confirm ${placedRel} is part of that project.`
+      );
+    }
+  }
+  return { writes, notes };
+}
+
+function coversTypesPath(config, rel) {
+  if (config.kind === 'invalid') return rel === 'stagepass.d.ts';
+  if (!config.json) return false;
+  return configCoversTypesFile(config.json, rel);
+}
+
+function typesConfigNote(config, placedRel) {
+  if (config.kind === 'jsonc') {
+    const base = `${config.name} contains comments and was left unchanged.`;
+    if (placedRel && coversTypesPath(config, placedRel)) return `${base} Types: ${placedRel}.`;
+    return `${base} Its include/files does not cover stagepass.d.ts.`;
+  }
+  if (config.kind === 'invalid') {
+    const base = `${config.name} is not valid JSON and was left unchanged.`;
+    return placedRel
+      ? `${base} Types: ${placedRel} (include coverage was not checked).`
+      : base;
+  }
+  const base = `${config.name} has no compilerOptions.types array and was left unchanged.`;
+  if (placedRel && coversTypesPath(config, placedRel)) return `${base} Types: ${placedRel}.`;
+  return `${config.name} include/files does not cover stagepass.d.ts. The config was left unchanged.`;
+}
+
 /** @param {string} abs @param {typeof fs} fse */
 async function isSymlink(abs, fse) {
   try {
@@ -441,25 +759,16 @@ export async function planProjectSync(input, fse = fs) {
     writes.push({ file: CURSOR_RULE_PATH, content: buildCursorRule(modules), action: 'created' });
   }
 
-  // tsconfig / jsconfig
-  let sawConfig = false;
-  for (const name of ['tsconfig.json', 'jsconfig.json']) {
-    const file = path.join(cwd, name);
-    if (!(await fse.pathExists(file))) continue;
-    sawConfig = true;
-    if (await skipSymlink(name)) continue;
-    const raw = await fse.readFile(file, 'utf8');
-    const result = updateConfigTypes(raw, modules, { modulesDependency, perModuleTypes });
-    if (result.status === 'skipped') {
-      const wanted = JSON.stringify(typesForModules(modules, { modulesDependency, perModuleTypes }));
-      notes.push(`${name} ${result.reason}: "types": ${wanted}`);
-    } else if (result.status === 'updated') {
-      writes.push({ file: name, content: result.content, action: `types: ${result.types.join(', ')}` });
-    }
-  }
-  if (!sawConfig) {
-    notes.push('No tsconfig.json or jsconfig.json found; types not configured.');
-  }
+  const typesPlan = await planEditorTypes({
+    cwd,
+    modules,
+    modulesDependency,
+    perModuleTypes,
+    skipSymlink,
+    fse,
+  });
+  writes.push(...typesPlan.writes);
+  notes.push(...typesPlan.notes);
   if (!modulesDependency && modules.length > 0) {
     notes.push('Module types need @stagepass/modules in devDependencies (npm install -D @stagepass/modules).');
   }

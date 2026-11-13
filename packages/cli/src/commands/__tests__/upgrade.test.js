@@ -315,6 +315,172 @@ describe('upgrade command', () => {
   });
 });
 
+describe('upgrade: editor types retrofit', () => {
+  /** @type {string} */
+  let dir;
+  beforeEach(async () => {
+    dir = await fsx.mkdtemp(path.join(os.tmpdir(), 'sp-upgrade-types-'));
+  });
+  afterEach(async () => {
+    await fsx.remove(dir);
+  });
+
+  const deps = (logs) => ({
+    cwd: dir,
+    fetchPublished: async () => ({ distTags: { latest: '2.2.0' }, versions: ['2.0.0', '2.2.0'] }),
+    log: (m) => logs.push(String(m ?? '')),
+    isTTY: false,
+    loadProjects: async () => ({ projects: {} }),
+    detectSite: vi.fn(async () => {
+      throw new Error('detectSite must not be called');
+    }),
+  });
+
+  async function writePkg(extra = {}) {
+    await fsx.writeJson(path.join(dir, 'package.json'), { name: 'app', ...extra }, { spaces: 2 });
+  }
+
+  it('(a) no config writes stagepass.d.ts and the loader devDependency', async () => {
+    await writePkg();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.pathExists(path.join(dir, 'tsconfig.json'))).toBe(false);
+    const dts = await fsx.readFile(path.join(dir, 'stagepass.d.ts'), 'utf8');
+    expect(dts).toContain('@stagepass-types');
+    expect(dts).toContain('/// <reference types="@stagepass/loader" />');
+    expect(dts).not.toContain('@stagepass/modules');
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies).toEqual({ '@stagepass/loader': '^2.2.0' });
+    const out = logs.join('\n');
+    expect(out).toContain('npm install');
+    expect(out).toContain('TypeScript: Restart TS Server');
+  });
+
+  it('(b) jsconfig without a types array is left unchanged and a covered stagepass.d.ts is written', async () => {
+    await writePkg({ devDependencies: { typescript: '^5.6.0' } });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: ['cookies'], version: 1 });
+    await fsx.writeJson(
+      path.join(dir, 'jsconfig.json'),
+      { compilerOptions: { checkJs: true, strict: true }, include: ['src'] },
+      { spaces: 2 }
+    );
+    const before = await fsx.readFile(path.join(dir, 'jsconfig.json'), 'utf8');
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'jsconfig.json'), 'utf8')).toBe(before);
+    expect(JSON.parse(before).compilerOptions.types).toBeUndefined();
+    const dts = await fsx.readFile(path.join(dir, 'src/stagepass.d.ts'), 'utf8');
+    expect(dts).toContain('/// <reference types="@stagepass/loader" />');
+    expect(dts).toContain('/// <reference types="@stagepass/modules/cookies" />');
+    const pkg = await fsx.readJson(path.join(dir, 'package.json'));
+    expect(pkg.devDependencies['@stagepass/loader']).toBe('^2.2.0');
+    expect(pkg.devDependencies['@stagepass/modules']).toBe('^2.2.0');
+    expect(pkg.devDependencies.typescript).toBe('^5.6.0');
+    expect(logs.join('\n')).toMatch(/no compilerOptions\.types/);
+  });
+
+  it('(c) tsconfig with comments is not edited', async () => {
+    await writePkg();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    const raw = '{\n  // keep\n  "compilerOptions": { "strict": true },\n  "include": ["src/**/*.ts"]\n}\n';
+    await fsx.writeFile(path.join(dir, 'tsconfig.json'), raw);
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'tsconfig.json'), 'utf8')).toBe(raw);
+    const dts = await fsx.readFile(path.join(dir, 'src/stagepass.d.ts'), 'utf8');
+    expect(dts).toContain('/// <reference types="@stagepass/loader" />');
+    expect(logs.join('\n')).toMatch(/tsconfig\.json.*comments/);
+  });
+
+  it('(d) plain tsconfig with a types array keeps the types-array update', async () => {
+    await writePkg({
+      devDependencies: { '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' },
+    });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: ['cookies'], version: 1 });
+    await fsx.writeJson(
+      path.join(dir, 'tsconfig.json'),
+      { compilerOptions: { strict: true, types: ['@stagepass/loader', 'vite/client'] }, include: ['src'] },
+      { spaces: 2 }
+    );
+    expect(await upgrade({ skipSite: true, yes: true }, deps([]))).toBe(0);
+    const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
+    expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies', 'vite/client']);
+    expect(ts.compilerOptions.strict).toBe(true);
+    expect(ts.include).toEqual(['src']);
+    expect(await fsx.pathExists(path.join(dir, 'stagepass.d.ts'))).toBe(false);
+    expect(await fsx.pathExists(path.join(dir, 'src/stagepass.d.ts'))).toBe(false);
+  });
+
+  it('(e) does not overwrite a user-owned stagepass.d.ts', async () => {
+    await writePkg();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    const owned = '// my types\nexport {};\n';
+    await fsx.writeFile(path.join(dir, 'stagepass.d.ts'), owned);
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'stagepass.d.ts'), 'utf8')).toBe(owned);
+    expect(logs.join('\n')).toMatch(/no @stagepass-types marker/);
+  });
+
+  it('(f) --dry-run writes nothing', async () => {
+    await writePkg();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    const before = await snapshot(dir);
+    const logs = [];
+    expect(await upgrade({ dryRun: true, skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await snapshot(dir)).toEqual(before);
+    const out = logs.join('\n');
+    expect(out).toContain('stagepass.d.ts:');
+    expect(out).toContain('@stagepass/loader: add ^2.2.0');
+    expect(out).toContain('Dry run');
+    expect(out).toContain('npm install');
+  });
+
+  it('(g) retrofits types when stagepass.json is missing', async () => {
+    await writePkg();
+    const js = '{\n  "compilerOptions": { "checkJs": true }\n}\n';
+    await fsx.writeFile(path.join(dir, 'jsconfig.json'), js);
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'jsconfig.json'), 'utf8')).toBe(js);
+    expect((await fsx.readJson(path.join(dir, 'stagepass.json'))).modules).toEqual([]);
+    const dts = await fsx.readFile(path.join(dir, 'stagepass.d.ts'), 'utf8');
+    expect(dts).toContain('/// <reference types="@stagepass/loader" />');
+    expect(dts).not.toContain('@stagepass/modules');
+    expect((await fsx.readJson(path.join(dir, 'package.json'))).devDependencies['@stagepass/modules']).toBeUndefined();
+    expect(logs.join('\n')).not.toMatch(/No package\.json/);
+  });
+
+  it('does not edit a config whose include/files would miss stagepass.d.ts', async () => {
+    await writePkg({ devDependencies: { '@stagepass/loader': '^2.2.0' } });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    const raw = `${JSON.stringify({ compilerOptions: { strict: true }, files: ['src/main.ts'] }, null, 2)}\n`;
+    await fsx.writeFile(path.join(dir, 'tsconfig.json'), raw);
+    const logs = [];
+    expect(await upgrade({ skipSite: true, yes: true }, deps(logs))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'tsconfig.json'), 'utf8')).toBe(raw);
+    expect(await fsx.pathExists(path.join(dir, 'stagepass.d.ts'))).toBe(false);
+    expect(logs.join('\n')).toMatch(/does not cover stagepass\.d\.ts/);
+  });
+
+  it('regenerates a marked stagepass.d.ts', async () => {
+    await writePkg({ devDependencies: { '@stagepass/loader': '^2.2.0' } });
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], version: 1 });
+    await fsx.writeJson(path.join(dir, 'tsconfig.json'), {
+      compilerOptions: { types: ['@stagepass/loader'] },
+    });
+    await fsx.writeFile(
+      path.join(dir, 'stagepass.d.ts'),
+      '// @stagepass-types\n/// <reference types="@stagepass/modules" />\n'
+    );
+    expect(await upgrade({ skipSite: true, yes: true }, deps([]))).toBe(0);
+    expect(await fsx.readFile(path.join(dir, 'stagepass.d.ts'), 'utf8')).toBe(
+      '// @stagepass-types\n/// <reference types="@stagepass/loader" />\n'
+    );
+  });
+});
+
 async function snapshot(root) {
   const out = {};
   const walk = async (d) => {

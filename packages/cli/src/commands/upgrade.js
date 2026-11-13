@@ -169,10 +169,49 @@ export function applyStagepassVersions(pkg, target) {
   return { next, changes };
 }
 
+function packageHas(pkg, name) {
+  for (const section of ['dependencies', 'devDependencies']) {
+    const block = pkg?.[section];
+    if (block && typeof block === 'object' && !Array.isArray(block) && Object.prototype.hasOwnProperty.call(block, name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Add type packages the project does not already depend on.
+ * Loader is always required. `@stagepass/modules` only when the declared list is non-empty.
+ * Does not run npm install.
+ * @param {object} pkg
+ * @param {string[]} modules normalized declared list
+ * @param {Record<string, string>} specs name to version spec
+ * @returns {{ next: object, added: { name: string, to: string, section: 'devDependencies' }[] }}
+ */
+export function ensureTypeDevDependencies(pkg, modules, specs) {
+  const next = structuredClone(pkg);
+  /** @type {{ name: string, to: string, section: 'devDependencies' }[]} */
+  const added = [];
+  const names = ['@stagepass/loader'];
+  if (Array.isArray(modules) && modules.length > 0) names.push('@stagepass/modules');
+  for (const name of names) {
+    if (packageHas(next, name)) continue;
+    const to = specs?.[name];
+    if (!to) continue;
+    if (next.devDependencies == null) next.devDependencies = {};
+    if (typeof next.devDependencies !== 'object' || Array.isArray(next.devDependencies)) continue;
+    next.devDependencies[name] = to;
+    added.push({ name, to, section: 'devDependencies' });
+  }
+  return { next, added };
+}
+
 /**
  * Upgrade @stagepass/* deps in the current project's package.json and sync
  * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
- * tsconfig/jsconfig types. Replaces scripts/build.mjs when it is still an
+ * editor types (a plain `types` array, or stagepass.d.ts). Adds missing
+ * `@stagepass/loader` and, when modules are declared, `@stagepass/modules`
+ * devDependencies. Replaces scripts/build.mjs when it is still an
  * unmodified scaffold from an earlier CLI. When stagepass.json has `"php": true`
  * and the project root has no `.htaccess`, writes the shipped template.
  *
@@ -238,33 +277,15 @@ export async function upgrade(options = {}, deps = {}) {
     log(chalk.yellow(`npm registry not reachable: using ${PACKAGES_MAJOR_RANGE} (resolves to the newest published 2.x).`));
   }
 
-  const { next, changes } = applyStagepassVersions(pkg, specs);
+  let { next, changes } = applyStagepassVersions(pkg, specs);
 
-  if (changes.length === 0) {
-    if (names.length === 0) {
-      log(chalk.yellow('No @stagepass/* packages found in package.json.'));
-    } else {
-      log(chalk.green('@stagepass/* already at the newest published ranges.'));
-    }
-  } else {
+  if (changes.length > 0) {
     log(chalk.bold('Upgrade @stagepass/* (published versions only)'));
     for (const change of changes) {
       log(`  ${change.name}: ${change.from} → ${change.to} (${change.section})`);
     }
-  }
-
-  // Per-module types need @stagepass/modules >= 2.2.0 resolvable from the range.
-  /** @type {boolean | undefined} */
-  let perModuleTypes;
-  const modulesSpec =
-    next?.dependencies?.['@stagepass/modules'] || next?.devDependencies?.['@stagepass/modules'];
-  if (modulesSpec) {
-    const fromRegistry = rangeHasPerModuleTypes(
-      published['@stagepass/modules'] ? published['@stagepass/modules'].versions : null,
-      String(modulesSpec)
-    );
-    perModuleTypes =
-      fromRegistry != null ? fromRegistry : (await installedHasPerModuleTypes(cwd, fse)) === true;
+  } else if (names.length > 0) {
+    log(chalk.green('@stagepass/* already at the newest published ranges.'));
   }
 
   // Declared modules: live site first, then stagepass.json, then ask.
@@ -313,6 +334,53 @@ export async function upgrade(options = {}, deps = {}) {
   if (!resolved.ok) {
     log(chalk.red(resolved.error));
     return 1;
+  }
+
+  const typeNames = ['@stagepass/loader'];
+  if (resolved.modules.length > 0) typeNames.push('@stagepass/modules');
+  const missingTypes = typeNames.filter((name) => !packageHas(next, name));
+  /** @type {{ name: string, to: string, section: 'devDependencies' }[]} */
+  let added = [];
+  if (missingTypes.length > 0) {
+    let extra;
+    try {
+      extra = await resolveUpgradeTargets(options.version, missingTypes, {
+        exec: deps.exec || defaultExec,
+        fetchPublished: deps.fetchPublished,
+      });
+    } catch (error) {
+      log(chalk.red(error instanceof Error ? error.message : String(error)));
+      return 1;
+    }
+    Object.assign(published, extra.published);
+    const typeSpecs = Object.fromEntries(Object.entries(extra.targets).map(([name, target]) => [name, target.spec]));
+    const ensured = ensureTypeDevDependencies(next, resolved.modules, typeSpecs);
+    next = ensured.next;
+    added = ensured.added;
+    const alreadyOffline = Object.values(targets).some((target) => target.offline);
+    if (!alreadyOffline && Object.values(extra.targets).some((target) => target.offline)) {
+      log(chalk.yellow(`npm registry not reachable: using ${PACKAGES_MAJOR_RANGE} (resolves to the newest published 2.x).`));
+    }
+  }
+  if (added.length > 0) {
+    log(chalk.bold('Type packages (devDependencies)'));
+    for (const item of added) log(`  ${item.name}: add ${item.to} (${item.section})`);
+  } else if (names.length === 0 && changes.length === 0) {
+    log(chalk.yellow('No @stagepass/* packages found in package.json.'));
+  }
+
+  // Per-module types need @stagepass/modules >= 2.2.0 resolvable from the range.
+  /** @type {boolean | undefined} */
+  let perModuleTypes;
+  const modulesSpec =
+    next?.dependencies?.['@stagepass/modules'] || next?.devDependencies?.['@stagepass/modules'];
+  if (modulesSpec) {
+    const fromRegistry = rangeHasPerModuleTypes(
+      published['@stagepass/modules'] ? published['@stagepass/modules'].versions : null,
+      String(modulesSpec)
+    );
+    perModuleTypes =
+      fromRegistry != null ? fromRegistry : (await installedHasPerModuleTypes(cwd, fse)) === true;
   }
 
   const plan = await planProjectSync(
@@ -426,7 +494,8 @@ export async function upgrade(options = {}, deps = {}) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
     try {
-      if (changes.length > 0) {
+      const pkgChanged = changes.length > 0 || added.length > 0;
+      if (pkgChanged) {
         try {
           if ((await fse.lstat(pkgPath)).isSymbolicLink()) {
             log(chalk.red('package.json is a symlink; refusing to write.'));
@@ -445,7 +514,7 @@ export async function upgrade(options = {}, deps = {}) {
     } catch (err) {
       // Restore package.json if project-sync failed after the pkg write.
       try {
-        if (changes.length > 0) await fse.writeFile(pkgPath, raw, 'utf8');
+        if (changes.length > 0 || added.length > 0) await fse.writeFile(pkgPath, raw, 'utf8');
       } catch {
         /* best effort */
       }
@@ -471,6 +540,12 @@ export async function upgrade(options = {}, deps = {}) {
 
   log(chalk.bold('\nNext step (not run automatically):'));
   log('  npm install');
+  const typesTouched =
+    added.length > 0 ||
+    plan.writes.some(
+      (item) => item.file === 'tsconfig.json' || item.file === 'jsconfig.json' || item.file.endsWith('stagepass.d.ts')
+    );
+  if (typesTouched) log('  TypeScript: Restart TS Server');
 
   return 0;
 }

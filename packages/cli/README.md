@@ -66,7 +66,7 @@ Linked: https://my-project.sp -> /absolute/path/to/project
 | `stagepass build` | Run `npm run build` in the current project (forwards exit code). |
 | `stagepass watch` | Run `npm run watch` in the current project (forwards exit code). If Stagepass is not running, asks to start it (TTY) or prints a `stagepass start` hint (non-TTY / CI); warns with `stagepass link` when the cwd is not linked. |
 | `stagepass dev` | Like `stagepass watch`, plus live reload on the linked `.sp` domain (CSS can swap without a full reload). Same running check as watch; requires `stagepass link` (hard error if unlinked). |
-| `stagepass upgrade` | Bump `@stagepass/*`, sync declared modules, `AGENTS.md`, the Cursor rule and `types`, print Webflow snippets. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
+| `stagepass upgrade` | Bump `@stagepass/*`, sync declared modules, `AGENTS.md`, the Cursor rule and editor types (`types` or `stagepass.d.ts`), print Webflow snippets. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
 
 All commands support `-v, --verbose` where applicable.
 
@@ -199,9 +199,17 @@ Still not recognised: tags without `src`, `data-src` only, other hosts without a
 - `stagepass.json`: writes the `modules` list.
 - `AGENTS.md`: created if missing, otherwise only the managed block is replaced (or appended when there is none). Your own text stays. Broken markers are left alone with a hint.
 - `.cursor/rules/stagepass.mdc`: created if missing, otherwise only its managed block is refreshed.
-- `tsconfig.json` / `jsconfig.json`: only `compilerOptions.types` changes, the rest of the JSON is preserved. Files with comments, or without a `types` array, are skipped with a hint.
+- `tsconfig.json` / `jsconfig.json`: a plain JSON file that already has `compilerOptions.types` is updated in place. The rest of the JSON is preserved. Comments, invalid JSON, and a missing `types` array are not edited. See [Types in existing projects](#types-in-existing-projects).
 - `scripts/build.mjs`: CLI 2.4.0 replaces it when it is still an unmodified scaffold from an earlier CLI (line endings ignored; `src/main.js` / `src/main.ts` and `src/styles.css` / `src/styles.scss` still count). The interactive prompt defaults to yes. Without a TTY, and with `--yes`, the file is replaced. `--dry-run` writes nothing. An edited script is left unchanged and the CLI prints what `stagepass build`, `stagepass watch` and `stagepass dev` do now. A missing script stays missing. Published CLI 2.3.1 does not replace that file.
 - `.htaccess`: since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing file is not modified. If it has no `RewriteRule "(^|/)\." - [F]` line, a hint points at https://stagepass.one/docs/php/ and `api/README.md` and the command still exits 0. A symlink or directory at that name is left in place. Projects without `"php": true` are unchanged. `--dry-run` writes nothing. Published CLI 2.4.0 does not write this file.
+
+### Types in existing projects
+
+When the editor reports `Cannot find name 'sp'` and the page still runs, run `stagepass upgrade`. It writes `package.json` only. It does not run `npm install`.
+
+1. `stagepass upgrade` (`--dry-run` prints the plan and writes nothing). `@stagepass/loader` is added to `devDependencies` when it is missing. `@stagepass/modules` is added only when the declared module list is not empty. A plain `tsconfig.json` or `jsconfig.json` that already has a `types` array is updated. Otherwise upgrade writes `stagepass.d.ts` (first line `// @stagepass-types`) with `/// <reference types="..." />` lines, at the project root when that path is included, or under a directory `include` already covers. A config with comments or invalid JSON is not edited. If `include` or `files` would not cover the reference file, upgrade reports that and leaves the config unchanged. A `stagepass.d.ts` without the marker is left unchanged. With no config, the reference file is written at the project root. A missing `stagepass.json` does not skip this step.
+2. `npm install`
+3. In the editor command palette: `TypeScript: Restart TS Server`.
 
 Every change is printed as `file: action` (unchanged files are not listed; skipped files appear as hints). `npm install` is printed, not run. Snippets use the major pin `@2` plus an optional exact pin note.
 
