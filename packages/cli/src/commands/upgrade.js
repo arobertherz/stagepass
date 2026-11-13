@@ -212,7 +212,9 @@ export function ensureTypeDevDependencies(pkg, modules, specs) {
  * editor types (a plain `types` array, or stagepass.d.ts). Adds missing
  * `@stagepass/loader` and, when modules are declared, `@stagepass/modules`
  * devDependencies. Replaces scripts/build.mjs when it is still an
- * unmodified scaffold from an earlier CLI. When stagepass.json has `"php": true`
+ * unmodified scaffold from an earlier CLI and the user passed `--yes` or
+ * confirmed on a TTY. Without a TTY and without `--yes`, prints a hint and
+ * leaves that file. When stagepass.json has `"php": true`
  * and the project root has no `.htaccess`, writes the shipped template.
  *
  * @param {object} [options]
@@ -292,7 +294,8 @@ export async function upgrade(options = {}, deps = {}) {
   const sp = await readStagepassJson(cwd, fse);
   if (sp.error) log(chalk.yellow(sp.error));
   const isTty = deps.isTTY != null ? Boolean(deps.isTTY) : Boolean(input.isTTY && output.isTTY);
-  const interactive = isTty && options.yes !== true;
+  const assumeYes = options.yes === true;
+  const interactive = isTty && !assumeYes;
   /** @type {import('node:readline/promises').Interface | null} */
   let rl = null;
   const getRl = () => {
@@ -434,6 +437,7 @@ export async function upgrade(options = {}, deps = {}) {
         cwd,
         currentSource: currentBuild,
         interactive,
+        assumeYes,
         confirm: confirmFn,
         fse,
       });
@@ -466,7 +470,7 @@ export async function upgrade(options = {}, deps = {}) {
   }
 
   log(chalk.bold(`\nProject files for modules: ${resolved.modules.length ? resolved.modules.join(', ') : 'none'}`));
-  if (plan.writes.length === 0) {
+  if (plan.writes.length === 0 && buildUpgrade.action !== 'hint') {
     log('  Everything is up to date.');
   }
   for (const w of plan.writes) {
@@ -478,7 +482,11 @@ export async function upgrade(options = {}, deps = {}) {
   if (buildUpgrade.action === 'custom') {
     log(chalk.yellow(buildUpgrade.note));
   } else if (buildUpgrade.action !== 'update' && buildUpgrade.note) {
-    const warn = buildUpgrade.action === 'declined' || buildUpgrade.action === 'symlink' || buildUpgrade.action === 'unreadable';
+    const warn =
+      buildUpgrade.action === 'declined' ||
+      buildUpgrade.action === 'symlink' ||
+      buildUpgrade.action === 'unreadable' ||
+      buildUpgrade.action === 'hint';
     const line = `  ${buildUpgrade.note}`;
     log(warn ? chalk.yellow(line) : line);
   }

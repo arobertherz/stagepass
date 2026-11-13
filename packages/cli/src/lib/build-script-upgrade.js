@@ -38,6 +38,15 @@ export const BUILD_SCRIPT_MISSING_NOTE =
   BUILD_SCRIPT_DOC_URL;
 
 /**
+ * Stock scaffold, no TTY, and no `--yes`. The file stays.
+ * @param {string} id known template id
+ * @returns {string}
+ */
+export function buildScriptUnattendedHint(id) {
+  return `scripts/build.mjs matches the unmodified ${id} scaffold. No TTY and no --yes, so it was left unchanged. Run stagepass upgrade --yes to replace it.`;
+}
+
+/**
  * Distinct blobs of the scaffold before the template bundled with this CLI.
  * @type {{ id: string, commit: string, sha256: string }[]}
  */
@@ -209,12 +218,14 @@ export async function inspectProjectBuildScript(cwd, currentSource, fse = fs) {
 
 /**
  * Decide whether upgrade should replace scripts/build.mjs.
- * Does not write. `interactive` false (no TTY, or `--yes`) accepts a stock script.
+ * Does not write. `--yes` (`assumeYes`) replaces a stock script.
+ * A TTY (`interactive`) asks. Otherwise the file stays and the note names `--yes`.
  *
  * @param {object} options
  * @param {string} options.cwd
  * @param {string} options.currentSource
  * @param {boolean} options.interactive
+ * @param {boolean} [options.assumeYes]
  * @param {(question: string, defYes: boolean) => Promise<boolean>} [options.confirm]
  * @param {{ lstat: Function, readFile: Function }} [options.fse]
  */
@@ -236,14 +247,17 @@ export async function planBuildScriptUpgrade(options) {
   }
   if (found.status === 'custom') return { action: 'custom', note: BUILD_SCRIPT_CUSTOM_HINT };
   const content = renderCurrentBuildScript(options.currentSource, found.raw || '');
-  if (!options.interactive) return { action: 'update', from: found.id, content };
-  if (typeof options.confirm !== 'function') {
-    throw new Error('confirm is required when upgrade asks about scripts/build.mjs');
+  if (options.assumeYes === true) return { action: 'update', from: found.id, content };
+  if (options.interactive) {
+    if (typeof options.confirm !== 'function') {
+      throw new Error('confirm is required when upgrade asks about scripts/build.mjs');
+    }
+    const yes = await options.confirm(
+      `Replace scripts/build.mjs with the current scaffold? It matches the unmodified ${found.id} template.`,
+      true
+    );
+    if (!yes) return { action: 'declined', note: 'scripts/build.mjs left unchanged.' };
+    return { action: 'update', from: found.id, content };
   }
-  const yes = await options.confirm(
-    `Replace scripts/build.mjs with the current scaffold? It matches the unmodified ${found.id} template.`,
-    true
-  );
-  if (!yes) return { action: 'declined', note: 'scripts/build.mjs left unchanged.' };
-  return { action: 'update', from: found.id, content };
+  return { action: 'hint', from: found.id, note: buildScriptUnattendedHint(found.id || 'scaffold') };
 }

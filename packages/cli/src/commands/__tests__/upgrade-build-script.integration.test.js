@@ -96,4 +96,35 @@ fi
     expect(written).toContain('manifestEntryName');
     expect(written).not.toBe(oldScript);
   });
+
+  it('upgrade --json matches CLI 2.4.0: unknown option, empty stdout, no writes', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-upgrade-json-'));
+    dirs.push(home);
+    const project = path.join(home, 'app');
+    fs.mkdirSync(project, { recursive: true });
+    const pkg = `${JSON.stringify({ name: 'app', private: true }, null, 2)}\n`;
+    const marker = 'keep-me\n';
+    fs.writeFileSync(path.join(project, 'package.json'), pkg);
+    fs.writeFileSync(path.join(project, 'USER_KEEP.txt'), marker);
+
+    const result = spawnSync(process.execPath, [binPath, 'upgrade', '--json'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        HOME: home,
+        [SKIP_PLATFORM_CHECK_ENV]: '1',
+      },
+    });
+
+    const stderr = `${result.stderr || ''}`.replace(/\u001b\[[0-9;]*m/g, '');
+    const stdout = `${result.stdout || ''}`.replace(/\u001b\[[0-9;]*m/g, '');
+    expect(result.status, `${stdout}\n${stderr}`).not.toBe(0);
+    expect(stderr).toContain("error: unknown option '--json'");
+    expect(stdout.trim()).toBe('');
+    expect(() => JSON.parse(stdout)).toThrow();
+    expect(fs.readFileSync(path.join(project, 'package.json'), 'utf8')).toBe(pkg);
+    expect(fs.readFileSync(path.join(project, 'USER_KEEP.txt'), 'utf8')).toBe(marker);
+    expect(fs.readdirSync(project).sort()).toEqual(['USER_KEEP.txt', 'package.json']);
+  });
 });
