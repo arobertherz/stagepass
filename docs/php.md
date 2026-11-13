@@ -30,6 +30,7 @@ This file is the source outline for that site page. It describes published `@sta
 - Edit: `api/actions.php`, `api/actions/*.php`, the project-root `.env`, optional `.php/config.php`
 - Leave alone: `api/action.php`, `api/lib/*`
 - Short in-file comments mark the same split; this page is the long version
+- In a project, coding agents follow the PHP section of `AGENTS.stagepass.md` (written by `stagepass new --php` and refreshed by `stagepass upgrade`). That section names the helpers and the new-action recipe. If `api/lib/` is missing, the guide says to ask for the CLI boilerplate instead of rebuilding it
 
 ## 5. Configuration and secrets
 

@@ -24,11 +24,11 @@ This reference describes the published CLI **2.4.0** (npm `latest`).
 | `stagepass certs renew` | Repair failing linked `.sp` site certificates (`certificates/local/<domain>` + `caddy reload`). `--root` moves the local CA folder to a timestamped backup (never deletes) after double confirmation or `--yes --i-understand-root-renewal`. `--remove-orphans` deletes orphaned keychain roots by SHA-1 only after per-certificate confirmation (or `--yes`). |
 | `stagepass autostart on\|off\|status` | User LaunchAgent (`io.github.arobertherz.stagepass`) for login start via `stagepass daemon`. |
 | `stagepass daemon` | Foreground LaunchAgent helper (PHP-FPM, certs log-only, `caddy run`, macOS notifications via `osascript`); never sudo. |
-| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.md`, Cursor rule and typed `sp` (`--site` / `--site-modules`, `--staging` / `--production`, `--php` / `--no-php`, `--link`; `--yes` for non-interactive). |
+| `stagepass new [name]` | Scaffold a lean Webflow project with `stagepass.json`, `AGENTS.stagepass.md`, a short `AGENTS.md` pointer, Cursor rule and typed `sp` (`--site` / `--site-modules`, `--staging` / `--production`, `--php` / `--no-php`, `--link`; `--yes` for non-interactive). |
 | `stagepass build` | Run `npm run build` in the current project (no shell; exit code forwarded). |
 | `stagepass watch` | Run `npm run watch` in the current project (no shell; exit code forwarded). Checks whether Stagepass is running and whether the cwd is linked: interactive TTY offers `stagepass start`; non-TTY / CI prints a one-line hint and continues; unlinked cwd gets a `stagepass link` hint. |
 | `stagepass dev` | Run `stagepass watch` plus a loopback SSE event server proxied at `/__stagepass/live` on the linked `.sp` domain (CSS can swap without a full reload). Same running check as `watch` (offer/hint to start). Requires a linked project (`stagepass link`). See [dev.md](./dev.md). |
-| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.md`, the Cursor rule and editor types (`types` or `stagepass.d.ts`), print Webflow snippets. `--dry-run` writes nothing. Replaces an unmodified `scripts/build.mjs` with `--yes` or a TTY confirmation. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
+| `stagepass upgrade` | Bump `@stagepass/*`, detect the modules your live site loads, sync `stagepass.json`, `AGENTS.stagepass.md`, the short `AGENTS.md` pointer, the Cursor rule and editor types (`types` or `stagepass.d.ts`), print Webflow snippets. `--dry-run` writes nothing. Replaces an unmodified `scripts/build.mjs`, and a hand-edited `AGENTS.stagepass.md`, with `--yes` or a TTY confirmation. Since 2.4.1, writes a missing PHP `.htaccess` when `"php": true`. |
 
 If the domain argument is omitted, commands default to the current folder name. The `.sp` suffix is added automatically if missing. Domain values are normalized (strips `https://`, trailing slashes).
 
@@ -36,7 +36,7 @@ If the domain argument is omitted, commands default to the current folder name. 
 
 Projects created or upgraded with CLI 2.2+ declare in `stagepass.json` which modules their Webflow site loads: `"modules": []`, `["cookies"]` (any of `inject`, `cookies`, `maintenance`) or `["all"]`. `stagepass new --site <host>` and `stagepass upgrade` read this from the live site (public https GET, no cookies; regex on `<script src>` only, nothing executed): jsDelivr/unpkg `/dist/…` and package-root URLs, plus self-hosted Stagepass build files (path or `data-stagepass-*` hint). Self-hosted matches report `cdn: "self"` for display only — `upgrade` does not rewrite those tags to CDN. See [Live site detection](../packages/cli/README.md#live-site-detection). They ask you to confirm. `stagepass doctor` warns when the declared list and the live site differ.
 
-From that list the CLI generates the `sp` API reference in `AGENTS.md` (managed block between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`), `.cursor/rules/stagepass.mdc` (globs `src/**`), and `compilerOptions.types`:
+From that list the CLI generates `AGENTS.stagepass.md` (the `sp` API reference, plus the rest of the Stagepass guide), a short pointer in `AGENTS.md` (between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`), `.cursor/rules/stagepass.mdc` (`alwaysApply: true`, `@AGENTS.stagepass.md`), and `compilerOptions.types`:
 
 ```json
 { "compilerOptions": { "types": ["@stagepass/loader", "@stagepass/modules/cookies"] } }
@@ -138,11 +138,13 @@ The document root is the folder that contains `api/`. Caddy sets `root *` to the
 * `--site <host>`: live Webflow site to detect loaded modules from (https)
 * `--site-modules <list>`: modules the site loads (`none`, `all`, or `inject,cookies,maintenance`)
 * `--skip-site`: do not fetch the live site
-* `-y, --yes`: non-interactive; accept detected or existing modules, and replace an unmodified `scripts/build.mjs`. Required for that replacement when there is no TTY.
+* `-y, --yes`: non-interactive; accept detected or existing modules, replace an unmodified `scripts/build.mjs`, and replace a hand-edited `AGENTS.stagepass.md`. Required for those replacements when there is no TTY.
 * `--target <version>`: docs often say `--version`; the CLI rewrites that to `--target` so it does not collide with `stagepass --version`
 * `-v, --verbose`
 
 `upgrade` only writes ranges that a published version satisfies. An explicit `--target` that is not published is refused before any file is written. Without a TTY it maps the legacy `"modules": true` to `["all"]` instead of `[]`, and prints a hint for narrowing (`--site-modules cookies`).
+
+`AGENTS.stagepass.md` is refreshed without a prompt when its managed hash still matches. A hand edit, or a file with no managed header, is replaced only with `--yes` or a TTY confirmation (default yes). See [AGENTS.stagepass.md](#agentsstagepassmd).
 
 `scripts/build.mjs` is replaced when it is still an unmodified scaffold from an earlier CLI. The check hashes the file against known templates from this repo after normalizing line endings. The scaffold entry lines (`src/main.js`, `src/main.ts`, `src/styles.css`, `src/styles.scss`) still count as unmodified. On a TTY the prompt defaults to yes. `--yes` replaces it without asking, including when there is no TTY. Without a TTY and without `--yes`, the file stays and the CLI prints a hint (Trello `jd36WpR1`). `--dry-run` writes nothing. An edited script is left in place. The CLI then prints what `stagepass build`, `stagepass watch` and `stagepass dev` do in the current scaffold and points at this section. A missing `scripts/build.mjs` is left missing. A symlink is left unchanged. Published CLI 2.3.1 does not replace `scripts/build.mjs`. Published CLI 2.4.0 still replaces an unmodified scaffold without a TTY and without `--yes`. `upgrade --json` is not a mode: published CLI 2.4.0 and this CLI both reject the flag, write nothing, and print no JSON object.
 
@@ -165,9 +167,19 @@ See [Troubleshooting](./troubleshooting.md#editor-reports-cannot-find-name-sp).
 * `~/.stagepass/server.log` (detailed logs when not verbose)
 * Project `stagepass.json` (name, domain, modules, origins, optional `php`, optional `outDir`)
 
-## AGENTS.md Templates
+## AGENTS.stagepass.md
 
-`stagepass new` and `stagepass upgrade` generate the project `AGENTS.md` block and `.cursor/rules/stagepass.mdc` from the declared modules (see [Declared modules, AI guide and types](#declared-modules-ai-guide-and-types)). For projects without the CLI, use one of the following canonical profiles in your project-level `AGENTS.md` so coding agents know exactly which Stagepass runtime APIs are available.
+`stagepass new` and `stagepass upgrade` write `AGENTS.stagepass.md` in the project root. The CLI owns that file. The header is `<!-- stagepass:managed cli=<version> sha256=<hash of the body> -->`, then one sentence: generated by `@stagepass/cli`, do not edit by hand, `stagepass upgrade` rewrites it, and your own notes belong in `AGENTS.md`.
+
+The body follows the CLI version and `stagepass.json`: declared `modules`, `php`, `lang`, `origin`, and `production`. It contains the feature set, safe rules, the local workflow (`stagepass build`, `stagepass watch`, `stagepass dev`, `stagepass start`, `stagepass link`; npm scripts only as a fallback), editor types, the loader API, and only the declared modules. When `"php": true` and `api/lib/` exists, it also documents the PHP request flow, helper signatures, and the three-step action recipe. When `"php": true` but `api/lib/` is missing, the PHP section tells the agent to ask the user to add the boilerplate with the CLI, and upgrade prints a hint. Upgrade does not copy `api/`.
+
+`AGENTS.md` is yours. The CLI only maintains the short block between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`. Text outside the markers stays byte for byte. Older scaffold sections that used to live outside the block (feature set, safe rules) are not deleted. Upgrade names them so you can remove them. A missing `AGENTS.md` is created with a title and that short block.
+
+A hand-edited `AGENTS.stagepass.md` (the body hash does not match the header, or there is no managed header) is replaced only with `--yes` or after a TTY confirmation. Otherwise it stays, and the CLI tells you to rerun with `--yes`. A second upgrade writes nothing when the file is already current. Symlinks are left unchanged. `.cursor/rules/stagepass.mdc` uses `alwaysApply: true` and points at `@AGENTS.stagepass.md`. A rule file without stagepass markers is left unchanged. An existing `CLAUDE.md` receives the same short pointer. That file is not created.
+
+`upgrade --json` is still not a mode. Published CLI 2.4.0 and this CLI reject the flag, write nothing, and print no JSON object.
+
+For projects without the CLI, use one of the following canonical profiles in your project-level `AGENTS.md` so coding agents know exactly which Stagepass runtime APIs are available. A project created with the CLI should follow `AGENTS.stagepass.md` instead of pasting these profiles.
 
 ### Canonical profile files
 

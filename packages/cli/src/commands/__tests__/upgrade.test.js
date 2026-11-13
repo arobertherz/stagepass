@@ -127,9 +127,15 @@ describe('upgrade command', () => {
     const agents = await fsx.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(agents.startsWith('# app\n\nNotes by me.\n')).toBe(true);
     expect(agents).toContain('<!-- stagepass:begin -->');
-    expect(agents).toContain('sp.cookies');
+    expect(agents).toContain('AGENTS.stagepass.md');
+    expect(agents).not.toContain('sp.cookies.bake');
+    const guide = await fsx.readFile(path.join(dir, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('sp.cookies');
+    expect(guide).toContain('stagepass:managed');
     const rule = await fsx.readFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'utf8');
-    expect(rule).toContain('globs: src/**');
+    expect(rule).toContain('alwaysApply: true');
+    expect(rule).toContain('@AGENTS.stagepass.md');
+    expect(rule).not.toContain('globs:');
     const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
     expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
     expect(ts.compilerOptions.strict).toBe(true);
@@ -164,7 +170,9 @@ describe('upgrade command', () => {
     expect(after).toContain('Notes by me.');
     expect(after).toContain('My footer.');
     expect(after.match(/<!-- stagepass:begin -->/g)).toHaveLength(1);
-    expect(after).toContain('`sp.cookies`: not available');
+    expect(after).not.toContain('sp.cookies.bake');
+    const guide = await fsx.readFile(path.join(dir, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('`sp.cookies`: not available');
     const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
     expect(ts.compilerOptions.types).toEqual(['@stagepass/loader']);
   });
@@ -174,6 +182,8 @@ describe('upgrade command', () => {
     await upgrade({ siteModules: 'none' }, baseDeps([]));
     const agents = await fsx.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(agents).toContain('<!-- stagepass:end -->');
+    expect(agents.startsWith('# app (Stagepass project)\n')).toBe(true);
+    expect(await fsx.pathExists(path.join(dir, 'AGENTS.stagepass.md'))).toBe(true);
   });
 
   it('skips a tsconfig with comments and prints a hint', async () => {
@@ -287,6 +297,46 @@ describe('upgrade command', () => {
     } finally {
       await fsx.remove(outside);
     }
+  });
+
+  it('leaves a hand-edited AGENTS.stagepass.md unless --yes or the TTY confirms', async () => {
+    await oldStyleProject();
+    expect(await upgrade({ siteModules: 'none' }, baseDeps([]))).toBe(0);
+    const file = path.join(dir, 'AGENTS.stagepass.md');
+    const hand = `${await fsx.readFile(file, 'utf8')}hand edited\n`;
+    await fsx.writeFile(file, hand);
+
+    const logs = [];
+    expect(await upgrade({ siteModules: 'none' }, baseDeps(logs))).toBe(0);
+    expect(await fsx.readFile(file, 'utf8')).toBe(hand);
+    expect(logs.join('\n')).toContain('stagepass upgrade --yes');
+
+    const rl = { question: vi.fn(async () => 'n'), close: vi.fn() };
+    const asked = [];
+    expect(
+      await upgrade({ siteModules: 'none' }, baseDeps(asked, { isTTY: true, createReadline: () => rl }))
+    ).toBe(0);
+    expect(rl.question).toHaveBeenCalled();
+    expect(await fsx.readFile(file, 'utf8')).toBe(hand);
+    expect(asked.join('\n')).toContain('left unchanged');
+
+    expect(await upgrade({ siteModules: 'none', yes: true }, baseDeps([]))).toBe(0);
+    const replaced = await fsx.readFile(file, 'utf8');
+    expect(replaced).not.toContain('hand edited');
+    expect(await upgrade({ siteModules: 'none' }, baseDeps([]))).toBe(0);
+    expect(await fsx.readFile(file, 'utf8')).toBe(replaced);
+  });
+
+  it('warns when php is on and api/lib is missing, and does not copy the boilerplate', async () => {
+    await oldStyleProject();
+    await fsx.writeJson(path.join(dir, 'stagepass.json'), { name: 'app', modules: [], php: true, version: 1 });
+    const logs = [];
+    expect(await upgrade({ siteModules: 'none' }, baseDeps(logs))).toBe(0);
+    expect(logs.join('\n')).toContain('api/lib/');
+    expect(await fsx.pathExists(path.join(dir, 'api', 'lib'))).toBe(false);
+    const guide = await fsx.readFile(path.join(dir, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('Do not rebuild');
+    expect(guide).not.toContain('load_dotenv(');
   });
 
   it('[P-2][INV-3] refuses symlinked package.json with exit 1 and leaves target unchanged', async () => {

@@ -244,8 +244,9 @@ describe('createNew', () => {
     const tsconfig = await fs.readJson(path.join(target, 'tsconfig.json'));
     expect(tsconfig.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
     const rule = await fs.readFile(path.join(target, '.cursor/rules/stagepass.mdc'), 'utf8');
-    expect(rule).toContain('globs: src/**');
-    expect(rule).toContain('if (sp.cookies)');
+    expect(rule).toContain('alwaysApply: true');
+    expect(rule).toContain('@AGENTS.stagepass.md');
+    expect(rule).not.toContain('globs:');
     const gitignore = await fs.readFile(path.join(target, '.gitignore'), 'utf8');
     expect(gitignore).toContain('node_modules/');
     expect(pkg.devDependencies.sass).toBeTruthy();
@@ -259,12 +260,18 @@ describe('createNew', () => {
     expect(readme).not.toContain('unpkg.com');
 
     const agents = await fs.readFile(path.join(target, 'AGENTS.md'), 'utf8');
-    expect(agents).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
-    expect(agents).toMatch(/unpkg serves the same paths/i);
     expect(agents).toContain('<!-- stagepass:begin -->');
-    expect(agents).toContain('sp.cookies.bake');
-    expect(agents).toContain('`sp.inject`: not available');
-    expect(agents).toMatch(/Never call `sp\.<module>`/);
+    expect(agents).toContain('AGENTS.stagepass.md');
+    expect(agents).not.toContain('sp.cookies.bake');
+    expect(agents).not.toContain('## Stagepass feature set');
+    const guide = await fs.readFile(path.join(target, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
+    expect(guide).toMatch(/unpkg serves the same paths/i);
+    expect(guide).toContain('stagepass:managed');
+    expect(guide).toContain('sp.cookies.bake');
+    expect(guide).toContain('`sp.inject`: not available');
+    expect(guide).toMatch(/Never call `sp\.<module>`/);
+    expect(guide).not.toContain('\n## PHP\n');
     expect(readme).toContain('@stagepass/modules@2/dist/cookies.min.js');
     expect(readme).not.toContain('inject.min.js');
 
@@ -1069,6 +1076,12 @@ describe('new: origins, php, preflight', () => {
       expect(readme).not.toContain('Secrets belong only in `api/.env`');
       expect(readme).not.toContain('not live yet');
       expect(readme).not.toContain('not part of the Stagepass repository yet');
+      expect(readme).toContain('AGENTS.stagepass.md');
+      expect(readme).toContain('action_catalog()');
+      const phpGuide = await fs.readFile(path.join(target, 'AGENTS.stagepass.md'), 'utf8');
+      expect(phpGuide).toContain('\n## PHP\n');
+      expect(phpGuide).toContain('load_dotenv(string $path): void');
+      expect(phpGuide).toContain('www.example.com');
       expect(logs.join('\n')).toMatch(/deprecated/i);
       expect(logs.join('\n')).toMatch(/https:\/\/php-app\.sp/);
       const sp = await fs.readJson(path.join(target, 'stagepass.json'));

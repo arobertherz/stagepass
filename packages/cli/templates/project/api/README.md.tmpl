@@ -1,208 +1,29 @@
-# Stagepass PHP boilerplate
+# Stagepass PHP
 
-Plain PHP 8.2 or newer. No framework. No Composer. No mail.
+Plain PHP 8.2 or newer. No framework, no Composer, no mail. The agent guide is `AGENTS.stagepass.md` (section PHP). Longer notes: [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/).
 
-`api/action.php` is the only public entry. Every request names an `action`. That name is looked up in `api/actions.php` and then handed to a file in `api/actions/`. User input is never used as a file path or a function name.
+`api/action.php` is the only public entry. Register actions in `api/actions.php`. Handlers live in `api/actions/`.
 
-A longer guide is at [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/). Copy `api/.env.example` to `.env` in the project root, or use `.php/.env`. `stagepass build` never copies `.env` into `dist`.
+## Setup
 
-## Where to edit
+Copy `api/.env.example` to `.env` in the project root (the folder that contains `api/`). Set `ALLOWED_ORIGINS` to exact origins, including `https://{{NAME}}.sp`. Do not commit `.env`.
 
-Edit these:
+That folder is the document root locally, and `dist/` after `stagepass build`. From Webflow, `window.location.origin` is the Webflow host and does not run PHP. Call the PHP host with its absolute URL, for example `https://php.example.com/api/action.php`.
 
-```
-api/actions.php         Allowlist: register a new action here
-api/actions/*.php       Your action logic (see contact.php)
-.env                    Origins, limits, APP_ENV (copy from api/.env.example)
-.php/config.php         Optional PHP overrides of the .env defaults
-```
+Prefer `stagepass dev` or the linked `.sp` domain. `php -S 127.0.0.1:8080 -t .` matches `/api/action.php` but does not hide `/.env`. Do not point it at a folder that already contains a real `.env`.
 
-Leave these alone unless you are changing the core:
+Apache uses the project `.htaccess`. nginx does not. Put this in the server block before `location ~ \.php$`:
 
-```
-api/action.php          Front controller
-api/lib/*               Responses, request parsing, security, validation, config
-```
-
-## Layout
-
-```
-api/action.php          Public front controller (core)
-api/actions.php         Action allowlist (you edit this)
-api/actions/ping.php    GET health check
-api/actions/contact.php POST form handler (validates only, does not send mail)
-api/lib/                Shared helpers (core)
-api/.env.example        Copy to the project root as .env
-.php/config.php         Optional overrides, inside the document root (the folder that contains api/)
-.php/rate-limit/        Runtime files, not copied to dist. Deny hidden paths on the host
-.htaccess               Apache deny for hidden paths (shipped)
-.env                    Local environment (do not commit)
-```
-
-## Configure
-
-1. Copy `api/.env.example` to `.env` in the project root (the folder that contains `api/`).
-2. Set `ALLOWED_ORIGINS` to the exact site origins that may call this API, including the scheme and without a trailing slash. Typical values are `https://your-project.sp`, `https://your-site.webflow.io`, and `https://www.example.com`.
-3. Keep `.env` out of git. The document root is the folder that contains `api/` (the project root locally, `dist/` after `stagepass build`). Caddy returns 404 for any path segment that starts with `.`. Since 2.4.1 this starter ships a web-root `.htaccess` (Apache needs `AllowOverride All` and `mod_rewrite`). `stagepass upgrade` writes that file when `stagepass.json` has `"php": true` and the project root has none. An existing `.htaccess` is left unchanged. If it has no `RewriteRule "(^|/)\." - [F]` line, add that rule yourself. Published CLI 2.4.0 does not write the file. `stagepass build` copies the project `.htaccess` into `dist/` and does not replace an existing project `.htaccess`. It does not copy `.env`, `.php/.env`, or `.php/rate-limit/`. nginx does not read `.htaccess`. Put this in the server block before `location ~ \.php$`:
-
-   ```nginx
-   location ~* /\.(?!well-known\/) {
-       deny all;
-   }
-   ```
-
-   Prefer real environment variables on the host so a `.env` file is not required in the web root.
-4. `stagepass build` copies `api/` to `dist/api/`, `.php/config.php` to `dist/.php/config.php`, and the project `.htaccess` to `dist/.htaccess`. Upload `dist/`. The public URL stays `/api/action.php`.
-
-`APP_ENV=local` turns on a hidden `boom` action used only to test error handling. Leave `APP_ENV=production` on a live host.
-
-## Add a new action
-
-1. Create `api/actions/newsletter.php`. The file must return a callable. Read fields with `input_string()`. Throw `ValidationException` when input is invalid (that is a 422 fail). Any other uncaught exception becomes a generic 500 error.
-
-```php
-<?php
-declare(strict_types=1);
-
-if (!defined('STAGEPASS_PHP_ENTRY')) {
-    http_response_code(404);
-    exit;
-}
-
-return static function (array $input, array $config): array {
-    $errors = [];
-    validate_required($input, 'email', $errors);
-    validate_email($input, 'email', $errors);
-    if ($errors !== []) {
-        throw new ValidationException($errors);
-    }
-    // Your logic here.
-    return ['subscribed' => true];
-};
-```
-
-2. Register the name in `api/actions.php`:
-
-```php
-'newsletter' => [
-    'file' => 'newsletter.php',
-    'methods' => ['POST'],
-    'honeypot' => true,
-    'rate_limit' => true,
-    'origin' => 'required',
-],
-```
-
-3. Call it from JavaScript with `action: 'newsletter'`. Do not add a second public PHP file unless you have a strong reason.
-
-## Call it from JavaScript
-
-`sp.resolveLocalUrl` returns a local HTTPS URL only during an active `.sp` session, otherwise `''`. On a Webflow page `window.location.origin` is the Webflow host, and Webflow does not run PHP. There is no helper for the public PHP base URL (`origin` and `production` in `stagepass.json` are Webflow hosts). Use the absolute URL of the PHP host, for example `https://php.example.com/api/action.php`.
-
-```js
-const path = '/api/action.php';
-const phpHost = 'https://php.example.com';
-const local = sp.vars.isLocal && sp.resolveLocalUrl(path);
-const url = local || phpHost + path;
-
-const response = await fetch(url, {
-  method: 'POST',
-  headers: {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    action: 'contact',
-    name: 'Ada Lovelace',
-    email: 'ada@example.com',
-    message: 'Hello',
-    website: '', // honeypot; leave empty, hide this field in CSS
-  }),
-});
-
-const result = await response.json();
-// result.status is "success", "fail", or "error"
-if (result.status === 'success') {
-  console.log('Saved', result.data);
-} else {
-  console.warn(result.message, result.data);
+```nginx
+location ~* /\.(?!well-known\/) {
+    deny all;
 }
 ```
 
-A simple GET check:
+## New action
 
-```js
-const url =
-  (sp.vars.isLocal && sp.resolveLocalUrl('/api/action.php')) ||
-  'https://php.example.com/api/action.php';
+The recipe in `AGENTS.stagepass.md` is three steps:
 
-const result = await fetch(url + '?action=ping', {
-  headers: { Accept: 'application/json' },
-}).then((r) => r.json());
-```
-
-`contact.php` validates a JSON or form POST and does not send mail. A native Webflow form needs its own submit listener. There is no shipped helper for that.
-
-```js
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const url =
-    (sp.vars.isLocal && sp.resolveLocalUrl('/api/action.php')) ||
-    'https://php.example.com/api/action.php';
-  await fetch(url, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'contact',
-      name: form.elements.name.value,
-      email: form.elements.email.value,
-      message: form.elements.message.value,
-      website: '',
-    }),
-  });
-});
-```
-
-## Response shape
-
-Every response is JSON with `status`, `data`, and `message`, plus a matching HTTP status code.
-
-```json
-{ "status": "success", "data": { "pong": true }, "message": null }
-```
-
-```json
-{
-  "status": "fail",
-  "data": { "email": "A valid email is required." },
-  "message": "Validation failed."
-}
-```
-
-```json
-{
-  "status": "error",
-  "data": null,
-  "message": "An unexpected error occurred. Try again later."
-}
-```
-
-`fail` is a rejected request (validation 422, unknown action 404, wrong method 405, disallowed origin 403, too many requests 429). `error` is an unexpected server failure (500) and never includes internal details.
-
-## Security defaults
-
-POST actions require an `Origin` header that is on `ALLOWED_ORIGINS`. GET `ping` may omit `Origin`, but a present `Origin` still has to match the list. CORS headers are only sent for allowed origins. A filled honeypot field (`website` by default) returns a generic success and does not run the handler. Rate limiting is per IP and action, stored as files under `.php/rate-limit/`. A limit hit is HTTP 429, JSend `fail`, and `Retry-After` set to the window. If the directory cannot be created, a file cannot be opened, `flock` fails, or the limiter throws, the failure is logged, including a failed `flock`. The response is HTTP 503, JSend `error`, a short message, `Retry-After: 60`, and no internals, unless `APP_ENV` is `local`, `development`, or `dev` (trimmed, any case). Empty, unset, and every other value stay closed. Those three names allow the request and write the same log line. `client_ip()` uses `REMOTE_ADDR` unless that address is in `TRUSTED_PROXIES` (comma-separated IPv4 or IPv6 addresses and CIDRs). Only then is `TRUSTED_PROXY_HEADER` read: `x-forwarded-for` (default) or `forwarded` (RFC 7239). Hops are walked from right to left; trusted proxy addresses are skipped; the first other address is the client. Hops to the left of the client are ignored. An invalid hop in the trusted-proxy suffix falls back to `REMOTE_ADDR` and is logged once without the raw header. Projects created before this behaviour keep their PHP files. `stagepass upgrade` does not edit `api/`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a current scaffold, or re-scaffold.
-
-## Local PHP server
-
-From the project root (the folder that contains `api/`):
-
-```bash
-php -S 127.0.0.1:8080 -t .
-```
-
-Then: `curl 'http://127.0.0.1:8080/api/action.php?action=ping'`
-
-`php -S 127.0.0.1:8080 -t api` serves `/action.php` and does not match this layout. PHP's built-in server does not return 404 for hidden paths the way Caddy does (`/.env`, `/.php/`). Do not point `php -S -t .` at a folder that already contains a real `.env`. Prefer `stagepass dev` or the linked `.sp` domain.
-
-On a linked Stagepass domain the same file is reached at `https://your-project.sp/api/action.php`.
+1. Add `api/actions/<name>.php` that returns a callable. Validate with `validate_required`, `validate_email`, and `validate_max_length`. Call another service with curl and a timeout. Read secrets with `env_string` and no default. Log upstream failures with `error_log` and answer with `respond_error`.
+2. Register the name in `action_catalog()` (`methods`, `honeypot`, `rate_limit`, `origin`).
+3. Call `/api/action.php` with `action` set to that name. Do not add another public `.php` file next to `action.php`.

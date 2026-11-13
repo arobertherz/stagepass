@@ -557,7 +557,13 @@ try {
   run(bin, ['upgrade', '--site-modules', 'cookies'], { cwd: old, env });
   const agents = readFileSync(join(old, 'AGENTS.md'), 'utf8');
   assert(agents.startsWith('# old\n\nHand-written notes.\n'), 'upgrade keeps AGENTS.md content');
-  assert(agents.includes('<!-- stagepass:begin -->') && agents.includes('sp.cookies'), 'upgrade adds block');
+  assert(
+    agents.includes('<!-- stagepass:begin -->') && agents.includes('AGENTS.stagepass.md'),
+    'upgrade adds the short pointer'
+  );
+  const guide = readFileSync(join(old, 'AGENTS.stagepass.md'), 'utf8');
+  assert(guide.includes('stagepass:managed') && guide.includes('sp.cookies'), 'upgrade writes the managed guide');
+  assert(guide.includes('Do not rebuild'), 'php without api/lib tells agents not to rebuild the boilerplate');
   assert(existsSync(join(old, '.cursor', 'rules', 'stagepass.mdc')), 'upgrade adds cursor rule');
   // upgrade only writes published ranges, and per-module types only when the
   // published @stagepass/modules ships them (>= 2.2.0). Expectations follow

@@ -48,7 +48,7 @@ Open `https://your-site/?stagepass=demo.sp`. Details: [docs/getting-started.md](
 | Guide | Contents |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Problem, solution, features, install, quick start |
-| [CLI](docs/cli.md) | Commands, flags, AGENTS.md templates |
+| [CLI](docs/cli.md) | Commands, flags, AGENTS.stagepass.md |
 | [Loader](docs/loader.md) | Version pinning, attributes, Runtime API, security |
 | [Modules](docs/modules.md) | inject, cookies, maintenance |
 | [Live reload](docs/dev.md) | Guide for `stagepass dev` / `watch` (running check #40); client chunk `live.min.js` ships since published loader 2.4.0 (npm `latest` is 2.5.0) |

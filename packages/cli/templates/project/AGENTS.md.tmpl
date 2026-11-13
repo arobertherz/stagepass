@@ -1,40 +1,7 @@
 # {{NAME}} (Stagepass project)
 
-Profile for AI coding agents and humans working on this Webflow + Stagepass project.
+Local Webflow project. Stagepass rules for `src/`, `api/`, and Webflow code are in `AGENTS.stagepass.md`.
 
-## Stagepass feature set
-
-- **CLI:** local `.sp` HTTPS domains (Caddy), DNS, optional PHP, `link` / `unlink` / `start` / `stop` / `reload`, plus `doctor` / `certs` / `autostart` / `daemon` and project helpers `new` / `build` / `watch` / `upgrade`
-- **Loader:** swaps tagged production assets for local URLs when a session is active (`?stagepass={{NAME}}.sp`)
-- **Session:** `localStorage` JSON `{ domain, expires }` (default 12 h)
-- **Modules (optional):** separate script tags after `loader.min.js`: `inject`, `cookies`, `maintenance`, or `all`. This project declares the modules its Webflow site loads in `stagepass.json` (`modules`); the API reference below only covers those.
-- **Runtime API:** use `sp` (see "Stagepass runtime API" below)
-- **CDN:** Prefer jsDelivr with major pin `@2` (exact pin optional), e.g. `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. unpkg serves the same paths if you need an alternative CDN.
-
-## Safe development rules (beginners)
-
-1. **No secrets in frontend code.** API keys, tokens, and passwords must never ship in JS/CSS served to the browser.
-2. **No `innerHTML` with untrusted data.** Prefer `textContent`, `createElement`, or trusted, sanitized markup only.
-3. **No `eval` or string-built scripts** with user or CMS input.
-4. **Pin versions** for production embeds (`@2` major pin, or an exact pin when you need a lockstep deploy).
-5. **Review before publishing.** Read the diff for asset tags, CORS origins, and anything that touches live Webflow Custom Code.
-6. **Keep Stagepass tags intact.** Use `data-src` / `data-href` + `data-stagepass` (+ optional `data-stagepass-path`) so production users keep production URLs.
-7. **Do not commit secrets.** Keep `.env*` out of git (see `.gitignore`).
-8. **PHP (if enabled):** never hard-code secrets; read them from the environment. Keep proxy allowlists exact-host and https-only.
-
-## Local workflow
-
-```bash
-npm run watch
-# or: npm run dev  (alias of watch)
-stagepass start
-stagepass link {{NAME}}
-```
-
-`stagepass.json` stores staging as `origin` ({{STAGING_HOST}}) and optional `production`. `link` without `--origin` uses those hosts. Then open `https://{{STAGING_HOST}}/?stagepass={{NAME}}.sp`.
-
-## Types
-
-`{{CONFIG_FILE}}` lists `types: {{TYPES_INLINE}}`, generated from `stagepass.json`. Modules that are not declared have no types, so the editor flags `sp.<module>` calls that would fail on the live site. After enabling a module (Webflow script tag + `stagepass.json`), run `stagepass upgrade`.
+## Notes
 
 {{STAGEPASS_BLOCK}}

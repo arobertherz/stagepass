@@ -15,6 +15,7 @@ import {
   STAGEPASS_TYPES_MARKER,
   updateConfigTypes,
 } from '../project-sync.js';
+import { BLOCK_BEGIN, BLOCK_END, buildAgentsPointerBlock } from '../ai-guide.js';
 
 describe('configCoversTypesFile', () => {
   it('covers a root file when include and files are omitted, and a nested file under a directory include', () => {
@@ -86,9 +87,16 @@ describe('planProjectSync / applyProjectSync', () => {
     expect(plan.writes.map((w) => w.file).sort()).toEqual([
       '.cursor/rules/stagepass.mdc',
       'AGENTS.md',
+      'AGENTS.stagepass.md',
       'stagepass.d.ts',
       'stagepass.json',
     ]);
+    expect(plan.writes.find((w) => w.file === 'AGENTS.md').content).toBe(
+      `# demo (Stagepass project)\n\n${buildAgentsPointerBlock()}\n`
+    );
+    const guide = plan.writes.find((w) => w.file === 'AGENTS.stagepass.md').content;
+    expect(guide).toContain('stagepass:managed');
+    expect(guide).not.toContain('\n## PHP\n');
     expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toBe(renderStagepassTypesFile(['@stagepass/loader']));
     expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toContain(STAGEPASS_TYPES_MARKER);
     expect(plan.notes.join('\n')).toContain('No tsconfig.json or jsconfig.json:');
@@ -102,7 +110,7 @@ describe('planProjectSync / applyProjectSync', () => {
     await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'my own rule\n');
     await fs.writeFile(path.join(dir, 'AGENTS.md'), '<!-- stagepass:begin -->\nhalf\n');
     const plan = await planProjectSync({ cwd: dir, modules: ['cookies'], pkg: {} });
-    expect(plan.writes.map((w) => w.file)).toEqual(['stagepass.json', 'stagepass.d.ts']);
+    expect(plan.writes.map((w) => w.file)).toEqual(['stagepass.json', 'AGENTS.stagepass.md', 'stagepass.d.ts']);
     const notes = plan.notes.join('\n');
     expect(notes).toContain('without stagepass markers');
     expect(notes).toContain('markers are incomplete');
@@ -124,19 +132,23 @@ describe('planProjectSync / applyProjectSync', () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-sync-out-'));
     try {
       const agentsOutside = path.join(outside, 'AGENTS.md');
+      const guideOutside = path.join(outside, 'AGENTS.stagepass.md');
       const tsOutside = path.join(outside, 'tsconfig.json');
       const cursorOutside = path.join(outside, 'cursor-target');
       await fs.writeFile(agentsOutside, '# secret outside\n');
+      await fs.writeFile(guideOutside, '# secret guide\n');
       await fs.writeFile(
         tsOutside,
         JSON.stringify({ compilerOptions: { types: ['@stagepass/loader'] } }, null, 2) + '\n'
       );
       await fs.mkdir(cursorOutside);
       await fs.symlink(agentsOutside, path.join(dir, 'AGENTS.md'));
+      await fs.symlink(guideOutside, path.join(dir, 'AGENTS.stagepass.md'));
       await fs.symlink(tsOutside, path.join(dir, 'tsconfig.json'));
       await fs.symlink(cursorOutside, path.join(dir, '.cursor'));
 
       const agentsBefore = await fs.readFile(agentsOutside, 'utf8');
+      const guideBefore = await fs.readFile(guideOutside, 'utf8');
       const tsBefore = await fs.readFile(tsOutside, 'utf8');
       const cursorListing = await fs.readdir(cursorOutside);
 
@@ -146,25 +158,165 @@ describe('planProjectSync / applyProjectSync', () => {
         pkg: { name: 'demo', devDependencies: { '@stagepass/modules': '^2.2.0' } },
       });
       expect(plan.notes.some((n) => n === 'AGENTS.md is a symlink; left unchanged')).toBe(true);
+      expect(plan.notes.some((n) => n === 'AGENTS.stagepass.md is a symlink; left unchanged')).toBe(true);
       expect(plan.notes.some((n) => n === 'tsconfig.json is a symlink; left unchanged')).toBe(true);
       expect(plan.notes.some((n) => n.includes('.cursor/rules/stagepass.mdc') && n.includes('symlink'))).toBe(
         true
       );
       expect(plan.writes.map((w) => w.file)).not.toContain('AGENTS.md');
+      expect(plan.writes.map((w) => w.file)).not.toContain('AGENTS.stagepass.md');
       expect(plan.writes.map((w) => w.file)).not.toContain('tsconfig.json');
       expect(plan.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
 
       await applyProjectSync(dir, plan.writes);
       expect(await fs.readFile(agentsOutside, 'utf8')).toBe(agentsBefore);
+      expect(await fs.readFile(guideOutside, 'utf8')).toBe(guideBefore);
       expect(await fs.readFile(tsOutside, 'utf8')).toBe(tsBefore);
       expect(await fs.readdir(cursorOutside)).toEqual(cursorListing);
 
       await expect(
         applyProjectSync(dir, [{ file: 'AGENTS.md', content: 'hijack\n' }])
       ).rejects.toThrow(/symlink/);
+      await expect(
+        applyProjectSync(dir, [{ file: 'AGENTS.stagepass.md', content: 'hijack\n' }])
+      ).rejects.toThrow(/symlink/);
     } finally {
       await fs.remove(outside);
     }
+  });
+
+  it('replaces a large managed block and keeps user text byte for byte', async () => {
+    const before = '# Mine\n\nKeep me.\n\n## Stagepass feature set\n\nold generated outside\n\n';
+    const after = '\nTrailing note.\n';
+    await fs.writeFile(
+      path.join(dir, 'AGENTS.md'),
+      `${before}${BLOCK_BEGIN}\nhuge api sp.cookies.bake\n${BLOCK_END}${after}`
+    );
+    const plan = await planProjectSync({ cwd: dir, modules: ['cookies'], pkg: { name: 'demo' } });
+    const agents = plan.writes.find((w) => w.file === 'AGENTS.md');
+    expect(agents.content.startsWith(before)).toBe(true);
+    expect(agents.content.endsWith(after)).toBe(true);
+    expect(agents.content).toContain('read `AGENTS.stagepass.md`');
+    expect(agents.content).not.toContain('huge api');
+    expect(agents.content).not.toContain('sp.cookies.bake');
+    expect(plan.notes.join('\n')).toContain('older generated');
+    const guide = plan.writes.find((w) => w.file === 'AGENTS.stagepass.md').content;
+    expect(guide).toContain('sp.cookies.bake');
+  });
+
+  it('leaves a hand-edited AGENTS.stagepass.md without --yes and replaces it with --yes', async () => {
+    const first = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    await applyProjectSync(dir, first.writes);
+    const file = path.join(dir, 'AGENTS.stagepass.md');
+    const hand = `${await fs.readFile(file, 'utf8')}hand edited\n`;
+    await fs.writeFile(file, hand);
+
+    const blocked = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(blocked.writes.map((w) => w.file)).not.toContain('AGENTS.stagepass.md');
+    expect(blocked.notes.join('\n')).toContain('stagepass upgrade --yes');
+    expect(await fs.readFile(file, 'utf8')).toBe(hand);
+
+    const asked = await planProjectSync({
+      cwd: dir,
+      modules: [],
+      pkg: { name: 'demo' },
+      interactive: true,
+      confirm: async () => false,
+    });
+    expect(asked.writes.map((w) => w.file)).not.toContain('AGENTS.stagepass.md');
+    expect(asked.notes.join('\n')).toContain('left unchanged');
+
+    const allowed = await planProjectSync({
+      cwd: dir,
+      modules: [],
+      pkg: { name: 'demo' },
+      assumeYes: true,
+    });
+    expect(allowed.writes.find((w) => w.file === 'AGENTS.stagepass.md').action).toBe('replaced hand-edited file');
+    await applyProjectSync(dir, allowed.writes);
+    const replaced = await fs.readFile(file, 'utf8');
+    expect(replaced).not.toContain('hand edited');
+    expect(replaced.startsWith('<!-- stagepass:managed cli=')).toBe(true);
+
+    const again = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(again.writes).toEqual([]);
+  });
+
+  it('leaves a guide with no managed header unless --yes', async () => {
+    await fs.writeFile(path.join(dir, 'AGENTS.stagepass.md'), '# my own guide\n');
+    const blocked = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(blocked.writes.map((w) => w.file)).not.toContain('AGENTS.stagepass.md');
+    expect(await fs.readFile(path.join(dir, 'AGENTS.stagepass.md'), 'utf8')).toBe('# my own guide\n');
+    const allowed = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' }, assumeYes: true });
+    expect(allowed.writes.find((w) => w.file === 'AGENTS.stagepass.md').content).toContain('stagepass:managed');
+  });
+
+  it('migrates a generated cursor rule and leaves a foreign one', async () => {
+    const old = [
+      '---',
+      'description: Stagepass runtime API (sp) for this Webflow project',
+      'globs: src/**',
+      'alwaysApply: false',
+      '---',
+      '',
+      `${BLOCK_BEGIN}`,
+      'old api',
+      `${BLOCK_END}`,
+      'User tail',
+      '',
+    ].join('\n');
+    await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), old);
+    const plan = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    const rule = plan.writes.find((w) => w.file === '.cursor/rules/stagepass.mdc').content;
+    expect(rule).toContain('alwaysApply: true');
+    expect(rule).not.toContain('globs:');
+    expect(rule).toContain('@AGENTS.stagepass.md');
+    expect(rule).not.toContain('old api');
+    expect(rule.endsWith('User tail\n')).toBe(true);
+
+    await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'my own rule\n');
+    const foreign = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(foreign.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
+    expect(foreign.notes.join('\n')).toContain('without stagepass markers');
+  });
+
+  it('points CLAUDE.md at the guide only when the file already exists', async () => {
+    const missing = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(missing.writes.map((w) => w.file)).not.toContain('CLAUDE.md');
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), '# Claude\n\nKeep.\n');
+    const plan = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    const claude = plan.writes.find((w) => w.file === 'CLAUDE.md').content;
+    expect(claude.startsWith('# Claude\n\nKeep.\n')).toBe(true);
+    expect(claude).toContain('AGENTS.stagepass.md');
+  });
+
+  it('omits the PHP section when php is false and warns when the boilerplate is missing', async () => {
+    await fs.writeJson(path.join(dir, 'stagepass.json'), { name: 'demo', modules: [], php: false, version: 1 });
+    const off = await planProjectSync({ cwd: dir, modules: ['cookies'], pkg: { name: 'demo' } });
+    expect(off.writes.find((w) => w.file === 'AGENTS.stagepass.md').content).not.toContain('\n## PHP\n');
+    expect(off.notes.join('\n')).not.toContain('api/lib/');
+
+    await fs.writeJson(path.join(dir, 'stagepass.json'), {
+      name: 'demo',
+      modules: ['all'],
+      php: true,
+      lang: 'ts',
+      origin: 'demo.webflow.io',
+      production: 'www.example.com',
+      version: 1,
+    });
+    const missing = await planProjectSync({
+      cwd: dir,
+      modules: ['all'],
+      pkg: { name: 'demo', devDependencies: { '@stagepass/modules': '^2.2.0' } },
+    });
+    const guide = missing.writes.find((w) => w.file === 'AGENTS.stagepass.md').content;
+    expect(guide).toContain('Do not rebuild');
+    expect(guide).not.toContain('load_dotenv(');
+    expect(guide).toContain('if (sp.inject)');
+    expect(guide).toContain('if (sp.maintenance');
+    expect(missing.notes.join('\n')).toContain('api/lib/');
+    expect(await fs.pathExists(path.join(dir, 'api', 'lib'))).toBe(false);
   });
 });
 

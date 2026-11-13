@@ -208,14 +208,17 @@ export function ensureTypeDevDependencies(pkg, modules, specs) {
 
 /**
  * Upgrade @stagepass/* deps in the current project's package.json and sync
- * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
- * editor types (a plain `types` array, or stagepass.d.ts). Adds missing
- * `@stagepass/loader` and, when modules are declared, `@stagepass/modules`
- * devDependencies. Replaces scripts/build.mjs when it is still an
- * unmodified scaffold from an earlier CLI and the user passed `--yes` or
- * confirmed on a TTY. Without a TTY and without `--yes`, prints a hint and
- * leaves that file. When stagepass.json has `"php": true`
+ * the declared modules into stagepass.json, AGENTS.stagepass.md, the short
+ * pointer in AGENTS.md, the Cursor rule and editor types (a plain `types`
+ * array, or stagepass.d.ts). Adds missing `@stagepass/loader` and, when
+ * modules are declared, `@stagepass/modules` devDependencies. Replaces
+ * scripts/build.mjs when it is still an unmodified scaffold from an earlier
+ * CLI, and replaces a hand-edited AGENTS.stagepass.md, when the user passed
+ * `--yes` or confirmed on a TTY. Without a TTY and without `--yes`, prints
+ * a hint and leaves that file. A managed AGENTS.stagepass.md is refreshed
+ * without asking. When stagepass.json has `"php": true`
  * and the project root has no `.htaccess`, writes the shipped template.
+ * It does not copy `api/` when that boilerplate is missing.
  *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
@@ -393,6 +396,9 @@ export async function upgrade(options = {}, deps = {}) {
       origin: options.site ? resolved.origin : null,
       pkg: next,
       perModuleTypes,
+      interactive,
+      assumeYes,
+      confirm: confirmFn,
     },
     fse
   );
