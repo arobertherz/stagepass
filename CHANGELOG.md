@@ -11,14 +11,6 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
-### `@stagepass/cli`
-
-- `stagepass dev` live reload also watches `api/` and `.php/` when `stagepass.json` has `"php": true`, on the same SSE stream and the same debounce as the output directory. It ignores `.env`, `.php/.env`, `.php/rate-limit/`, logs, pid files, key, certificate, and database files (`.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.cer`, `.sqlite`, `.db`), and editor temp files (`~`, `.swp`, `.DS_Store`). A missing directory does not stop the command. The start log names `api/` and `.php/`. Watchers close when `stagepass dev` exits. Without `"php": true` only the output directory is watched.
-- `stagepass upgrade` without a TTY and without `--yes` leaves an unmodified `scripts/build.mjs` in place and prints a hint. `--yes`, or a TTY confirmation (default yes), replaces it. `--dry-run` writes nothing. An edited script stays unchanged. The same consent rule also covers a hand-edited `AGENTS.stagepass.md` (body hash mismatch, or no managed header). A file whose hash still matches is refreshed without asking. The rule is not applied to the other upgrade writes: `package.json` ranges and missing type devDependencies, a missing or marker-owned `stagepass.d.ts`, and a missing PHP `.htaccess`. Those do not replace a hand-edited source file and stay non-interactive. `upgrade --json` is unchanged from published CLI 2.4.0: the flag is unknown, stdout is empty, and nothing is written. There is no JSON object to extend. [jd36WpR1](https://trello.com/c/jd36WpR1).
-- `stagepass new` and `stagepass upgrade` write `AGENTS.stagepass.md`, owned by the CLI. The first line is `<!-- stagepass:managed cli=<version> sha256=<body> -->`. The file holds the feature set, safe rules, local workflow (`stagepass build`, `watch`, `dev`, `start`, `link`; npm scripts only as a fallback), editor types, the loader API, and only the modules declared in `stagepass.json`. When `"php": true` and `api/lib/` is present, it also documents the PHP helpers and the new-action recipe. `AGENTS.md` stays user-owned: the CLI only keeps a short pointer between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`. Text outside those markers is left byte for byte, including older generated sections, which upgrade mentions can be removed. `.cursor/rules/stagepass.mdc` points at `@AGENTS.stagepass.md` with `alwaysApply: true`. An existing `CLAUDE.md` gets the same short pointer. The file is not created when it is missing. A second upgrade writes nothing when the guide is already current. When `"php": true` and `api/lib/` is missing, the guide tells the agent not to rebuild the boilerplate and upgrade prints a hint. Upgrade does not copy `api/`.
-- `stagepass upgrade` retrofits editor types in an existing project (ships in CLI 2.5.0). It adds a missing `@stagepass/loader` devDependency, and `@stagepass/modules` only when modules are declared, then prints `npm install`. It does not run install. A plain `tsconfig.json` / `jsconfig.json` that already has `compilerOptions.types` is still updated in place. Without that array, or when the config has comments or is not valid JSON, upgrade writes `stagepass.d.ts` (`// @stagepass-types` and `/// <reference types="..." />`) only if `include` / `files` already cover it. With no config it still writes that file at the project root and prints a note: editors load `stagepass.d.ts` only as part of a project. Add a `jsconfig.json` or `tsconfig.json` that includes your sources and `stagepass.d.ts` (for example `{"include": ["src", "stagepass.d.ts"]}`), then run `stagepass upgrade` again. Upgrade does not create a config. It does not add a `types` array and does not edit JSONC. A `stagepass.d.ts` without the marker is left unchanged. A missing `stagepass.json` does not skip the step. `--dry-run` writes nothing and still prints the note. [1tsMycoK](https://trello.com/c/1tsMycoK).
-- PHP projects created with the next release refuse rate-limit storage faults unless `APP_ENV` is `local`, `development`, or `dev` (trimmed, any case). Every other value, including empty and unset, is HTTP 503, JSend `error`, `Retry-After: 60`, a log line, and no internals. Those three names stay fail-open with the same log. A failed `flock` is logged. A real limit hit stays HTTP 429. `client_ip()` reads `X-Forwarded-For` or RFC 7239 `Forwarded` only when `REMOTE_ADDR` is listed in `TRUSTED_PROXIES`. `stagepass upgrade` does not change `api/`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a new scaffold, or re-scaffold. [sgt7wKlT](https://trello.com/c/sgt7wKlT).
-
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.
@@ -39,9 +31,31 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.4.1] - unreleased
+### [2.5.0] - 2026-11-13
 
-Security patch on top of 2.4.0. Not published.
+Minor release on top of 2.4.1. Loader and modules are separate packages and are not part of this release. npm dist-tag `latest` is `@stagepass/cli@2.5.0`. Tarball sha256 `<sha256 after publish>`.
+
+#### Added
+
+- `stagepass new` and `stagepass upgrade` write `AGENTS.stagepass.md`, owned by the CLI. The first line is `<!-- stagepass:managed cli=<version> sha256=<body> -->`. The file holds the feature set, safe rules, local workflow (`stagepass build`, `watch`, `dev`, `start`, `link`; npm scripts only as a fallback), editor types, the loader API, and only the modules declared in `stagepass.json`. When `"php": true` and `api/lib/` is present, it also documents the PHP helpers and the new-action recipe. `AGENTS.md` stays user-owned: the CLI only keeps a short pointer between `<!-- stagepass:begin -->` and `<!-- stagepass:end -->`. Text outside those markers is left byte for byte, including older generated sections, which upgrade mentions can be removed. `.cursor/rules/stagepass.mdc` points at `@AGENTS.stagepass.md` with `alwaysApply: true`. An existing `CLAUDE.md` gets the same short pointer. The file is not created when it is missing. A second upgrade writes nothing when the guide is already current. When `"php": true` and `api/lib/` is missing, the guide tells the agent not to rebuild the boilerplate and upgrade prints a hint. Upgrade does not copy `api/`.
+- `stagepass dev` live reload also watches `api/` and `.php/` when `stagepass.json` has `"php": true`, on the same SSE stream and the same debounce as the output directory. It ignores `.env`, `.php/.env`, `.php/rate-limit/`, logs, pid files, key, certificate, and database files (`.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.cer`, `.sqlite`, `.db`), and editor temp files (`~`, `.swp`, `.DS_Store`). A missing directory does not stop the command. The start log names `api/` and `.php/`. Watchers close when `stagepass dev` exits. Without `"php": true` only the output directory is watched.
+- `stagepass upgrade` retrofits editor types in an existing project. It adds a missing `@stagepass/loader` devDependency, and `@stagepass/modules` only when modules are declared, then prints `npm install`. It does not run install. A plain `tsconfig.json` / `jsconfig.json` that already has `compilerOptions.types` is still updated in place. Without that array, or when the config has comments or is not valid JSON, upgrade writes `stagepass.d.ts` (`// @stagepass-types` and `/// <reference types="..." />`) only if `include` / `files` already cover it. With no config it still writes that file at the project root and prints a note: editors load `stagepass.d.ts` only as part of a project. Add a `jsconfig.json` or `tsconfig.json` that includes your sources and `stagepass.d.ts` (for example `{"include": ["src", "stagepass.d.ts"]}`), then run `stagepass upgrade` again. Upgrade does not create a config. It does not add a `types` array and does not edit JSONC. A `stagepass.d.ts` without the marker is left unchanged. A missing `stagepass.json` does not skip the step. `--dry-run` writes nothing and still prints the note. [1tsMycoK](https://trello.com/c/1tsMycoK).
+
+#### Changed
+
+- `stagepass upgrade` without a TTY and without `--yes` leaves an unmodified `scripts/build.mjs` in place and prints a hint. `--yes`, or a TTY confirmation (default yes), replaces it. `--dry-run` writes nothing. An edited script stays unchanged. The same consent rule also covers a hand-edited `AGENTS.stagepass.md` (body hash mismatch, or no managed header). A file whose hash still matches is refreshed without asking. The rule is not applied to the other upgrade writes: `package.json` ranges and missing type devDependencies, a missing or marker-owned `stagepass.d.ts`, and a missing PHP `.htaccess`. Those do not replace a hand-edited source file and stay non-interactive. `upgrade --json` is unchanged from CLI 2.4.0 and 2.4.1: the flag is unknown, stdout is empty, and nothing is written. There is no JSON object to extend. [jd36WpR1](https://trello.com/c/jd36WpR1).
+
+#### Security
+
+- PHP projects created with CLI 2.5.0 refuse rate-limit storage faults unless `APP_ENV` is `local`, `development`, or `dev` (trimmed, any case). Every other value, including empty and unset, is HTTP 503, JSend `error`, `Retry-After: 60`, a log line, and no internals. Those three names stay fail-open with the same log. A failed `flock` is logged. A real limit hit stays HTTP 429. `client_ip()` reads `X-Forwarded-For` or RFC 7239 `Forwarded` only when `REMOTE_ADDR` is listed in `TRUSTED_PROXIES`. `stagepass upgrade` does not change `api/`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a new scaffold, or re-scaffold. [sgt7wKlT](https://trello.com/c/sgt7wKlT).
+
+#### Fixed
+
+- Without a TTY and without `--yes`, `stagepass upgrade` no longer replaces an unmodified `scripts/build.mjs`. CLI 2.4.0 and 2.4.1 replaced that file. [jd36WpR1](https://trello.com/c/jd36WpR1).
+
+### [2.4.1] - 2026-11-13
+
+Security patch on top of 2.4.0. Published on npm as `@stagepass/cli@2.4.1` on 13 November 2026. Source tag `cli-v2.4.1` (`23d0814`). Tarball sha256 `ab7462d0235a7ede563fe1150430b4fa3a49e1eb62b433a1349d3e7889231153`.
 
 #### Security
 
@@ -56,7 +70,7 @@ Security patch on top of 2.4.0. Not published.
 
 #### Notes
 
-- Rate limiting stays fail-open and uses only `REMOTE_ADDR`. `X-Forwarded-For` is not trusted without a proxy allowlist. Behind a reverse proxy every visitor can share one counter. Still open: [sgt7wKlT](https://trello.com/c/sgt7wKlT). A fix is planned for a later patch.
+- Rate limiting stays fail-open and uses only `REMOTE_ADDR`. `X-Forwarded-For` is not trusted without a proxy allowlist. Behind a reverse proxy every visitor can share one counter. Still open in 2.4.1: [sgt7wKlT](https://trello.com/c/sgt7wKlT). A fix was planned for a later patch. Fixed in 2.5.0.
 - Projects created with published CLI 2.4.0 keep `api/action.php` from 2.4.0. Before `http_response_code(204)`, insert the three lines 2.4.1 ships: `if (!headers_sent()) { header_remove('X-Powered-By'); }`. `php_flag expose_php off` in `.htaccess` and `ini_set('expose_php', '0')` do not remove the header. `expose_php` is `PHP_INI_SYSTEM` (access bitmask 4). `expose_php = Off` in php.ini does. Verified 13 November 2026 on php:8.2-apache.
 
 ### [2.4.0] - 2026-11-12
@@ -65,7 +79,7 @@ Minor release on top of 2.3.1: command suggestions for a misplaced top-level opt
 
 #### Notes for upgraders
 
-- Known limit, still open on Trello `jd36WpR1`: without a TTY and without `--yes`, `stagepass upgrade` still replaces an unmodified scaffold `scripts/build.mjs` (same as with `--yes`). Customised scripts stay untouched.
+- Known limit on Trello `jd36WpR1`, open in 2.4.0: without a TTY and without `--yes`, `stagepass upgrade` still replaces an unmodified scaffold `scripts/build.mjs` (same as with `--yes`). Customised scripts stay untouched. Fixed in 2.5.0.
 
 #### Added
 
@@ -408,7 +422,7 @@ Stable release of the 2.0 line (same behaviour as `2.0.0-beta.1`).
 
 ### [2.5.0] - 2026-11-12
 
-Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the visitor path without that attribute is unchanged; CLI and modules are not part of this release. Published on npm as `@stagepass/loader@2.5.0` on 12 November 2026, 12:06 Europe/Berlin, dist-tag `latest`. Source tag `loader-v2.5.0` (`1e88b52`), npm gitHead `1e88b5237e7d9cd4d9cdbfdfd9b51479dfcbb27d`, npm shasum `7be5dec96404e7f95b339411485c07369ecf1429`. jsDelivr `@2.5.0/dist/loader.min.js` serves the published file (15065 bytes). Published `@stagepass/modules` stays 2.2.2. The CLI's bundled `LOADER_VERSION` snapshot moves to 2.5.0 only in this repo and ships with the next CLI release.
+Loader-only minor release on top of 2.4.0: adds `data-stagepass-nocache`; the visitor path without that attribute is unchanged; CLI and modules are not part of this release. Published on npm as `@stagepass/loader@2.5.0` on 12 November 2026, 12:06 Europe/Berlin, dist-tag `latest`. Source tag `loader-v2.5.0` (`1e88b52`), npm gitHead `1e88b5237e7d9cd4d9cdbfdfd9b51479dfcbb27d`, npm shasum `7be5dec96404e7f95b339411485c07369ecf1429`. jsDelivr `@2.5.0/dist/loader.min.js` serves the published file (15065 bytes). Published `@stagepass/modules` stays 2.2.2. The CLI's bundled `LOADER_VERSION` snapshot moves to 2.5.0 only in this repo and ships in CLI 2.5.0.
 
 #### Added
 

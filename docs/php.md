@@ -2,7 +2,7 @@
 
 Live page: [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/)
 
-This file is the source outline for that site page. It describes published `@stagepass/cli` 2.4.0 (tarball sha256 `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`) and the unreleased 2.4.1 security patch in this repository. 2.4.1 is not published. `@stagepass/loader` types referenced here are 2.5.0.
+This file is the source outline for that site page. It describes published `@stagepass/cli` 2.5.0 (npm `latest`, tarball sha256 `<sha256 after publish>`). Published 2.4.1 is the security patch (tarball sha256 `ab7462d0235a7ede563fe1150430b4fa3a49e1eb62b433a1349d3e7889231153`, commit `23d0814`). Published 2.4.0 tarball sha256 is `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`. `@stagepass/loader` types referenced here are 2.5.0.
 
 ## 1. What this is
 
@@ -49,17 +49,17 @@ This file is the source outline for that site page. It describes published `@sta
 - Upload document root is `dist/` after `stagepass build`: the folder that contains `api/` and `.php/config.php`. The URL stays `/api/action.php`. On Apache and nginx that upload is the public web root.
 - From that same folder, the matching built-in server command is `php -S 127.0.0.1:8080 -t .` (URL `/api/action.php`).
 - `php -S 127.0.0.1:8080 -t api` serves `/action.php`. That command does not match this layout.
-- The published npm 2.4.0 package README already uses `-t .`.
-- PHP's built-in server does not apply Caddy's hidden-path 404. The package README has carried that warning since 2.4.1. Published CLI 2.4.0 does not. Prefer `stagepass dev` or the linked `.sp` domain. Do not point `php -S -t .` at a folder that already contains a real `.env`.
+- The published package README has used `-t .` since CLI 2.4.0.
+- PHP's built-in server does not apply Caddy's hidden-path 404. The package README has carried that warning since 2.4.1. CLI 2.4.0 and older do not. Prefer `stagepass dev` or the linked `.sp` domain. Do not point `php -S -t .` at a folder that already contains a real `.env`.
 
 ## 7. Hosting hidden files
 
 - After `stagepass build`, upload `dist/`. That folder is the web root. It contains `api/` and `.php/config.php`. `.php/` is therefore public on Apache and nginx unless hidden paths are denied.
-- Since 2.4.1 the starter comments state that the document root is the folder that contains `api/`. Published CLI 2.4.0 still says the config sits "outside the public root" and "outside the public api/ directory". Those phrases describe the layout relative to `api/`, not a second directory outside the web root. [quYArF43](https://trello.com/c/quYArF43).
+- Since 2.4.1 the starter comments state that the document root is the folder that contains `api/`. CLI 2.4.0 and older still say the config sits "outside the public root" and "outside the public api/ directory". Those phrases describe the layout relative to `api/`, not a second directory outside the web root. [quYArF43](https://trello.com/c/quYArF43).
 - Caddy already returns 404 for any path segment that starts with `.` (`/.env`, `/.php/`, `/api/.env`).
-- Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Add one on that host. Since 2.4.1 the PHP scaffold ships the Apache `.htaccess` below. nginx still needs the snippet on the host (nginx does not read `.htaccess`).
+- CLI 2.4.0 and older do not ship an Apache or nginx deny rule. Add one on that host. Since 2.4.1 the PHP scaffold ships the Apache `.htaccess` below. nginx still needs the snippet on the host (nginx does not read `.htaccess`).
 - Prefer real environment variables so a `.env` file is not required in the web root. `load_config()` reads the project-root `.env` and `.php/.env`. It never reads `api/.env`. `stagepass build` does not copy those files into `dist/`. It does copy `.php/config.php`.
-- Since 2.4.1, `stagepass new --php` writes a web-root `.htaccess` and `stagepass build` copies it into `dist/` when the project has one. `stagepass upgrade` writes that same file when `"php": true` and the project root has none. It does not overwrite an existing `.htaccess`. Published CLI 2.4.0 does not ship that file. `stagepass new` does not overwrite an existing `.htaccess`. `stagepass build` still keeps a `.htaccess` you add yourself.
+- Since 2.4.1, `stagepass new --php` writes a web-root `.htaccess` and `stagepass build` copies it into `dist/` when the project has one. `stagepass upgrade` writes that same file when `"php": true` and the project root has none. It does not overwrite an existing `.htaccess`. CLI 2.4.0 and older do not ship that file. `stagepass new` does not overwrite an existing `.htaccess`. `stagepass build` still keeps a `.htaccess` you add yourself.
 
 Apache, in the web root `.htaccess`. The host needs `AllowOverride All` and `mod_rewrite`. The rule follows HTML5 Boilerplate [`file_access.conf`](https://github.com/h5bp/server-configs-apache/blob/main/h5bp/security/file_access.conf), wrapped in `IfModule`:
 
@@ -165,12 +165,12 @@ form.addEventListener('submit', async (event) => {
 - File-based rate limit per IP and action under `.php/rate-limit/`. A limit hit is HTTP 429, JSend `fail`, and `Retry-After` set to the window.
 - If the rate-limit directory cannot be created, a file cannot be opened, `flock` fails, or the limiter throws, the failure is logged with `error_log`, including a failed `flock`. The request is refused: HTTP 503, JSend `error`, a short message, `Retry-After: 60`, no internals, unless `APP_ENV` is `local`, `development`, or `dev` (trimmed, any case). Empty, unset, and every other value stay closed. Those three names allow the request and write the same log line.
 - `client_ip()` uses `REMOTE_ADDR` unless that address is in `TRUSTED_PROXIES` (comma-separated IPv4 or IPv6 addresses and CIDRs). Only then is `TRUSTED_PROXY_HEADER` read: `x-forwarded-for` (default) or `forwarded` (RFC 7239 `for=`). Hops are walked from the right, at most the rightmost 32. Trusted proxy addresses are skipped. The first other address is the client, and anything to its left is ignored. If every examined hop is trusted, the leftmost of those is used. An invalid hop in the trusted-proxy suffix falls back to `REMOTE_ADDR` and is logged once without the raw header. Invalid allowlist entries are ignored and logged.
-- This behaviour ships in projects created with the next CLI release. `stagepass upgrade` does not change `api/` or `.php/config.php`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a new scaffold, or re-scaffold. [sgt7wKlT](https://trello.com/c/sgt7wKlT).
+- This behaviour ships in projects created with CLI 2.5.0. CLI 2.4.1 and older stay fail-open and use only `REMOTE_ADDR`. `stagepass upgrade` does not change `api/` or `.php/config.php`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a new scaffold, or re-scaffold. [sgt7wKlT](https://trello.com/c/sgt7wKlT).
 - Display of errors is off; exception messages never go to the client
 
 ## 14. Existing projects
 
-`stagepass upgrade` does not add the PHP `api/` or `.php/` boilerplate, and it does not replace `api/action.php`. Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing `.htaccess` is not overwritten. If it has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint and points at this page and `api/README.md`. It does not fail. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. Published CLI 2.4.0 does not write `.htaccess`.
+`stagepass upgrade` does not add the PHP `api/` or `.php/` boilerplate, and it does not replace `api/action.php`. Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing `.htaccess` is not overwritten. If it has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint and points at this page and `api/README.md`. It does not fail. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. CLI 2.4.0 and older do not write `.htaccess`.
 
 A project created with published CLI 2.4.0 keeps that version's `api/action.php`. An allowed OPTIONS preflight is HTTP 204 and still sends `X-Powered-By`, because `header_remove` runs in `respond()` and that path does not call it. GET `ping` already omits the header. Before `http_response_code(204)`, insert the same lines 2.4.1 ships:
 
@@ -183,7 +183,7 @@ A project created with published CLI 2.4.0 keeps that version's `api/action.php`
 Or set `expose_php = Off` in php.ini. `expose_php` is `PHP_INI_SYSTEM`. `php_flag expose_php off` in `.htaccess` does not change it (`php_flag display_errors off` in the same file does apply). `ini_set('expose_php', '0')` returns false and leaves the value On. Verified 13 November 2026 on php:8.2-apache (`AllowOverride All`, `a2enmod rewrite`), Origin `https://your-project.sp`.
 
 - Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/` and `.php/` into the existing project. Do not overwrite files you already edited, including an existing `.htaccess`.
-- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example` and `php-private/config.php` to `.php/config.php` (npm pack drops dot paths). The `htaccess` template ships since 2.4.1; `stagepass upgrade` writes it when the file is missing. Published CLI 2.4.0 has no `htaccess` template.
+- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example` and `php-private/config.php` to `.php/config.php` (npm pack drops dot paths). The `htaccess` template ships since 2.4.1; `stagepass upgrade` writes it when the file is missing. CLI 2.4.0 and older have no `htaccess` template.
 - Set `"php": true` in `stagepass.json`, copy `api/.env.example` to `.env`, set `ALLOWED_ORIGINS`, and run `stagepass link` again so the Caddy block gets `php_fastcgi`.
 - If `scripts/build.mjs` is still an unmodified older scaffold, `stagepass upgrade` can replace it so `publishPhp` is included. An edited script stays as-is and needs the PHP copy logic added by hand.
 
