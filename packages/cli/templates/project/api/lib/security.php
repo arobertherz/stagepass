@@ -49,7 +49,7 @@ function honeypot_is_filled(array $input, string $field): bool
 
 /**
  * File-based fixed-window limiter, keyed by IP and action.
- * Production storage faults exit with HTTP 503. Other environments allow the request.
+ * Storage faults fail closed unless APP_ENV is local, development, or dev.
  *
  * @return bool True when the request may proceed.
  */
@@ -116,7 +116,7 @@ function rate_limit_allows(string $ip, string $action, int $max, int $window, ?s
     }
 
     if ($decision === 'unavailable') {
-        if ($env === 'production') {
+        if (!rate_limit_fails_open($env)) {
             rate_limit_unavailable_response();
         }
         return true;
@@ -146,10 +146,16 @@ function rate_limit_env(?string $env): string
     return (string) ($loaded['env'] ?? 'production');
 }
 
+/** True only for local, development, or dev. Every other value fails closed. */
+function rate_limit_fails_open(string $env): bool
+{
+    return in_array(strtolower(trim($env)), ['local', 'development', 'dev'], true);
+}
+
 function rate_limit_refuse_storage(string $env, string $message): bool
 {
     error_log('stagepass-php: ' . $message);
-    if ($env === 'production') {
+    if (!rate_limit_fails_open($env)) {
         rate_limit_unavailable_response();
     }
     return false;
