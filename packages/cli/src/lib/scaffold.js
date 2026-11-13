@@ -1,7 +1,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildWebflowSnippets } from './snippets.js';
-import { CURSOR_RULE_PATH, buildCursorRule, buildManagedBlock } from './ai-guide.js';
+import {
+  CURSOR_RULE_PATH,
+  STAGEPASS_AGENTS_REL,
+  buildAgentsPointerBlock,
+  buildCursorRule,
+  buildStagepassGuide,
+  renderStagepassAgentsFile,
+} from './ai-guide.js';
 import { typesForModules } from './project-modules.js';
 import { LOADER_VERSION, packagesRange } from './versions.js';
 
@@ -207,7 +214,7 @@ export async function planScaffoldFiles(options, deps = {}) {
     ORIGIN_LINE: buildStagepassExtraLines(options),
     TYPES_JSON: JSON.stringify(types),
     TYPES_INLINE: JSON.stringify(types).replace(/","/g, '", "'),
-    STAGEPASS_BLOCK: buildManagedBlock(siteModules),
+    STAGEPASS_BLOCK: buildAgentsPointerBlock(),
     LOADER_VERSION: version,
     HEAD_SNIPPET: snippets.head,
     FOOTER_SNIPPET: snippets.footer,
@@ -223,7 +230,7 @@ export async function planScaffoldFiles(options, deps = {}) {
           '## PHP',
           '',
           `PHP is on. Caddy serves \`https://${options.name}.sp/api/action.php\` with \`php_fastcgi\`.`,
-          'Read `api/README.md`. Copy `api/.env.example` to `.env` in the project root (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL. From Webflow, call the PHP host with its absolute URL, not `window.location.origin`.',
+          'Read `api/README.md` and the PHP section of `AGENTS.stagepass.md`. Copy `api/.env.example` to `.env` in the project root (do not commit it) and set `ALLOWED_ORIGINS` to exact origins, including that `.sp` URL. From Webflow, call the PHP host with its absolute URL, not `window.location.origin`.',
           'Apache uses the project `.htaccess`. nginx needs the snippet in `api/README.md` before the PHP location.',
           '',
         ].join('\n')
@@ -265,7 +272,25 @@ export async function planScaffoldFiles(options, deps = {}) {
 
   // Generated in code (not a template): npm drops dotfiles and dot folders
   // are easy to lose in the published package.
-  files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule(siteModules) });
+  files.push({
+    relativePath: STAGEPASS_AGENTS_REL,
+    contents: renderStagepassAgentsFile(
+      buildStagepassGuide({
+        name: options.name,
+        domain: `${options.name}.sp`,
+        modules: siteModules,
+        php,
+        phpBoilerplate: php,
+        lang: options.lang,
+        origin: options.origin || null,
+        production: options.production || null,
+        configFile,
+        types,
+        modulesDependency: options.modules === true,
+      })
+    ),
+  });
+  files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule() });
 
   return files;
 }

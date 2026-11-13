@@ -181,4 +181,4 @@ Visitors without a Stagepass session see the overlay. Developers with an active 
 
 ## Declared modules in projects
 
-`stagepass.json` lists which modules the live site loads (`[]`, named list, or `["all"]`). `stagepass new` / `upgrade` / `doctor` use that list for types and the generated `AGENTS.md` block. See [cli.md](./cli.md#declared-modules-ai-guide-and-types).
+`stagepass.json` lists which modules the live site loads (`[]`, named list, or `["all"]`). `stagepass new` / `upgrade` / `doctor` use that list for types and for `AGENTS.stagepass.md`. `AGENTS.md` only points at that file. See [cli.md](./cli.md#declared-modules-ai-guide-and-types).

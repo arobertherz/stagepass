@@ -4,8 +4,10 @@
  *
  * Writes only:
  * - stagepass.json `modules` (and `origin` when passed via --site)
- * - AGENTS.md managed block (created when missing)
- * - .cursor/rules/stagepass.mdc (created when missing, managed block refreshed)
+ * - AGENTS.stagepass.md (CLI-owned guide; hand edits need --yes or a TTY)
+ * - AGENTS.md short pointer (created when missing)
+ * - .cursor/rules/stagepass.mdc (created when missing, pointer refreshed)
+ * - CLAUDE.md short pointer, only when that file already exists
  * - tsconfig.json / jsconfig.json `compilerOptions.types` (plain JSON with a types array)
  * - stagepass.d.ts triple-slash references when that array cannot be edited
  */
@@ -14,9 +16,22 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import {
   BLOCK_BEGIN,
+  BLOCK_END,
   CURSOR_RULE_PATH,
+  LEGACY_AGENTS_NOTE,
+  PHP_LIB_MISSING_NOTE,
+  STAGEPASS_AGENTS_CONFIRM,
+  STAGEPASS_AGENTS_DECLINED,
+  STAGEPASS_AGENTS_HINT,
+  STAGEPASS_AGENTS_REL,
+  buildAgentsPointerBlock,
+  buildCursorPointerBlock,
   buildCursorRule,
-  buildManagedBlock,
+  buildStagepassGuide,
+  decideStagepassAgentsUpdate,
+  hasLegacyAgentsProse,
+  migrateCursorRuleContent,
+  renderStagepassAgentsFile,
   upsertManagedBlock,
 } from './ai-guide.js';
 import {
@@ -644,6 +659,44 @@ function typesConfigNote(config, placedRel) {
   return `${config.name} include/files does not cover stagepass.d.ts. The config was left unchanged.`;
 }
 
+/**
+ * @param {Record<string, unknown> | null | undefined} data
+ * @param {string} key
+ * @returns {string | null}
+ */
+function stringField(data, key) {
+  if (!data || typeof data[key] !== 'string') return null;
+  const value = data[key].trim();
+  return value === '' ? null : value;
+}
+
+/**
+ * @param {string} cwd
+ * @param {Record<string, unknown> | null} data
+ * @param {typeof fs} fse
+ * @returns {Promise<'ts' | 'js' | null>}
+ */
+async function detectProjectLang(cwd, data, fse) {
+  const lang = stringField(data, 'lang');
+  if (lang === 'ts' || lang === 'js') return lang;
+  if (await fse.pathExists(path.join(cwd, 'tsconfig.json'))) return 'ts';
+  if (await fse.pathExists(path.join(cwd, 'jsconfig.json'))) return 'js';
+  return null;
+}
+
+/**
+ * @param {string} cwd
+ * @param {typeof fs} fse
+ */
+async function phpLibPresent(cwd, fse) {
+  try {
+    const st = await fse.stat(path.join(cwd, 'api', 'lib'));
+    return st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** @param {string} abs @param {typeof fs} fse */
 async function isSymlink(abs, fse) {
   try {
@@ -662,6 +715,9 @@ async function isSymlink(abs, fse) {
  * @param {string | null} [input.origin] stored in stagepass.json when set
  * @param {object} input.pkg package.json
  * @param {boolean} [input.perModuleTypes] false when @stagepass/modules has no per-module types (umbrella entry)
+ * @param {boolean} [input.interactive] TTY: ask before replacing a hand-edited AGENTS.stagepass.md
+ * @param {boolean} [input.assumeYes] `--yes`: replace that file without asking
+ * @param {(question: string, defYes: boolean) => Promise<boolean>} [input.confirm]
  * @param {typeof fs} [fse]
  * @returns {Promise<{ writes: { file: string, content: string, action: string }[], notes: string[] }>}
  */
@@ -718,13 +774,88 @@ export async function planProjectSync(input, fse = fs) {
     }
   }
 
-  // AGENTS.md
-  const block = buildManagedBlock(modules);
+  const title = typeof pkg?.name === 'string' && pkg.name ? pkg.name : path.basename(cwd);
+  const projectName = stringField(sp.data, 'name') || title;
+  const lang = await detectProjectLang(cwd, sp.data, fse);
+  const php = phpFromStagepassConfig(sp.data) === true;
+  const phpBoilerplate = php ? await phpLibPresent(cwd, fse) : false;
+  const guide = renderStagepassAgentsFile(
+    buildStagepassGuide({
+      name: projectName,
+      domain: stringField(sp.data, 'domain'),
+      modules,
+      php,
+      phpBoilerplate,
+      lang,
+      origin: input.origin || stringField(sp.data, 'origin'),
+      production: stringField(sp.data, 'production'),
+      configFile: lang === 'ts' ? 'tsconfig.json' : lang === 'js' ? 'jsconfig.json' : null,
+      types: typesForModules(modules, {
+        modulesDependency,
+        perModuleTypes,
+      }),
+      modulesDependency,
+    })
+  );
+  if (php && !phpBoilerplate) notes.push(PHP_LIB_MISSING_NOTE);
+
+  // AGENTS.stagepass.md (CLI-owned). Hand edits need --yes or a TTY.
+  if (await skipSymlink(STAGEPASS_AGENTS_REL)) {
+    // note already added
+  } else {
+    const agentsGuidePath = path.join(cwd, STAGEPASS_AGENTS_REL);
+    /** @type {string | null} */
+    let existingGuide = null;
+    let guideReadable = true;
+    if (await fse.pathExists(agentsGuidePath)) {
+      try {
+        existingGuide = await fse.readFile(agentsGuidePath, 'utf8');
+      } catch (err) {
+        guideReadable = false;
+        notes.push(
+          `AGENTS.stagepass.md could not be read; left unchanged. ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+    if (guideReadable) {
+      const decision = decideStagepassAgentsUpdate({
+        existing: existingGuide,
+        desired: guide,
+        assumeYes: input.assumeYes === true,
+        interactive: input.interactive === true,
+      });
+      if (decision.action === 'create') {
+        writes.push({ file: STAGEPASS_AGENTS_REL, content: guide, action: 'created' });
+      } else if (decision.action === 'update') {
+        writes.push({
+          file: STAGEPASS_AGENTS_REL,
+          content: guide,
+          action: decision.reason ? 'replaced hand-edited file' : 'refreshed',
+        });
+      } else if (decision.action === 'ask') {
+        if (typeof input.confirm !== 'function') {
+          throw new Error('confirm is required when upgrade asks about AGENTS.stagepass.md');
+        }
+        const yes = await input.confirm(STAGEPASS_AGENTS_CONFIRM, true);
+        if (yes) {
+          writes.push({ file: STAGEPASS_AGENTS_REL, content: guide, action: 'replaced hand-edited file' });
+        } else {
+          notes.push(STAGEPASS_AGENTS_DECLINED);
+        }
+      } else if (decision.action === 'hint') {
+        notes.push(STAGEPASS_AGENTS_HINT);
+      }
+    }
+  }
+
+  // AGENTS.md (user-owned). Only the short pointer between the markers.
+  const block = buildAgentsPointerBlock();
   const agentsPath = path.join(cwd, 'AGENTS.md');
   if (await skipSymlink('AGENTS.md')) {
     // note already added
   } else if (await fse.pathExists(agentsPath)) {
     const raw = await fse.readFile(agentsPath, 'utf8');
+    if (hasLegacyAgentsProse(raw)) notes.push(LEGACY_AGENTS_NOTE);
     const result = upsertManagedBlock(raw, block);
     if (result.action === 'invalid') {
       notes.push('AGENTS.md skipped: stagepass markers are incomplete; fix or remove them and rerun.');
@@ -736,7 +867,6 @@ export async function planProjectSync(input, fse = fs) {
       });
     }
   } else {
-    const title = typeof pkg?.name === 'string' ? pkg.name : path.basename(cwd);
     writes.push({
       file: 'AGENTS.md',
       content: `# ${title} (Stagepass project)\n\n${block}\n`,
@@ -745,23 +875,48 @@ export async function planProjectSync(input, fse = fs) {
   }
 
   // Cursor rule
+  const cursorBlock = buildCursorPointerBlock();
   const rulePath = path.join(cwd, CURSOR_RULE_PATH);
   if (await skipSymlink(CURSOR_RULE_PATH)) {
     // note already added
   } else if (await fse.pathExists(rulePath)) {
     const raw = await fse.readFile(rulePath, 'utf8');
-    if (raw.includes(BLOCK_BEGIN)) {
-      const result = upsertManagedBlock(raw, block);
+    if (raw.includes(BLOCK_BEGIN) || raw.includes(BLOCK_END)) {
+      const result = upsertManagedBlock(raw, cursorBlock);
       if (result.action === 'invalid') {
         notes.push(`${CURSOR_RULE_PATH} skipped: stagepass markers are incomplete.`);
-      } else if (result.action !== 'unchanged') {
-        writes.push({ file: CURSOR_RULE_PATH, content: result.content, action: 'managed block refreshed' });
+      } else {
+        const migrated = migrateCursorRuleContent(result.content);
+        if (migrated !== raw) {
+          writes.push({ file: CURSOR_RULE_PATH, content: migrated, action: 'managed block refreshed' });
+        }
       }
     } else {
       notes.push(`${CURSOR_RULE_PATH} exists without stagepass markers; left unchanged.`);
     }
   } else {
-    writes.push({ file: CURSOR_RULE_PATH, content: buildCursorRule(modules), action: 'created' });
+    writes.push({ file: CURSOR_RULE_PATH, content: buildCursorRule(), action: 'created' });
+  }
+
+  // CLAUDE.md: pointer only when the file already exists. Never create it.
+  const claudeRel = 'CLAUDE.md';
+  const claudePath = path.join(cwd, claudeRel);
+  if (await fse.pathExists(claudePath)) {
+    if (await skipSymlink(claudeRel)) {
+      // note already added
+    } else {
+      const raw = await fse.readFile(claudePath, 'utf8');
+      const result = upsertManagedBlock(raw, block);
+      if (result.action === 'invalid') {
+        notes.push('CLAUDE.md skipped: stagepass markers are incomplete; fix or remove them and rerun.');
+      } else if (result.action !== 'unchanged') {
+        writes.push({
+          file: claudeRel,
+          content: result.content,
+          action: result.action === 'inserted' ? 'managed block added' : 'managed block refreshed',
+        });
+      }
+    }
   }
 
   const typesPlan = await planEditorTypes({

@@ -6,7 +6,8 @@
  * Change classification is content-based: identical rewrites (same bytes) are
  * ignored. Only real CSS changes batch as `{type:'css'}`; any other real change
  * is `{type:'reload'}`. `manifest.json`, dotfiles, `~` backups and `.map` files
- * are ignored.
+ * are ignored. When `php` is set, `api/` and `.php/` share that debounce and
+ * stream. Secrets, rate-limit files, logs, pid files, and editor temps do not.
  */
 
 import http from 'node:http';
@@ -73,6 +74,32 @@ export function isIgnoredWatchBase(base) {
     base.endsWith('.map') ||
     base === 'manifest.json'
   );
+}
+
+/** Extra project-root directories watched while `stagepass.json` has `"php": true`. */
+export const PHP_WATCH_DIRS = Object.freeze(['api', '.php']);
+
+const PHP_SECRET_EXT = /\.(pem|key|p12|pfx|crt|cer|sqlite|db)$/i;
+
+/**
+ * Project-relative path (slashes) under `api/` or `.php/` that must not reload.
+ * Matches the publish skip for secrets, plus editor temp files.
+ * @param {string} rel
+ * @returns {boolean}
+ */
+export function isIgnoredPhpRel(rel) {
+  const norm = String(rel || '').split('\\').join('/');
+  if (!norm || norm === '..' || norm.startsWith('../') || norm.includes('/../')) return true;
+  const parts = norm.split('/').filter((part) => part && part !== '.');
+  const base = parts[parts.length - 1] || '';
+  if (!base) return true;
+  if (base === '.env' || (base.startsWith('.env') && base !== '.env.example')) return true;
+  if (base.endsWith('~') || base.endsWith('.swp') || base === '.DS_Store') return true;
+  if (base.endsWith('.log') || base.endsWith('.pid')) return true;
+  if (PHP_SECRET_EXT.test(base)) return true;
+  const phpAt = parts.indexOf('.php');
+  if (phpAt !== -1 && parts[phpAt + 1] === 'rate-limit') return true;
+  return false;
 }
 
 /**
@@ -174,6 +201,7 @@ function walkFiles(dirAbs, visit) {
  * @typedef {object} LiveServerOptions
  * @property {string} projectRoot
  * @property {string} [outDir]
+ * @property {boolean} [php] Also watch `api/` and `.php/` (missing dirs are skipped).
  * @property {number} [debounceMs]
  * @property {number} [maxConnections]
  * @property {number} [heartbeatMs]
@@ -211,12 +239,46 @@ export function createLiveServer(options) {
   const pending = new Set();
   /** @type {ReturnType<typeof setTimeout>|null} */
   let debounceTimer = null;
-  /** @type {import('node:fs').FSWatcher|null} */
-  let watcher = null;
+  /** @type {import('node:fs').FSWatcher[]} */
+  const watchers = [];
   /** @type {ReturnType<typeof setInterval>|null} */
   let heartbeat = null;
   /** @type {Map<string, string>} abs path → fingerprint token */
   const fileHashes = new Map();
+  const phpEnabled = options.php === true;
+  /** @type {{ rel: string, abs: string }[]} */
+  const phpRoots = phpEnabled
+    ? PHP_WATCH_DIRS.map((rel) => ({ rel, abs: path.resolve(projectRoot, rel) }))
+    : [];
+  /** Relative dirs that received a watcher (missing dirs stay off this list). */
+  const phpWatched = [];
+  let stopped = false;
+
+  /**
+   * Accept a path under the output dir (dist rules) or, when PHP is on, under api/ or .php/.
+   * @param {string} fileAbs
+   * @returns {{ abs: string, url: string } | null}
+   */
+  function describeWatched(fileAbs) {
+    const underOut = resolveUnderOutDir(fileAbs, outAbs);
+    if (underOut) {
+      const url = toUrlPath(underOut, projectRoot, outAbs);
+      if (!url) return null;
+      return { abs: underOut, url };
+    }
+    if (!phpEnabled) return null;
+    const file = path.resolve(fileAbs);
+    for (const root of phpRoots) {
+      const relRoot = path.relative(root.abs, file);
+      if (relRoot.startsWith('..') || path.isAbsolute(relRoot) || relRoot.includes('\0')) continue;
+      const relProject = path.relative(projectRoot, file);
+      if (relProject.startsWith('..') || path.isAbsolute(relProject)) return null;
+      const rel = relProject.split(path.sep).join('/');
+      if (!rel || isIgnoredPhpRel(rel)) return null;
+      return { abs: file, url: '/' + rel };
+    }
+    return null;
+  }
 
   function rememberHash(fileAbs, token) {
     if (fileHashes.has(fileAbs)) {
@@ -232,14 +294,16 @@ export function createLiveServer(options) {
 
   function seedHashes() {
     fileHashes.clear();
-    walkFiles(outAbs, (fileAbs) => {
-      const safe = resolveUnderOutDir(fileAbs, outAbs);
-      if (!safe) return;
-      if (isIgnoredWatchBase(path.basename(safe))) return;
-      const fp = contentFingerprint(safe);
-      if (fp.kind === 'hash') rememberHash(safe, fp.hash);
-      else if (fp.kind === 'large') rememberHash(safe, fp.token);
-    });
+    const roots = [outAbs, ...phpRoots.map((root) => root.abs)];
+    for (const root of roots) {
+      walkFiles(root, (fileAbs) => {
+        const described = describeWatched(fileAbs);
+        if (!described) return;
+        const fp = contentFingerprint(described.abs);
+        if (fp.kind === 'hash') rememberHash(described.abs, fp.hash);
+        else if (fp.kind === 'large') rememberHash(described.abs, fp.token);
+      });
+    }
   }
 
   /**
@@ -250,8 +314,16 @@ export function createLiveServer(options) {
    * @returns {boolean} true when content actually changed (or deleted)
    */
   function hasContentChanged(fileAbs) {
-    const safe = resolveUnderOutDir(fileAbs, outAbs);
-    if (!safe) return false;
+    const described = describeWatched(fileAbs);
+    if (!described) return false;
+    const safe = described.abs;
+    try {
+      if (!fs.statSync(safe).isFile()) return false;
+    } catch (err) {
+      if (!(err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT')) {
+        return true;
+      }
+    }
 
     const fp = contentFingerprint(safe);
     if (fp.kind === 'missing') {
@@ -288,13 +360,16 @@ export function createLiveServer(options) {
 
   function flushPending() {
     debounceTimer = null;
-    if (pending.size === 0) return;
+    if (stopped || pending.size === 0) {
+      pending.clear();
+      return;
+    }
     /** @type {string[]} */
     const changed = [];
     for (const fileAbs of pending) {
       if (!hasContentChanged(fileAbs)) continue;
-      const urlPath = toUrlPath(fileAbs, projectRoot, outAbs);
-      if (urlPath) changed.push(urlPath);
+      const described = describeWatched(fileAbs);
+      if (described) changed.push(described.url);
     }
     pending.clear();
     if (changed.length === 0) return;
@@ -304,54 +379,84 @@ export function createLiveServer(options) {
   }
 
   function noteChange(fileAbs) {
-    const safe = resolveUnderOutDir(fileAbs, outAbs);
-    if (!safe) return;
-    // Ignore junk / manifest early; defer content compare until debounce flush
-    // so identical rewrites (and mid-write watch races) do not false-trigger.
-    if (!toUrlPath(safe, projectRoot, outAbs)) return;
-    pending.add(safe);
+    if (stopped) return;
+    const described = describeWatched(fileAbs);
+    if (!described) return;
+    // Defer content compare until debounce flush so identical rewrites
+    // (and mid-write watch races) do not false-trigger.
+    pending.add(described.abs);
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(flushPending, debounceMs);
   }
 
+  /**
+   * @param {string} abs
+   * @param {string} label
+   * @returns {boolean}
+   */
+  function attachWatch(abs, label) {
+    try {
+      const st = fs.statSync(abs);
+      if (!st.isDirectory()) return false;
+    } catch (err) {
+      const code = err && typeof err === 'object' && 'code' in err ? err.code : '';
+      if (code !== 'ENOENT') {
+        log(
+          `Live reload: could not watch ${label} (${err instanceof Error ? err.message : String(err)})`
+        );
+      }
+      return false;
+    }
+    try {
+      const watcher = fsWatch(abs, { recursive: true }, (_event, filename) => {
+        if (!filename || stopped) return;
+        const name = typeof filename === 'string' ? filename : String(filename);
+        // Join only; describeWatched rejects escapes (including .. segments).
+        noteChange(path.join(abs, name));
+      });
+      watcher.on('error', () => {
+        /* keep server up; next change may recover */
+      });
+      watchers.push(watcher);
+      return true;
+    } catch (err) {
+      log(
+        `Live reload: could not watch ${label} (${err instanceof Error ? err.message : String(err)})`
+      );
+      return false;
+    }
+  }
+
   function startWatch() {
+    stopped = false;
     try {
       fs.mkdirSync(outAbs, { recursive: true });
     } catch {
       /* ignore */
     }
     seedHashes();
-    try {
-      watcher = fsWatch(outAbs, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
-        const name = typeof filename === 'string' ? filename : String(filename);
-        // Join only; resolveUnderOutDir rejects escapes (including .. segments).
-        noteChange(path.join(outAbs, name));
-      });
-      watcher.on('error', () => {
-        /* keep server up; next change may recover */
-      });
-    } catch (err) {
-      log(
-        `Live reload: could not watch ${outAbs} (${err instanceof Error ? err.message : String(err)})`
-      );
+    attachWatch(outAbs, outAbs);
+    phpWatched.length = 0;
+    for (const root of phpRoots) {
+      if (attachWatch(root.abs, `${root.rel}/`)) phpWatched.push(root.rel);
     }
   }
 
   function stopWatch() {
+    stopped = true;
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
     pending.clear();
     fileHashes.clear();
-    if (watcher) {
+    while (watchers.length) {
+      const watcher = watchers.pop();
       try {
         watcher.close();
       } catch {
         /* ignore */
       }
-      watcher = null;
     }
   }
 
@@ -478,6 +583,8 @@ export function createLiveServer(options) {
     _fileHashes: fileHashes,
     _seedHashes: seedHashes,
     _hasContentChanged: hasContentChanged,
+    _watchers: watchers,
+    phpWatched,
     outAbs,
     outRel: outResolved.rel,
   };
