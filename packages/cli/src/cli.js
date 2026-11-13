@@ -323,7 +323,7 @@ export function createProgram(deps = {}) {
   program
     .command('upgrade')
     .description(
-      'Bump @stagepass/*, sync project files, replace an unmodified scripts/build.mjs, print Webflow snippets'
+      'Bump @stagepass/*, sync project files, replace an unmodified scripts/build.mjs, add a missing PHP .htaccess, print Webflow snippets'
     )
     .option('--dry-run', 'Show changes without writing any file')
     .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')

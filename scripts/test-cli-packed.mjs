@@ -540,7 +540,10 @@ try {
     join(old, 'package.json'),
     `${JSON.stringify({ name: 'old', private: true, devDependencies: { '@stagepass/loader': '^2.0.0', '@stagepass/modules': '^2.0.0' } }, null, 2)}\n`
   );
-  writeFileSync(join(old, 'stagepass.json'), `${JSON.stringify({ name: 'old', modules: true, version: 1 }, null, 2)}\n`);
+  writeFileSync(
+    join(old, 'stagepass.json'),
+    `${JSON.stringify({ name: 'old', modules: true, php: true, version: 1 }, null, 2)}\n`
+  );
   writeFileSync(join(old, 'AGENTS.md'), '# old\n\nHand-written notes.\n');
   writeFileSync(
     join(old, 'tsconfig.json'),
@@ -548,7 +551,9 @@ try {
   );
   const dry = run(bin, ['upgrade', '--dry-run', '--site-modules', 'cookies'], { cwd: old, env });
   assert(dry.includes('Dry run'), 'upgrade --dry-run reports');
+  assert(dry.includes('.htaccess: created'), 'upgrade --dry-run plans a missing PHP .htaccess');
   assert(!existsSync(join(old, '.cursor')), 'dry run wrote nothing');
+  assert(!existsSync(join(old, '.htaccess')), 'dry run wrote no .htaccess');
   run(bin, ['upgrade', '--site-modules', 'cookies'], { cwd: old, env });
   const agents = readFileSync(join(old, 'AGENTS.md'), 'utf8');
   assert(agents.startsWith('# old\n\nHand-written notes.\n'), 'upgrade keeps AGENTS.md content');
@@ -582,6 +587,8 @@ try {
   assert(ts.compilerOptions.strict === true, 'upgrade keeps tsconfig options');
   const oldSp = JSON.parse(readFileSync(join(old, 'stagepass.json'), 'utf8'));
   assert(JSON.stringify(oldSp.modules) === '["cookies"]', 'upgrade writes modules list');
+  assert(oldSp.php === true, 'upgrade keeps php: true');
+  assert(readFileSync(join(old, '.htaccess')).equals(repoHt), 'upgrade writes the packed .htaccess when php is true');
   console.log('✅ upgrade on old-style project ok');
 
   console.log('✅ packed CLI smoke test passed');

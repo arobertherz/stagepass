@@ -22,6 +22,7 @@ import {
 import { detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
   applyProjectSync,
+  phpFromStagepassConfig,
   planProjectSync,
   readStagepassJson,
   resolveUpgradeModules,
@@ -30,6 +31,7 @@ import {
   defaultBuildScriptTemplatePath,
   planBuildScriptUpgrade,
 } from '../lib/build-script-upgrade.js';
+import { planHtaccessUpgrade } from '../lib/htaccess-upgrade.js';
 
 const STAGEPASS_SCOPE = '@stagepass/';
 
@@ -171,7 +173,8 @@ export function applyStagepassVersions(pkg, target) {
  * Upgrade @stagepass/* deps in the current project's package.json and sync
  * the declared modules into stagepass.json, AGENTS.md, the Cursor rule and
  * tsconfig/jsconfig types. Replaces scripts/build.mjs when it is still an
- * unmodified scaffold from an earlier CLI.
+ * unmodified scaffold from an earlier CLI. When stagepass.json has `"php": true`
+ * and the project root has no `.htaccess`, writes the shipped template.
  *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
@@ -376,6 +379,22 @@ export async function upgrade(options = {}, deps = {}) {
     }
   } finally {
     closeRl();
+  }
+
+  // Missing PHP .htaccess only. An existing path is never replaced.
+  const htaccessPlan = await planHtaccessUpgrade({
+    cwd,
+    php: phpFromStagepassConfig(sp.data),
+    fse,
+  });
+  if (htaccessPlan.action === 'create') {
+    plan.writes.push({
+      file: '.htaccess',
+      content: htaccessPlan.content,
+      action: 'created',
+    });
+  } else if (htaccessPlan.note) {
+    plan.notes.push(htaccessPlan.note);
   }
 
   log(chalk.bold(`\nProject files for modules: ${resolved.modules.length ? resolved.modules.join(', ') : 'none'}`));
