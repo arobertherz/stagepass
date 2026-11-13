@@ -11,6 +11,10 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+### `@stagepass/cli`
+
+- PHP projects created with the next release refuse rate-limit storage faults unless `APP_ENV` is `local`, `development`, or `dev` (trimmed, any case). Every other value, including empty and unset, is HTTP 503, JSend `error`, `Retry-After: 60`, a log line, and no internals. Those three names stay fail-open with the same log. A failed `flock` is logged. A real limit hit stays HTTP 429. `client_ip()` reads `X-Forwarded-For` or RFC 7239 `Forwarded` only when `REMOTE_ADDR` is listed in `TRUSTED_PROXIES`. `stagepass upgrade` does not change `api/`. Copy `api/lib/security.php`, `api/lib/request.php`, `api/lib/config.php`, `.php/config.php`, and `api/action.php` from a new scaffold, or re-scaffold. [sgt7wKlT](https://trello.com/c/sgt7wKlT).
+
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.

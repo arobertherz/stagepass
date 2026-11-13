@@ -76,3 +76,36 @@ jobs:
       - name: Run Playwright (Chromium only)
         working-directory: e2e
         run: npx playwright test --project=chromium
+
+  php-behaviour:
+    # Fork PRs must not run on the self-hosted runner. Static PHP 8.2: the runner
+    # has no Docker and apt only offers PHP 7.4.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, cerebro]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: PHP rate-limit and client IP behaviour
+        run: |
+          set -euo pipefail
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            aarch64)
+              SHA256=2c646a48523015daa0aff703876cab6c66d3fdd8d9012a348ceff78569558913
+              ;;
+            x86_64)
+              SHA256=2e609bb88bae88661dbd447e409531f7c36931adff480d8a0a74e812b889d1be
+              ;;
+            *)
+              echo "unknown arch: ${ARCH}" >&2
+              exit 1
+              ;;
+          esac
+          URL="https://dl.static-php.dev/static-php-cli/common/php-8.2.32-cli-linux-${ARCH}.tar.gz"
+          mkdir -p "$RUNNER_TEMP/php"
+          curl -fsSL "$URL" -o "$RUNNER_TEMP/php.tar.gz"
+          printf '%s  %s\n' "$SHA256" "$RUNNER_TEMP/php.tar.gz" | sha256sum -c
+          tar -xzf "$RUNNER_TEMP/php.tar.gz" -C "$RUNNER_TEMP/php"
+          "$RUNNER_TEMP/php/php" -v
+          "$RUNNER_TEMP/php/php" packages/cli/src/lib/__tests__/php-security-behaviour.php

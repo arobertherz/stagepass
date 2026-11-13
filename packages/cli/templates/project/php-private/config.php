@@ -21,4 +21,6 @@ return [
     'rate_limit_window' => env_int('RATE_LIMIT_WINDOW', 60),
     'max_body_bytes' => env_int('MAX_BODY_BYTES', 65536),
     'timezone' => env_string('APP_TIMEZONE', 'Europe/Berlin'),
+    'trusted_proxies' => env_list('TRUSTED_PROXIES'),
+    'trusted_proxy_header' => env_string('TRUSTED_PROXY_HEADER', 'x-forwarded-for'),
 ];
