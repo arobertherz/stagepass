@@ -112,6 +112,9 @@ describe('buildStagepassGuide', () => {
     expect(cookies).not.toContain('load_dotenv(');
     expect(cookies).toContain('stagepass dev');
     expect(cookies).toContain('npm run dev');
+    const cookiesWorkflow = cookies.split('## Local workflow')[1].split('## Types')[0];
+    expect(cookiesWorkflow).not.toContain('api/');
+    expect(cookiesWorkflow).not.toContain('.php/');
 
     const all = buildStagepassGuide(guideCtx({ modules: ['all'], php: true, phpBoilerplate: true }));
     expect(all).toContain('if (sp.inject)');
@@ -120,6 +123,10 @@ describe('buildStagepassGuide', () => {
     expect(all).not.toContain('not available');
     expect(all).toContain('\n## PHP\n');
     expect(all).toContain('load_dotenv(string $path): void');
+    const phpWorkflow = all.split('## Local workflow')[1].split('## Types')[0];
+    expect(phpWorkflow).toContain('api/');
+    expect(phpWorkflow).toContain('.php/');
+    expect(phpWorkflow).toContain('.php/rate-limit/');
   });
 
   it('tells the agent the boilerplate is missing instead of listing helpers', () => {

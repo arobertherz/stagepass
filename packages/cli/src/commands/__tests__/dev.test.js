@@ -232,8 +232,11 @@ describe('stagepass dev command', () => {
     );
     const caddyfilePath = path.join(tmp, 'Caddyfile');
     const reloads = [];
+    const logs = [];
     const spawn = vi.fn(async () => ({ code: 0, signal: null }));
     let closed = false;
+    /** @type {Record<string, unknown>|undefined} */
+    let liveOpts;
 
     const code = await dev(
       { verbose: true },
@@ -241,21 +244,24 @@ describe('stagepass dev command', () => {
         cwd: root,
         projectsPath,
         caddyfilePath,
-        log: () => {},
+        log: (m) => logs.push(String(m)),
         error: () => {},
         ensureStagepassReady: readyOk,
         spawnWatch: spawn,
         reloadCaddy: async (cfg) => {
           reloads.push(cfg);
         },
-        createLiveServer: () => ({
-          listen: async () => ({
-            port: 34567,
-            close: async () => {
-              closed = true;
-            },
-          }),
-        }),
+        createLiveServer: (opts) => {
+          liveOpts = opts;
+          return {
+            listen: async () => ({
+              port: 34567,
+              close: async () => {
+                closed = true;
+              },
+            }),
+          };
+        },
       }
     );
 
@@ -272,6 +278,8 @@ describe('stagepass dev command', () => {
     const caddy = await fs.readFile(caddyfilePath, 'utf8');
     expect(caddy).toContain('app.sp');
     expect(caddy).not.toContain('reverse_proxy 127.0.0.1:34567');
+    expect(liveOpts?.php).toBe(false);
+    expect(logs.join('\n')).not.toContain('also watching');
     await fs.remove(tmp);
   });
 
@@ -308,6 +316,8 @@ describe('stagepass dev command', () => {
       projectsPath
     );
     const logs = [];
+    /** @type {Record<string, unknown>|undefined} */
+    let liveOpts;
     const code = await dev(
       {},
       {
@@ -320,9 +330,12 @@ describe('stagepass dev command', () => {
         reloadCaddy: async () => {},
         platform: 'linux',
         resolveCommand: async () => null,
-        createLiveServer: () => ({
-          listen: async () => ({ port: 34567, close: async () => {} }),
-        }),
+        createLiveServer: (opts) => {
+          liveOpts = opts;
+          return {
+            listen: async () => ({ port: 34567, close: async () => {} }),
+          };
+        },
         spawnWatch: defaultSpawnWatch,
       }
     );
@@ -331,6 +344,8 @@ describe('stagepass dev command', () => {
     const text = logs.join('\n');
     expect(text).toContain('PHP / php-fpm not found');
     expect(text).toContain('JavaScript build and live reload will continue');
+    expect(text).toContain('Live reload also watching api/ and .php/');
+    expect(liveOpts?.php).toBe(true);
     await fs.remove(tmp);
   }, 20000);
 

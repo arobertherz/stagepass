@@ -366,7 +366,9 @@ export function buildStagepassGuide(ctx) {
     '',
     '- `stagepass start` starts Caddy and PHP.',
     '- `stagepass link` binds this directory to the `.sp` domain. Without `--origin` it uses `origin` and `production` from `stagepass.json`.',
-    '- `stagepass dev` rebuilds the stable `dist/main.js` and `dist/styles.css` and serves live reload on the linked domain.',
+    ctx.php
+      ? '- `stagepass dev` rebuilds the stable `dist/main.js` and `dist/styles.css` and serves live reload on the linked domain. With PHP on, a change under `api/` or `.php/` reloads the page too (same debounce). It ignores `.env`, `.php/.env`, `.php/rate-limit/`, logs, pid files, key and certificate files, and editor temp files.'
+      : '- `stagepass dev` rebuilds the stable `dist/main.js` and `dist/styles.css` and serves live reload on the linked domain.',
     '- `stagepass watch` is that rebuild without live reload.',
     '- `stagepass build` writes content hashes, SRI, and `dist/manifest.json`. Watch and dev leave the manifest as the last build wrote it.',
     '',

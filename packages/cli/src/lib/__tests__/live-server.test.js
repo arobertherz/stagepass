@@ -8,6 +8,7 @@ import {
   classifyChange,
   toUrlPath,
   formatSseEvent,
+  isIgnoredPhpRel,
   LIVE_PATH,
   MAX_CONNECTIONS,
 } from '../live-server.js';
@@ -25,6 +26,27 @@ describe('resolveOutputDir', () => {
   it('rejects path traversal', () => {
     expect(resolveOutputDir('/Users/dev/Sites/app', '../other').ok).toBe(false);
     expect(resolveOutputDir('/Users/dev/Sites/app', '/etc').ok).toBe(false);
+  });
+});
+
+describe('isIgnoredPhpRel', () => {
+  it('ignores secrets, rate-limit, logs, and editor temps', () => {
+    expect(isIgnoredPhpRel('.php/.env')).toBe(true);
+    expect(isIgnoredPhpRel('api/.env')).toBe(true);
+    expect(isIgnoredPhpRel('.env')).toBe(true);
+    expect(isIgnoredPhpRel('.php/rate-limit/hit.json')).toBe(true);
+    expect(isIgnoredPhpRel('.php/rate-limit')).toBe(true);
+    expect(isIgnoredPhpRel('api/app.log')).toBe(true);
+    expect(isIgnoredPhpRel('.php/server.pid')).toBe(true);
+    expect(isIgnoredPhpRel('api/secret.pem')).toBe(true);
+    expect(isIgnoredPhpRel('api/id.P12')).toBe(true);
+    expect(isIgnoredPhpRel('api/app.sqlite')).toBe(true);
+    expect(isIgnoredPhpRel('api/actions/x.php~')).toBe(true);
+    expect(isIgnoredPhpRel('api/foo.php.swp')).toBe(true);
+    expect(isIgnoredPhpRel('api/.DS_Store')).toBe(true);
+    expect(isIgnoredPhpRel('api/.env.example')).toBe(false);
+    expect(isIgnoredPhpRel('api/actions/x.php')).toBe(false);
+    expect(isIgnoredPhpRel('.php/config.php')).toBe(false);
   });
 });
 
@@ -269,5 +291,120 @@ describe('createLiveServer', () => {
     server._noteChange(ghost);
     const events = await collectEvents(reader, 120);
     expect(events).toEqual([]);
+  });
+
+  async function openLive(server) {
+    handle = await server.listen(0);
+    const res = await fetch(`http://127.0.0.1:${handle.port}${LIVE_PATH}`);
+    const reader = res.body.getReader();
+    await reader.read();
+    return reader;
+  }
+
+  it('php:true reloads on api/actions/x.php and ignores rate-limit and env', async () => {
+    const apiActions = path.join(tmp, 'api', 'actions');
+    const rate = path.join(tmp, '.php', 'rate-limit');
+    await fs.ensureDir(apiActions);
+    await fs.ensureDir(rate);
+    await fs.writeFile(path.join(apiActions, 'x.php'), '<?php echo 1;\n');
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php return [];\n');
+    await fs.writeFile(path.join(tmp, '.env'), 'SECRET=1\n');
+    await fs.writeFile(path.join(tmp, '.php', '.env'), 'SECRET=1\n');
+    await fs.writeFile(path.join(tmp, 'api', '.env'), 'SECRET=1\n');
+    await fs.writeFile(path.join(rate, 'hit.json'), '{}\n');
+    await fs.writeFile(path.join(tmp, 'api', 'secret.pem'), 'KEY\n');
+    await fs.writeFile(path.join(tmp, 'api', 'app.log'), 'log\n');
+    await fs.writeFile(path.join(tmp, '.php', 'server.pid'), '1\n');
+
+    const server = createLiveServer({ projectRoot: tmp, php: true, debounceMs: 40 });
+    const reader = await openLive(server);
+    expect(server.phpWatched).toEqual(['api', '.php']);
+
+    await fs.writeFile(path.join(apiActions, 'x.php'), '<?php echo 2;\n');
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php return [1];\n');
+    await fs.writeFile(path.join(tmp, '.env'), 'SECRET=2\n');
+    await fs.writeFile(path.join(tmp, '.php', '.env'), 'SECRET=2\n');
+    await fs.writeFile(path.join(tmp, 'api', '.env'), 'SECRET=2\n');
+    await fs.writeFile(path.join(rate, 'hit.json'), '{"n":1}\n');
+    await fs.writeFile(path.join(tmp, 'api', 'secret.pem'), 'KEY2\n');
+    await fs.writeFile(path.join(tmp, 'api', 'app.log'), 'log2\n');
+    await fs.writeFile(path.join(tmp, '.php', 'server.pid'), '2\n');
+    await fs.writeFile(path.join(apiActions, 'x.php~'), '<?php echo 2;\n');
+    await fs.writeFile(path.join(tmp, 'api', '.DS_Store'), 'x\n');
+    await fs.writeFile(path.join(tmp, 'api', 'foo.php.swp'), 'x\n');
+
+    const events = await collectEvents(reader, 300);
+    const paths = events.flatMap((event) => event.paths);
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events.every((event) => event.type === 'reload')).toBe(true);
+    expect(paths).toContain('/api/actions/x.php');
+    expect(paths).toContain('/.php/config.php');
+    expect(
+      paths.some(
+        (p) =>
+          p.includes('rate-limit') ||
+          p.endsWith('/.env') ||
+          p.endsWith('.pem') ||
+          p.endsWith('.log') ||
+          p.endsWith('.pid') ||
+          p.endsWith('~') ||
+          p.endsWith('.swp') ||
+          p.endsWith('.DS_Store')
+      )
+    ).toBe(false);
+  });
+
+  it('php:false does not watch api or .php', async () => {
+    await fs.ensureDir(path.join(tmp, 'api', 'actions'));
+    await fs.ensureDir(path.join(tmp, '.php'));
+    await fs.writeFile(path.join(tmp, 'api', 'actions', 'x.php'), '<?php echo 1;\n');
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php\n');
+    await fs.writeFile(path.join(tmp, 'dist', 'a.css'), 'a{}');
+
+    const server = createLiveServer({ projectRoot: tmp, php: false, debounceMs: 40 });
+    const reader = await openLive(server);
+    expect(server.phpWatched).toEqual([]);
+
+    await fs.writeFile(path.join(tmp, 'api', 'actions', 'x.php'), '<?php echo 2;\n');
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php echo 2;\n');
+    await fs.writeFile(path.join(tmp, 'dist', 'a.css'), 'b{}');
+
+    const events = await collectEvents(reader, 220);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('css');
+    expect(events[0].paths).toEqual(['/dist/a.css']);
+  });
+
+  it('php:true tolerates a missing api directory and still watches .php', async () => {
+    await fs.ensureDir(path.join(tmp, '.php'));
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php return [];\n');
+    const server = createLiveServer({ projectRoot: tmp, php: true, debounceMs: 40 });
+    const reader = await openLive(server);
+    expect(server.phpWatched).toEqual(['.php']);
+
+    await fs.writeFile(path.join(tmp, '.php', 'config.php'), '<?php return [1];\n');
+    const events = await collectEvents(reader, 220);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('reload');
+    expect(events[0].paths).toEqual(['/.php/config.php']);
+  });
+
+  it('php:true tolerates missing api and .php directories', async () => {
+    const server = createLiveServer({ projectRoot: tmp, php: true, debounceMs: 20 });
+    handle = await server.listen(0);
+    expect(server.phpWatched).toEqual([]);
+    expect(server._watchers.length).toBe(1);
+  });
+
+  it('closes output and PHP watchers when the server stops', async () => {
+    await fs.ensureDir(path.join(tmp, 'api'));
+    await fs.ensureDir(path.join(tmp, '.php'));
+    const server = createLiveServer({ projectRoot: tmp, php: true, debounceMs: 40 });
+    handle = await server.listen(0);
+    expect(server.phpWatched).toEqual(['api', '.php']);
+    expect(server._watchers.length).toBe(3);
+    await handle.close();
+    handle = null;
+    expect(server._watchers).toEqual([]);
   });
 });

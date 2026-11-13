@@ -15,8 +15,8 @@ import {
   clearStaleDevPorts,
 } from '../lib/projects.js';
 import { applySiteBlock } from '../lib/apply-site-block.js';
-import { createLiveServer, resolveOutputDir } from '../lib/live-server.js';
-import { readStagepassJson } from '../lib/project-sync.js';
+import { createLiveServer, resolveOutputDir, PHP_WATCH_DIRS } from '../lib/live-server.js';
+import { phpFromStagepassConfig, readStagepassJson } from '../lib/project-sync.js';
 import { getCaddyfilePath, getProjectsPath, validateRoot } from '../lib/paths.js';
 import { isPidAlive, isValidDevPort } from '../lib/dev-port.js';
 import { ensureStagepassReady } from '../lib/ensure-running.js';
@@ -159,6 +159,7 @@ export async function dev(options = {}, deps = {}) {
   /** @type {NodeJS.Signals | null} */
   let stopSignal = null;
   let setupDone = false;
+  let phpLive = false;
 
   try {
     let project = await getProject(domain, projectsPath);
@@ -205,6 +206,9 @@ export async function dev(options = {}, deps = {}) {
       return 1;
     }
 
+    const stagepass = await readStagepassJson(cwd, fse);
+    phpLive = phpFromStagepassConfig(stagepass.data) === true;
+
     if (options.verbose) {
       log(chalk.dim(`Live reload watching ${outDir.rel}/ → https://${domain}/__stagepass/live`));
     }
@@ -213,6 +217,7 @@ export async function dev(options = {}, deps = {}) {
       const server = createServer({
         projectRoot: rootCheck.path,
         outDir: outDir.rel,
+        php: phpLive,
         log: options.verbose ? (m) => log(chalk.dim(m)) : () => {},
       });
       live = await server.listen(0);
@@ -343,6 +348,10 @@ export async function dev(options = {}, deps = {}) {
   });
 
   log(chalk.green(`Live reload on https://${domain}/__stagepass/live (127.0.0.1:${live.port})`));
+  if (phpLive) {
+    const names = PHP_WATCH_DIRS.map((dir) => `${dir}/`).join(' and ');
+    log(chalk.dim(`Live reload also watching ${names}`));
+  }
   if (options.verbose) {
     log(chalk.dim('Running: npm run watch'));
   }
