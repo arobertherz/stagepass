@@ -163,12 +163,22 @@ form.addEventListener('submit', async (event) => {
 - Honeypot: a filled field returns a generic success and does not run the handler
 - File-based rate limit per IP and action under `.php/rate-limit/`
 - `rate_limit_allows()` is fail-open. If the rate-limit directory cannot be created, the file cannot be opened, `flock` fails, or the limiter throws, the request is allowed. Directory and file failures, and thrown errors, are logged with `error_log`. A failed `flock` allows the request and does not write its own log line.
-- `client_ip()` uses only `REMOTE_ADDR`, never `X-Forwarded-For`. Behind a reverse proxy or CDN every visitor can share one address, so the limit applies to everyone together. That keeps the endpoint available and does not trust a spoofable header. It is a poor fit for typical hosting. Follow-up: [sgt7wKlT](https://trello.com/c/sgt7wKlT).
+- `client_ip()` uses only `REMOTE_ADDR`, never `X-Forwarded-For`. Behind a reverse proxy or CDN every visitor can share one address, so the limit applies to everyone together. That keeps the endpoint available and does not trust a spoofable header. It is a poor fit for typical hosting. Follow-up: [sgt7wKlT](https://trello.com/c/sgt7wKlT). A fix is planned for a later patch.
 - Display of errors is off; exception messages never go to the client
 
 ## 14. Existing projects
 
-`stagepass upgrade` does not add the PHP `api/` or `.php/` boilerplate. Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing `.htaccess` is not overwritten. If it has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint and points at this page and `api/README.md`. It does not fail. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. Published CLI 2.4.0 does not write `.htaccess`.
+`stagepass upgrade` does not add the PHP `api/` or `.php/` boilerplate, and it does not replace `api/action.php`. Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing `.htaccess` is not overwritten. If it has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint and points at this page and `api/README.md`. It does not fail. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. Published CLI 2.4.0 does not write `.htaccess`.
+
+A project created with published CLI 2.4.0 keeps that version's `api/action.php`. An allowed OPTIONS preflight is HTTP 204 and still sends `X-Powered-By`, because `header_remove` runs in `respond()` and that path does not call it. GET `ping` already omits the header. Before `http_response_code(204)`, insert the same lines 2.4.1 ships:
+
+```php
+    if (!headers_sent()) {
+        header_remove('X-Powered-By');
+    }
+```
+
+Or set `expose_php = Off` in php.ini. `expose_php` is `PHP_INI_SYSTEM`. `php_flag expose_php off` in `.htaccess` does not change it (`php_flag display_errors off` in the same file does apply). `ini_set('expose_php', '0')` returns false and leaves the value On. Verified 13 November 2026 on php:8.2-apache (`AllowOverride All`, `a2enmod rewrite`), Origin `https://your-project.sp`.
 
 - Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/` and `.php/` into the existing project. Do not overwrite files you already edited, including an existing `.htaccess`.
 - Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example` and `php-private/config.php` to `.php/config.php` (npm pack drops dot paths). The `htaccess` template ships since 2.4.1; `stagepass upgrade` writes it when the file is missing. Published CLI 2.4.0 has no `htaccess` template.
