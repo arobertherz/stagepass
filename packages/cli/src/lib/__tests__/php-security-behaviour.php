@@ -458,8 +458,36 @@ assert_storage(
     'could not create the rate-limit directory.'
 );
 assert_storage(
-    'empty APP_ENV directory blocked is allowed and logged',
+    'empty APP_ENV directory blocked is 503',
     env_file($baseLimits + ['APP_ENV' => '']),
+    'GET',
+    true,
+    'could not create the rate-limit directory.'
+);
+assert_storage(
+    'Production APP_ENV directory blocked is 503',
+    env_file($baseLimits + ['APP_ENV' => 'Production']),
+    'GET',
+    true,
+    'could not create the rate-limit directory.'
+);
+assert_storage(
+    'staging APP_ENV directory blocked is 503',
+    env_file($baseLimits + ['APP_ENV' => 'staging']),
+    'GET',
+    true,
+    'could not create the rate-limit directory.'
+);
+assert_storage(
+    'dev APP_ENV directory blocked is allowed and logged',
+    env_file($baseLimits + ['APP_ENV' => 'dev']),
+    'GET',
+    false,
+    'could not create the rate-limit directory.'
+);
+assert_storage(
+    'LOCAL APP_ENV directory blocked is allowed and logged',
+    env_file($baseLimits + ['APP_ENV' => 'LOCAL']),
     'GET',
     false,
     'could not create the rate-limit directory.'
