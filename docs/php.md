@@ -58,7 +58,7 @@ This file is the source outline for that site page. It describes published `@sta
 - Caddy already returns 404 for any path segment that starts with `.` (`/.env`, `/.php/`, `/api/.env`).
 - Published CLI 2.4.0 does not ship an Apache or nginx deny rule. Add one on that host. Since 2.4.1 the PHP scaffold ships the Apache `.htaccess` below. nginx still needs the snippet on the host (nginx does not read `.htaccess`).
 - Prefer real environment variables so a `.env` file is not required in the web root. `load_config()` reads the project-root `.env` and `.php/.env`. It never reads `api/.env`. `stagepass build` does not copy those files into `dist/`. It does copy `.php/config.php`.
-- Since 2.4.1, `stagepass new --php` writes a web-root `.htaccess` and `stagepass build` copies it into `dist/` when the project has one. Published CLI 2.4.0 does not ship that file. `stagepass new` does not overwrite an existing `.htaccess`. `stagepass build` still keeps a `.htaccess` you add yourself.
+- Since 2.4.1, `stagepass new --php` writes a web-root `.htaccess` and `stagepass build` copies it into `dist/` when the project has one. `stagepass upgrade` writes that same file when `"php": true` and the project root has none. It does not overwrite an existing `.htaccess`. Published CLI 2.4.0 does not ship that file. `stagepass new` does not overwrite an existing `.htaccess`. `stagepass build` still keeps a `.htaccess` you add yourself.
 
 Apache, in the web root `.htaccess`. The host needs `AllowOverride All` and `mod_rewrite`. The rule follows HTML5 Boilerplate [`file_access.conf`](https://github.com/h5bp/server-configs-apache/blob/main/h5bp/security/file_access.conf), wrapped in `IfModule`:
 
@@ -168,10 +168,10 @@ form.addEventListener('submit', async (event) => {
 
 ## 14. Existing projects
 
-`stagepass upgrade` does not add the PHP boilerplate.
+`stagepass upgrade` does not add the PHP `api/` or `.php/` boilerplate. Since 2.4.1, when `stagepass.json` has `"php": true` and the project root has no `.htaccess`, upgrade writes the shipped template (same bytes as `stagepass new --php`). An existing `.htaccess` is not overwritten. If it has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint and points at this page and `api/README.md`. It does not fail. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. Published CLI 2.4.0 does not write `.htaccess`.
 
-- Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/`, `.php/`, and the web-root `.htaccess` into the existing project. Do not overwrite files you already edited, including an existing `.htaccess`.
-- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example`, `php-private/config.php` to `.php/config.php`, and `htaccess` to `.htaccess` (npm pack drops dot paths). Since 2.4.1. Published CLI 2.4.0 has no `htaccess` template.
+- Scaffold a throwaway project with `stagepass new tmp --php --yes --no-link` and copy `api/` and `.php/` into the existing project. Do not overwrite files you already edited, including an existing `.htaccess`.
+- Or copy from the installed CLI templates, renaming `api/env.example` to `api/.env.example` and `php-private/config.php` to `.php/config.php` (npm pack drops dot paths). The `htaccess` template ships since 2.4.1; `stagepass upgrade` writes it when the file is missing. Published CLI 2.4.0 has no `htaccess` template.
 - Set `"php": true` in `stagepass.json`, copy `api/.env.example` to `.env`, set `ALLOWED_ORIGINS`, and run `stagepass link` again so the Caddy block gets `php_fastcgi`.
 - If `scripts/build.mjs` is still an unmodified older scaffold, `stagepass upgrade` can replace it so `publishPhp` is included. An edited script stays as-is and needs the PHP copy logic added by hand.
 
