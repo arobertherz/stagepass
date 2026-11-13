@@ -39,7 +39,7 @@ Security patch on top of 2.4.0. Not published.
 
 - PHP projects from `stagepass new --php` ship a web-root `.htaccess` that denies hidden path segments (HTML5 Boilerplate `file_access`, with visible files under `/.well-known/` left reachable). `stagepass build` copies that file into `dist/` when `"php": true` and the project has one. It still does not copy `.env`, `.php/.env`, or `.php/rate-limit/`. An existing project `.htaccess` is not replaced. A `dist/.htaccess` stays when the project has none. Published CLI 2.4.0 does not include this file. nginx does not read `.htaccess`; the server snippet is in the package README and `api/README.md`, and it must sit before `location ~ \.php$`.
 - `stagepass upgrade` writes that same `.htaccess` when `stagepass.json` has `"php": true` and the project root has no `.htaccess`. The bytes match `stagepass new --php`. An existing `.htaccess` is left unchanged. If the file has no `RewriteRule "(^|/)\." - [F]` line, upgrade prints a hint that points at https://stagepass.one/docs/php/ and `api/README.md`, and it still exits 0. A symlink or directory named `.htaccess` is left in place. Projects without `"php": true` are unchanged. `--dry-run` prints the plan and writes nothing. Published CLI 2.4.0 does not write this file.
-- OPTIONS preflight on `api/action.php` removes `X-Powered-By` before the 204 response. `header_remove` previously ran only in `respond()`, which that path does not call.
+- OPTIONS preflight on `api/action.php` removes `X-Powered-By` before the 204 response. `header_remove` previously ran only in `respond()`, which that path does not call. `stagepass upgrade` does not replace an existing `api/action.php`. A project created with published CLI 2.4.0 keeps that file, so an allowed OPTIONS preflight still sends `X-Powered-By` until those lines are added, or until `expose_php` is Off in php.ini.
 
 #### Fixed
 
@@ -48,7 +48,8 @@ Security patch on top of 2.4.0. Not published.
 
 #### Notes
 
-- Rate limiting stays fail-open and uses only `REMOTE_ADDR`. `X-Forwarded-For` is not trusted without a proxy allowlist. Behind a reverse proxy every visitor can share one counter. Still open: [sgt7wKlT](https://trello.com/c/sgt7wKlT).
+- Rate limiting stays fail-open and uses only `REMOTE_ADDR`. `X-Forwarded-For` is not trusted without a proxy allowlist. Behind a reverse proxy every visitor can share one counter. Still open: [sgt7wKlT](https://trello.com/c/sgt7wKlT). A fix is planned for a later patch.
+- Projects created with published CLI 2.4.0 keep `api/action.php` from 2.4.0. Before `http_response_code(204)`, insert the three lines 2.4.1 ships: `if (!headers_sent()) { header_remove('X-Powered-By'); }`. `php_flag expose_php off` in `.htaccess` and `ini_set('expose_php', '0')` do not remove the header. `expose_php` is `PHP_INI_SYSTEM` (access bitmask 4). `expose_php = Off` in php.ini does. Verified 13 November 2026 on php:8.2-apache.
 
 ### [2.4.0] - 2026-11-12
 
