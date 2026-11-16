@@ -847,6 +847,9 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const snippets = buildWebflowSnippets({
     version: config.loaderVersion,
     moduleList: config.siteModules,
+    gitRemote: config.git ? config.remote || '' : '',
+    gitBranch: config.git ? 'main' : '',
+    projectName: config.name,
   });
   printWebflowSnippets(snippets, log);
 

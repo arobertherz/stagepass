@@ -5,6 +5,7 @@ import { defaultExec } from '../lib/exec.js';
 import {
   buildWebflowSnippets,
   printWebflowSnippets,
+  readSnippetGitRef,
 } from '../lib/snippets.js';
 
 import readline from 'node:readline/promises';
@@ -546,10 +547,21 @@ export async function upgrade(options = {}, deps = {}) {
       fse,
     });
   }
-  const snippets = buildWebflowSnippets({
-    version: snippetVersion,
-    moduleList: resolved.modules,
-  });
+  let snippets;
+  try {
+    const readGitRef = deps.readGitRef || readSnippetGitRef;
+    const gitRef = await readGitRef(cwd);
+    snippets = buildWebflowSnippets({
+      version: snippetVersion,
+      moduleList: resolved.modules,
+      gitRemote: gitRef && gitRef.gitRemote,
+      gitBranch: gitRef && gitRef.gitBranch,
+      projectName: pkg.name,
+    });
+  } catch (err) {
+    log(chalk.red(err instanceof Error ? err.message : String(err)));
+    return 1;
+  }
   printWebflowSnippets(snippets, log);
 
   log(chalk.bold('\nNext step (not run automatically):'));

@@ -280,6 +280,78 @@ describe('start autostart / certs integration', () => {
     ).toBe(true);
     const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(joined).toMatch(/kickstart/);
+    expect(joined).toContain('Webflow Custom Code (Head):');
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+    );
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js'
+    );
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js'
+    );
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js'
+    );
+    expect(joined).not.toContain('Webflow Custom Code (Footer):');
+    expect(joined).not.toContain('cdn.stagepass.one');
+  });
+
+  it('prints head snippets after a direct caddy start', async () => {
+    const code = await start({
+      verbose: true,
+      interactive: false,
+      skipHandshake: true,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: false,
+        plistExists: false,
+      }),
+    });
+    expect(code).toBe(0);
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).toMatch(/Stagepass is active/);
+    expect(joined).toContain('Webflow Custom Code (Head):');
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+    );
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js'
+    );
+    expect(joined).not.toContain('Webflow Custom Code (Footer):');
+  });
+
+  it('does not print head snippets when start fails', async () => {
+    const code = await start({
+      verbose: true,
+      interactive: false,
+      skipHandshake: true,
+      exec: async (file, args) => {
+        if (file === 'caddy' && args && args[0] === 'start') throw new Error('nope');
+        return { stdout: '', stderr: '', code: 0 };
+      },
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: false,
+        plistExists: false,
+      }),
+    });
+    expect(code).toBe(1);
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).not.toContain('Webflow Custom Code (Head):');
   });
 
   it('prints cert findings and hint when non-interactive', async () => {

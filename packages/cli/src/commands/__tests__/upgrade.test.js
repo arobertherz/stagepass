@@ -144,6 +144,45 @@ describe('upgrade command', () => {
     expect(out).toContain('npm install');
     expect(out).toContain('@stagepass/modules@2/dist/cookies.min.js');
     expect(out).not.toContain('inject.min.js');
+    expect(out).toContain('https://YOUR-PRODUCTION-URL/js/main.js');
+  });
+
+  it('prints a jsDelivr footer when origin is a GitHub remote', async () => {
+    await oldStyleProject({ modulesDep: true });
+    const logs = [];
+    const code = await upgrade(
+      { siteModules: 'cookies' },
+      baseDeps(logs, {
+        exec: vi.fn(),
+        readGitRef: async () => ({
+          gitRemote: 'https://github.com/acme/widgets.git',
+          gitBranch: 'develop',
+        }),
+      })
+    );
+    expect(code).toBe(0);
+    const out = logs.join('\n');
+    expect(out).toContain('https://cdn.jsdelivr.net/gh/acme/widgets@develop/dist/main.js');
+    expect(out).toContain('https://cdn.jsdelivr.net/gh/acme/widgets@develop/dist/styles.css');
+    expect(out).toContain('public repos');
+  });
+
+  it('does not print a malicious repo name in the footer', async () => {
+    await oldStyleProject({ modulesDep: true });
+    const logs = [];
+    const code = await upgrade(
+      { siteModules: 'cookies' },
+      baseDeps(logs, {
+        readGitRef: async () => ({
+          gitRemote: 'git@github.com:acme/foo"><img src=x>.git',
+          gitBranch: 'main',
+        }),
+      })
+    );
+    expect(code).toBe(1);
+    const out = logs.join('\n');
+    expect(out).not.toContain('<img');
+    expect(out).not.toContain('cdn.jsdelivr.net/gh/');
   });
 
   it('--dry-run prints the plan and writes nothing', async () => {

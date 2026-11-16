@@ -1,16 +1,18 @@
 import fs from 'fs-extra';
 import path from 'node:path';
+import { stagepassPackageUrl } from './cdn-base.js';
 
 /**
  * Canonical CDN embed snippets recommended by Stagepass docs.
  * Doctor checks these so generated / documented snippets never drift to @latest.
+ * Host comes from STAGEPASS_PACKAGE_CDN.
  */
 export const RECOMMENDED_CDN_SNIPPETS = Object.freeze([
-  'https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js',
-  'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js',
-  'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js',
-  'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js',
-  'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js',
+  stagepassPackageUrl('loader', '@2', 'loader.min.js'),
+  stagepassPackageUrl('modules', '@2', 'inject.min.js'),
+  stagepassPackageUrl('modules', '@2', 'cookies.min.js'),
+  stagepassPackageUrl('modules', '@2', 'maintenance.min.js'),
+  stagepassPackageUrl('modules', '@2', 'all.min.js'),
 ]);
 
 /**

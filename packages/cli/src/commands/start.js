@@ -26,7 +26,12 @@ import {
   LAUNCH_AGENT_LABEL,
 } from '../lib/autostart.js';
 import { ensurePhpFpm } from '../lib/php-fpm.js';
+import { buildOfficialHeadSnippets, printWebflowHeadSnippets } from '../lib/snippets.js';
 import { certsTrust, certsRenew } from './certs.js';
+
+function printStartHeadSnippets() {
+  printWebflowHeadSnippets(buildOfficialHeadSnippets());
+}
 
 const PORT_IGNORE = ['Google Chrome', 'Chrome Helper', 'OneDrive', 'Music', 'Safari', 'caddy'];
 
@@ -426,6 +431,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
+        printStartHeadSnippets();
         return 0;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
@@ -454,6 +460,7 @@ export async function start(options = {}) {
     } else {
       console.log(chalk.green('✔ Stagepass is active.'));
     }
+    printStartHeadSnippets();
     return 0;
   } catch (error) {
     if (!options.verbose) spinner.fail('Failed to start.');

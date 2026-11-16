@@ -199,6 +199,9 @@ export async function planScaffoldFiles(options, deps = {}) {
   const snippets = buildWebflowSnippets({
     version,
     moduleList: siteModules,
+    gitRemote: options.git ? options.remote || '' : '',
+    gitBranch: options.git ? 'main' : '',
+    projectName: options.name,
   });
   const types = typesForModules(siteModules, {
     modulesDependency: options.modules === true,
@@ -218,6 +221,8 @@ export async function planScaffoldFiles(options, deps = {}) {
     LOADER_VERSION: version,
     HEAD_SNIPPET: snippets.head,
     FOOTER_SNIPPET: snippets.footer,
+    ASSET_EXAMPLE_URL: snippets.assetExampleUrl,
+    ASSET_URL_HINT: snippets.assetHint,
     ENTRY_JS: entryJs,
     ENTRY_CSS: entryCss,
     USE_SASS: useSass ? 'true' : 'false',
