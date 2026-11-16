@@ -44,6 +44,7 @@ Minor release on top of 2.4.1. Loader and modules are separate packages and are 
 
 #### Changed
 
+- `.cursor/rules/stagepass.mdc` is no longer created for every project. `stagepass new` and `stagepass upgrade` write it only when a `.cursor/` directory already exists, or when you pass `--cursor-rule` (that flag creates the directory). An existing rule is never deleted. Only the managed block between the stagepass markers is updated. `AGENTS.md` stays the tool-neutral guide. `stagepass doctor` does not warn when `.cursor/` is absent and the rule is missing. When `.cursor/` exists, a missing or stale rule is a warning and the hint is `stagepass upgrade`.
 - `stagepass upgrade` without a TTY and without `--yes` leaves an unmodified `scripts/build.mjs` in place and prints a hint. `--yes`, or a TTY confirmation (default yes), replaces it. `--dry-run` writes nothing. An edited script stays unchanged. The same consent rule also covers a hand-edited `AGENTS.stagepass.md` (body hash mismatch, or no managed header). A file whose hash still matches is refreshed without asking. The rule is not applied to the other upgrade writes: `package.json` ranges and missing type devDependencies, a missing or marker-owned `stagepass.d.ts`, and a missing PHP `.htaccess`. Those do not replace a hand-edited source file and stay non-interactive. `upgrade --json` is unchanged from CLI 2.4.0 and 2.4.1: the flag is unknown, stdout is empty, and nothing is written. There is no JSON object to extend. [jd36WpR1](https://trello.com/c/jd36WpR1).
 
 #### Security

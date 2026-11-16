@@ -2,8 +2,9 @@
  * Generated AI guidance.
  *
  * `AGENTS.stagepass.md` is owned by the CLI (feature set, workflow, runtime
- * API, declared modules, PHP). `AGENTS.md` and the Cursor rule only point at
- * that file. Content depends on the CLI version and stagepass.json.
+ * API, declared modules, PHP). `AGENTS.md` is the tool-neutral pointer.
+ * The Cursor rule is written only when `.cursor/` already exists, the rule
+ * file already exists, or the user passed `--cursor-rule`.
  */
 
 import { createHash } from 'node:crypto';
@@ -226,6 +227,52 @@ export function hasLegacyAgentsProse(content) {
  */
 export function buildCursorRule() {
   return ['---', NEW_CURSOR_FRONT, '---', '', buildCursorPointerBlock(), ''].join('\n');
+}
+
+/**
+ * Create or refresh the Cursor rule only for a Cursor project, an existing
+ * rule file, or an explicit `--cursor-rule`.
+ * @param {{ cursorDirExists?: boolean, cursorRule?: boolean, ruleExists?: boolean }} [opts]
+ * @returns {boolean}
+ */
+export function shouldWriteCursorRule(opts = {}) {
+  return opts.ruleExists === true || opts.cursorDirExists === true || opts.cursorRule === true;
+}
+
+/**
+ * Doctor check. No result when the project has no `.cursor/` directory.
+ * @param {{ cursorDirExists?: boolean, rule?: string | null }} input
+ * @returns {{ status: 'ok'|'warn', message: string, detail?: string } | null}
+ */
+export function assessCursorRule(input) {
+  if (input.cursorDirExists !== true) return null;
+  if (input.rule == null) {
+    return {
+      status: 'warn',
+      message: '.cursor/rules/stagepass.mdc is missing',
+      detail: 'Run stagepass upgrade to add the pointer to AGENTS.stagepass.md',
+    };
+  }
+  const block = buildCursorPointerBlock();
+  const hasMarkers = input.rule.includes(BLOCK_BEGIN) && input.rule.includes(BLOCK_END);
+  if (!hasMarkers) {
+    return {
+      status: 'warn',
+      message: '.cursor/rules/stagepass.mdc has no Stagepass markers',
+      detail: 'Left unchanged. Add the markers or replace the file, then run stagepass upgrade.',
+    };
+  }
+  if (!input.rule.includes(block) || input.rule.includes(OLD_CURSOR_FRONT)) {
+    return {
+      status: 'warn',
+      message: '.cursor/rules/stagepass.mdc is out of date',
+      detail: 'Run stagepass upgrade to refresh the managed block',
+    };
+  }
+  return {
+    status: 'ok',
+    message: 'Cursor rule points at AGENTS.stagepass.md',
+  };
 }
 
 /**

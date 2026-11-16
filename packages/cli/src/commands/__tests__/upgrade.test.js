@@ -112,7 +112,7 @@ describe('upgrade command', () => {
     if (agents != null) await fsx.writeFile(path.join(dir, 'AGENTS.md'), agents);
   }
 
-  it('writes package.json, stagepass.json, AGENTS.md, rule and types; never installs', async () => {
+  it('writes package.json, stagepass.json, AGENTS.md and types; never installs', async () => {
     await oldStyleProject({ modulesDep: true });
     const logs = [];
     const exec = vi.fn();
@@ -132,10 +132,8 @@ describe('upgrade command', () => {
     const guide = await fsx.readFile(path.join(dir, 'AGENTS.stagepass.md'), 'utf8');
     expect(guide).toContain('sp.cookies');
     expect(guide).toContain('stagepass:managed');
-    const rule = await fsx.readFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'utf8');
-    expect(rule).toContain('alwaysApply: true');
-    expect(rule).toContain('@AGENTS.stagepass.md');
-    expect(rule).not.toContain('globs:');
+    expect(await fsx.pathExists(path.join(dir, '.cursor'))).toBe(false);
+    expect(await fsx.pathExists(path.join(dir, '.cursor/rules/stagepass.mdc'))).toBe(false);
     const ts = await fsx.readJson(path.join(dir, 'tsconfig.json'));
     expect(ts.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
     expect(ts.compilerOptions.strict).toBe(true);
@@ -194,8 +192,38 @@ describe('upgrade command', () => {
     expect(await snapshot(dir)).toEqual(before);
     const out = logs.join('\n');
     expect(out).toContain('AGENTS.md: managed block added');
-    expect(out).toContain('.cursor/rules/stagepass.mdc: created');
+    expect(out).not.toContain('.cursor/rules/stagepass.mdc');
     expect(out).toContain('Dry run');
+  });
+
+  it('writes the Cursor rule with --cursor-rule and refreshes an existing one', async () => {
+    await oldStyleProject({ modulesDep: true });
+    const createdLogs = [];
+    const created = await upgrade(
+      { siteModules: 'cookies', cursorRule: true },
+      baseDeps(createdLogs, { exec: vi.fn() })
+    );
+    expect(created).toBe(0);
+    const rulePath = path.join(dir, '.cursor/rules/stagepass.mdc');
+    const createdRule = await fsx.readFile(rulePath, 'utf8');
+    expect(createdRule).toContain('@AGENTS.stagepass.md');
+    expect(createdLogs.join('\n')).toContain('.cursor/rules/stagepass.mdc: created');
+
+    const withTail = createdRule.replace(
+      '<!-- stagepass:end -->',
+      '<!-- stagepass:end -->\nKeep this tail.\n'
+    );
+    await fsx.writeFile(rulePath, withTail);
+    const refreshedLogs = [];
+    const refreshed = await upgrade(
+      { siteModules: 'cookies' },
+      baseDeps(refreshedLogs, { exec: vi.fn() })
+    );
+    expect(refreshed).toBe(0);
+    const after = await fsx.readFile(rulePath, 'utf8');
+    expect(after).toContain('Keep this tail.');
+    expect(after).toContain('@AGENTS.stagepass.md');
+    expect(await fsx.pathExists(rulePath)).toBe(true);
   });
 
   it('refreshes only the managed block on a second run', async () => {

@@ -295,7 +295,9 @@ export async function planScaffoldFiles(options, deps = {}) {
       })
     ),
   });
-  files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule() });
+  if (options.cursorRule === true) {
+    files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule() });
+  }
 
   return files;
 }

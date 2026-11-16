@@ -6,7 +6,7 @@
  * - stagepass.json `modules` (and `origin` when passed via --site)
  * - AGENTS.stagepass.md (CLI-owned guide; hand edits need --yes or a TTY)
  * - AGENTS.md short pointer (created when missing)
- * - .cursor/rules/stagepass.mdc (created when missing, pointer refreshed)
+ * - .cursor/rules/stagepass.mdc only when .cursor/ or the file exists, or --cursor-rule
  * - CLAUDE.md short pointer, only when that file already exists
  * - tsconfig.json / jsconfig.json `compilerOptions.types` (plain JSON with a types array)
  * - stagepass.d.ts triple-slash references when that array cannot be edited
@@ -18,6 +18,7 @@ import {
   BLOCK_BEGIN,
   BLOCK_END,
   CURSOR_RULE_PATH,
+  shouldWriteCursorRule,
   LEGACY_AGENTS_NOTE,
   PHP_LIB_MISSING_NOTE,
   STAGEPASS_AGENTS_CONFIRM,
@@ -697,6 +698,20 @@ async function phpLibPresent(cwd, fse) {
   }
 }
 
+/**
+ * True when the project already has a `.cursor` directory or symlink.
+ * @param {string} cwd
+ * @param {typeof fs} [fse]
+ */
+export async function cursorDirPresent(cwd, fse = fs) {
+  try {
+    const st = await fse.lstat(path.join(cwd, '.cursor'));
+    return st.isDirectory() || st.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 /** @param {string} abs @param {typeof fs} fse */
 async function isSymlink(abs, fse) {
   try {
@@ -718,6 +733,7 @@ async function isSymlink(abs, fse) {
  * @param {boolean} [input.interactive] TTY: ask before replacing a hand-edited AGENTS.stagepass.md
  * @param {boolean} [input.assumeYes] `--yes`: replace that file without asking
  * @param {(question: string, defYes: boolean) => Promise<boolean>} [input.confirm]
+ * @param {boolean} [input.cursorRule] `--cursor-rule`: write the Cursor rule even without `.cursor/`
  * @param {typeof fs} [fse]
  * @returns {Promise<{ writes: { file: string, content: string, action: string }[], notes: string[] }>}
  */
@@ -874,12 +890,22 @@ export async function planProjectSync(input, fse = fs) {
     });
   }
 
-  // Cursor rule
+  // Cursor rule: only when .cursor/ exists, the file exists, or --cursor-rule.
   const cursorBlock = buildCursorPointerBlock();
   const rulePath = path.join(cwd, CURSOR_RULE_PATH);
-  if (await skipSymlink(CURSOR_RULE_PATH)) {
+  const cursorDirExists = await cursorDirPresent(cwd, fse);
+  const ruleExists = await fse.pathExists(rulePath);
+  if (
+    !shouldWriteCursorRule({
+      cursorDirExists,
+      cursorRule: input.cursorRule === true,
+      ruleExists,
+    })
+  ) {
+    // AGENTS.md is the tool-neutral guide. Do not create .cursor/ unasked.
+  } else if (await skipSymlink(CURSOR_RULE_PATH)) {
     // note already added
-  } else if (await fse.pathExists(rulePath)) {
+  } else if (ruleExists) {
     const raw = await fse.readFile(rulePath, 'utf8');
     if (raw.includes(BLOCK_BEGIN) || raw.includes(BLOCK_END)) {
       const result = upsertManagedBlock(raw, cursorBlock);

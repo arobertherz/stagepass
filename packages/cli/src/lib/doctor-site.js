@@ -9,7 +9,9 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { detectSite, describeDetection } from './site-detect.js';
 import { formatModules, sameModules } from './project-modules.js';
+import { assessCursorRule, CURSOR_RULE_PATH } from './ai-guide.js';
 import {
+  cursorDirPresent,
   declaredModules,
   phpFromStagepassConfig,
   readStagepassJson,
@@ -48,6 +50,21 @@ export async function runProjectSiteChecks(opts = {}) {
     });
   } else {
     checks.push({ id: 'project.modules', status: 'ok', message: `Declared modules: ${formatModules(declared)}` });
+  }
+
+  if (await cursorDirPresent(cwd)) {
+    const rulePath = path.join(cwd, CURSOR_RULE_PATH);
+    /** @type {string | null} */
+    let rule = null;
+    if (await fs.pathExists(rulePath)) {
+      try {
+        rule = await fs.readFile(rulePath, 'utf8');
+      } catch {
+        rule = null;
+      }
+    }
+    const cursor = assessCursorRule({ cursorDirExists: true, rule });
+    if (cursor) checks.push({ id: 'project.cursor', ...cursor });
   }
 
   const php = phpFromStagepassConfig(sp.data);

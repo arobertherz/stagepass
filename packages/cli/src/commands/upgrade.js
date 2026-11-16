@@ -400,6 +400,7 @@ export async function upgrade(options = {}, deps = {}) {
       interactive,
       assumeYes,
       confirm: confirmFn,
+      cursorRule: options.cursorRule === true,
     },
     fse
   );
