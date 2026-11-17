@@ -619,7 +619,7 @@ describe('createNew robustness', () => {
     }
   });
 
-  it('defaults snippets to the loader/modules version, not the CLI version', async () => {
+  it('defaults snippets to SNIPPET_LOADER_VERSION', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-ver-'));
     const target = path.join(tmp, 'ver');
     try {
@@ -639,13 +639,9 @@ describe('createNew robustness', () => {
       );
       expect(code).toBe(0);
       const { SNIPPET_LOADER_VERSION } = await import('../../lib/cdn-base.js');
-      const { createRequire } = await import('node:module');
-      const cliVersion = createRequire(import.meta.url)('../../../package.json').version;
       const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
       expect(readme).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
       expect(readme).toContain(`@${SNIPPET_LOADER_VERSION}`);
-      expect(readme).not.toContain(`data-stagepass-version="${cliVersion}"`);
-      expect(readme).not.toContain(`@${cliVersion}`);
     } finally {
       await fs.remove(tmp);
     }

@@ -2,10 +2,11 @@
 export const STAGEPASS_PACKAGE_CDN = 'https://cdn.jsdelivr.net/npm';
 
 /**
- * Published npm versions for snippet exact pins.
- * Not the CLI package version, and not an unpublished monorepo loader version.
+ * Published npm versions for snippet exact pins (loader `latest`, modules `latest`).
+ * Literals only: not read from the CLI package version, and not copied
+ * automatically when the monorepo is ahead of npm.
  */
-export const SNIPPET_LOADER_VERSION = '2.4.0';
+export const SNIPPET_LOADER_VERSION = '2.5.0';
 export const SNIPPET_MODULES_VERSION = '2.2.2';
 
 /**

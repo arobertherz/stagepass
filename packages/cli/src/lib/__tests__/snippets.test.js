@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import {
   SNIPPET_LOADER_VERSION,
   SNIPPET_MODULES_VERSION,
@@ -18,8 +17,6 @@ import {
   sanitizeSnippetToken,
   sanitizeSnippetVersion,
 } from '../snippets.js';
-
-const cliVersion = createRequire(import.meta.url)('../../../package.json').version;
 
 async function readTemplate(rel) {
   return fs.readFile(path.join(defaultTemplatesRoot(), rel), 'utf8');
@@ -193,35 +190,33 @@ describe('official head snippets', () => {
     expect(text).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
     expect(text).toContain(`loader @${SNIPPET_LOADER_VERSION}`);
     expect(text).toContain(`modules @${SNIPPET_MODULES_VERSION}`);
-    expect(text).not.toContain(`data-stagepass-version="${cliVersion}"`);
-    expect(text).not.toContain(`loader @${cliVersion}`);
     expect(text).not.toContain('Webflow Custom Code (Footer):');
     expect(text).not.toContain('all.min.js');
     expect(text).not.toContain('stagepass.one');
   });
 
-  it('does not take snippet pins from the CLI package version', async () => {
-    expect(SNIPPET_LOADER_VERSION).toBe('2.4.0');
+  it('reads snippet pins from cdn-base literals, not the CLI package.json', async () => {
+    expect(SNIPPET_LOADER_VERSION).toBe('2.5.0');
     expect(SNIPPET_MODULES_VERSION).toBe('2.2.2');
-    expect(SNIPPET_LOADER_VERSION).not.toBe(cliVersion);
-    expect(SNIPPET_MODULES_VERSION).not.toBe(cliVersion);
-    const source = await fs.readFile(new URL('../cdn-base.js', import.meta.url), 'utf8');
-    expect(source).not.toMatch(/package\.json/);
-    expect(source).toContain("export const SNIPPET_LOADER_VERSION = '2.4.0';");
-    expect(source).toContain("export const SNIPPET_MODULES_VERSION = '2.2.2';");
+    const pins = await fs.readFile(new URL('../cdn-base.js', import.meta.url), 'utf8');
+    expect(pins).not.toMatch(/package\.json/);
+    expect(pins).toContain("export const SNIPPET_LOADER_VERSION = '2.5.0';");
+    expect(pins).toContain("export const SNIPPET_MODULES_VERSION = '2.2.2';");
+    const builder = await fs.readFile(new URL('../snippets.js', import.meta.url), 'utf8');
+    expect(builder).toContain('SNIPPET_LOADER_VERSION');
+    expect(builder).toContain('SNIPPET_MODULES_VERSION');
+    expect(builder).not.toMatch(/package\.json/);
+    expect(builder).not.toMatch(/\bLOADER_VERSION\b/);
 
     const lines = [];
     const snippets = buildWebflowSnippets({ moduleList: ['cookies'] });
     printWebflowSnippets(snippets, (msg) => lines.push(String(msg)));
     const text = lines.join('\n');
-    expect(snippets.head).toContain('data-stagepass-version="2.4.0"');
+    expect(snippets.head).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
     expect(snippets.head).toContain(stagepassPackageUrl('modules', '@2', 'cookies.min.js'));
     expect(snippets.head).not.toContain('inject.min.js');
-    expect(text).toContain('loader @2.4.0');
-    expect(text).toContain('modules @2.2.2');
-    expect(text).not.toContain(`data-stagepass-version="${cliVersion}"`);
-    expect(text).not.toContain(`loader @${cliVersion}`);
-    expect(text).not.toContain(`modules @${cliVersion}`);
+    expect(text).toContain(`loader @${SNIPPET_LOADER_VERSION}`);
+    expect(text).toContain(`modules @${SNIPPET_MODULES_VERSION}`);
   });
 
   it('prints only the declared module, in inject, cookies, maintenance order', () => {
