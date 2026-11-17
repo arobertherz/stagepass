@@ -2,11 +2,11 @@
 
 Package: `@stagepass/cli`. System commands require macOS (platform guard in `src/lib/platform.js`). Override for tests only: `STAGEPASS_SKIP_PLATFORM_CHECK=1`. `--version` and `--help` work everywhere.
 
-**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI 2.5.0 (`@stagepass/cli`) `engines.node` is `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Contributors develop and test on Node 22 or 24. The v3 site block needs Caddy 2.9 or newer (`brew upgrade caddy`). `brew install caddy` does not upgrade an existing install.
+**Requirements:** macOS (system commands exit with code 1 on other platforms). Published CLI 2.4.1 (`@stagepass/cli`) `engines.node` is `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Contributors develop and test on Node 22 or 24. The v3 site block needs Caddy 2.9 or newer (`brew upgrade caddy`). `brew install caddy` does not upgrade an existing install.
 
 Typical order: `setup` → `start` → `link`, then `stagepass build` / `stagepass watch` / `stagepass dev` (then `reload` / `unlink` / `stop` as needed). Most commands support `-v, --verbose`.
 
-This reference describes the published CLI **2.5.0** (npm `latest`).
+This reference describes the unreleased CLI **2.5.0** in this repository. npm `latest` remains published CLI **2.4.1**.
 
 ## Commands
 

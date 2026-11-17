@@ -11,7 +11,7 @@ We use a monorepo workspace structure to manage these distinct packages:
 
 ### 1. `packages/cli` (Node.js Environment)
 -   **Purpose:** Sets up the local environment (HTTPS, DNS, PHP).
--   **Tech:** Published CLI 2.5.0 requires Node 20.17+ (`engines.node` `>=20.17.0`). Node 18 is no longer supported. Development/CI: Node 22 or 24. Commander, Execa, Ora, `@inquirer/prompts`.
+-   **Tech:** Published CLI 2.4.1 requires Node 20.17+ (`engines.node` `>=20.17.0`). Node 18 is no longer supported. Development/CI: Node 22 or 24. Commander, Execa, Ora, `@inquirer/prompts`.
 -   **Platform:** macOS only for system commands. Guard in `src/lib/platform.js`; override with `STAGEPASS_SKIP_PLATFORM_CHECK=1` for tests/CI only.
 -   **Role:** The "Enabler". It creates the environment where local files are served.
 -   **Package Name:** `@stagepass/cli`

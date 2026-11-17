@@ -6,7 +6,7 @@ The CLI sets up and manages the local Stagepass infrastructure (`.sp` domains, C
 
 ## Install
 
-Published CLI 2.5.0 requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew, because `@inquirer/prompts@8` requires it. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Development and CI use Node 22 or 24.
+Published CLI 2.4.1 requires Node.js **20.17+** (`engines.node`: `>=20.17.0`) on **macOS** with Homebrew, because `@inquirer/prompts@8` requires it. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Development and CI use Node 22 or 24.
 
 ```bash
 npm install -g @stagepass/cli@2
@@ -21,7 +21,7 @@ npx @stagepass/cli@2 setup
 ## Requirements
 
 - **macOS** (system commands refuse other platforms with exit code 1; this is not a breaking change because those commands never worked off macOS)
-- Published CLI 2.5.0: Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
+- Published CLI 2.4.1: Node.js `>=20.17.0`. Use Node 22 or 24 for local development and CI
 - Homebrew
 
 `stagepass --version` and `stagepass --help` work on any platform. For tests/CI only, set `STAGEPASS_SKIP_PLATFORM_CHECK=1` to bypass the macOS guard (not for production use).
