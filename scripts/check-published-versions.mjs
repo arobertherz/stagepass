@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Fail when an exact pin for @stagepass/loader or @stagepass/modules is not
- * in the published npm version list.
+ * in the published npm version list. A published exact pin that is not the
+ * `latest` dist-tag is a warning and does not change the exit code.
+ * Major pins (@2, @2.x) are not checked.
  *
  * Pin heuristic (exact pins only):
  * - SNIPPET_LOADER_VERSION / SNIPPET_MODULES_VERSION string literals
@@ -13,10 +15,12 @@
  * and historical notes in CHANGELOG.md. Tests, dist, and node_modules are not scanned.
  * cdn-base.js is the source for generated snippet exact pins.
  *
- * Default (CI / release): `npm view @stagepass/loader versions --json` and the
- * same for @stagepass/modules. No auth.
+ * Default (CI / release): `npm view @stagepass/<pkg> versions dist-tags --json`.
+ * No auth. `dist-tags.latest` is the current latest. `next` is not.
  * Offline: STAGEPASS_PUBLISHED_VERSIONS=/path/to.json
- *   { "loader": ["2.5.0"], "modules": ["2.2.2"] }
+ *   { "loader": ["2.4.0", "2.5.0"], "modules": ["2.2.2"],
+ *     "latest": { "loader": "2.5.0", "modules": "2.2.2" } }
+ * When `latest` is omitted, the last entry of each array is used.
  * When that variable is set, the registry is not contacted.
  *
  * Optional first argument: directory to scan (default: repo root).
@@ -122,7 +126,7 @@ export function collectPins(root = ROOT) {
 
 /**
  * @param {NodeJS.ProcessEnv} [env]
- * @returns {{ loader: string[], modules: string[] }}
+ * @returns {{ loader: string[], modules: string[], latest: { loader?: string, modules?: string } }}
  */
 export function loadPublishedVersions(env = process.env) {
   const mock = env.STAGEPASS_PUBLISHED_VERSIONS;
@@ -138,35 +142,76 @@ export function loadPublishedVersions(env = process.env) {
     if (!Array.isArray(loader) || !Array.isArray(modules)) {
       throw new Error('STAGEPASS_PUBLISHED_VERSIONS must be JSON with loader and modules arrays');
     }
-    return { loader, modules };
+    const latestField = parsed.latest || {};
+    return {
+      loader,
+      modules,
+      latest: {
+        loader: latestField.loader || latestField['@stagepass/loader'] || lastVersion(loader),
+        modules: latestField.modules || latestField['@stagepass/modules'] || lastVersion(modules),
+      },
+    };
   }
+  const loaderInfo = npmPackageFacts('loader');
+  const modulesInfo = npmPackageFacts('modules');
   return {
-    loader: npmVersions('loader'),
-    modules: npmVersions('modules'),
+    loader: loaderInfo.versions,
+    modules: modulesInfo.versions,
+    latest: { loader: loaderInfo.latest, modules: modulesInfo.latest },
   };
 }
 
-function npmVersions(name) {
-  const raw = execFileSync('npm', ['view', `@stagepass/${name}`, 'versions', '--json'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const parsed = JSON.parse(raw);
-  if (typeof parsed === 'string') return [parsed];
-  if (!Array.isArray(parsed)) {
+function lastVersion(list) {
+  return list.length > 0 ? list[list.length - 1] : undefined;
+}
+
+function asVersionList(value, name) {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) {
     throw new Error(`Unexpected versions payload for @stagepass/${name}`);
   }
-  return parsed;
+  return value;
+}
+
+function npmPackageFacts(name) {
+  const raw = execFileSync(
+    'npm',
+    ['view', `@stagepass/${name}`, 'versions', 'dist-tags', '--json'],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+  const parsed = JSON.parse(raw);
+  const versions = asVersionList(parsed.versions, name);
+  const latest = parsed['dist-tags'] && parsed['dist-tags'].latest;
+  if (typeof latest !== 'string' || !latest) {
+    throw new Error(`No latest dist-tag for @stagepass/${name}`);
+  }
+  return { versions, latest };
 }
 
 /**
  * @param {{ file: string, line: number, package: string, version: string }[]} pins
- * @param {{ loader: string[], modules: string[] }} published
+ * @param {{ loader: string[], modules: string[], latest?: { loader?: string, modules?: string } }} published
  */
 export function unpublishedPins(pins, published) {
   return pins.filter((pin) => {
     const list = published[pin.package] || [];
     return !list.includes(pin.version);
+  });
+}
+
+/**
+ * Published exact pins that are not the `latest` dist-tag. Major pins never
+ * reach this list. Unpublished pins are errors, not warnings.
+ * @param {{ file: string, line: number, package: string, version: string }[]} pins
+ * @param {{ loader: string[], modules: string[], latest?: { loader?: string, modules?: string } }} published
+ */
+export function outdatedPins(pins, published) {
+  const latest = published.latest || {};
+  return pins.filter((pin) => {
+    const list = published[pin.package] || [];
+    const current = latest[pin.package];
+    if (!current || !list.includes(pin.version)) return false;
+    return pin.version !== current;
   });
 }
 
@@ -186,6 +231,13 @@ function main() {
     process.exit(1);
   }
   const missing = unpublishedPins(pins, published);
+  const stale = outdatedPins(pins, published);
+  for (const pin of stale) {
+    const current = published.latest[pin.package];
+    console.error(
+      `${pin.file}:${pin.line}: warning: @stagepass/${pin.package}@${pin.version} is published but not latest (latest is ${current})`
+    );
+  }
   if (missing.length > 0) {
     for (const pin of missing) {
       console.error(
@@ -194,7 +246,8 @@ function main() {
     }
     process.exit(1);
   }
-  console.log(`Published-version gate ok (${pins.length} exact pins).`);
+  const note = stale.length > 0 ? `, ${stale.length} outdated` : '';
+  console.log(`Published-version gate ok (${pins.length} exact pins${note}).`);
 }
 
 const isDirect = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];

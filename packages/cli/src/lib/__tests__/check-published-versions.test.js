@@ -71,7 +71,49 @@ describe('check-published-versions', () => {
     rmSync(dir, { recursive: true, force: true });
     expect(res.status).toBe(0);
     expect(res.stderr).not.toContain('npm-called');
+    expect(res.stderr).not.toContain('warning:');
     expect(res.stdout).toContain('Published-version gate ok');
+  });
+
+  it('warns when a published pin is not latest and still errors on an unpublished pin', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-pins-stale-'));
+    writeFixture(dir, {
+      'docs/example.md': [
+        '<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.4.0/dist/loader.min.js"></script>',
+        '<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@9.9.9/dist/loader.min.js"></script>',
+        '<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>',
+        '',
+      ].join('\n'),
+    });
+    const res = runGate(dir, mockEnv(dir, {
+      loader: ['2.4.0', '2.5.0'],
+      modules: ['2.2.2'],
+      latest: { loader: '2.5.0', modules: '2.2.2' },
+    }));
+    rmSync(dir, { recursive: true, force: true });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('warning: @stagepass/loader@2.4.0 is published but not latest (latest is 2.5.0)');
+    expect(res.stderr).toContain('unpublished @stagepass/loader@9.9.9');
+    expect(res.stderr).not.toContain('loader@2 is');
+    expect(res.stderr).not.toContain('npm-called');
+  });
+
+  it('exits 0 when the only issue is an outdated published pin', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-pins-warn-'));
+    writeFixture(dir, {
+      'README.md':
+        '<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.4.0/dist/loader.min.js"></script>\n',
+    });
+    const res = runGate(dir, mockEnv(dir, {
+      loader: ['2.4.0', '2.5.0'],
+      modules: ['2.2.2'],
+      latest: { loader: '2.5.0', modules: '2.2.2' },
+    }));
+    rmSync(dir, { recursive: true, force: true });
+    expect(res.status).toBe(0);
+    expect(res.stderr).toContain('latest is 2.5.0');
+    expect(res.stdout).toContain('1 outdated');
+    expect(res.stderr).not.toContain('npm-called');
   });
 
   it('fails with file and version when a pin is unpublished', () => {
@@ -85,6 +127,7 @@ describe('check-published-versions', () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toContain('docs/example.md');
     expect(res.stderr).toContain('unpublished @stagepass/loader@9.9.9');
+    expect(res.stderr).not.toContain('warning:');
     expect(res.stderr).not.toContain('npm-called');
   });
 
@@ -98,9 +141,14 @@ describe('check-published-versions', () => {
         '',
       ].join('\n'),
     });
-    const res = runGate(dir, mockEnv(dir, { loader: [], modules: [] }));
+    const res = runGate(dir, mockEnv(dir, {
+      loader: ['2.4.0', '2.5.0'],
+      modules: ['2.2.2'],
+      latest: { loader: '2.5.0', modules: '2.2.2' },
+    }));
     rmSync(dir, { recursive: true, force: true });
     expect(res.status).toBe(0);
+    expect(res.stderr).not.toContain('warning:');
     expect(res.stderr).not.toContain('npm-called');
   });
 
