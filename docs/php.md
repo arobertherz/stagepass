@@ -2,7 +2,7 @@
 
 Live page: [https://stagepass.one/docs/php/](https://stagepass.one/docs/php/)
 
-This file is the source outline for that site page. It describes published `@stagepass/cli` 2.4.1 (npm `latest`, tarball sha256 `ab7462d0235a7ede563fe1150430b4fa3a49e1eb62b433a1349d3e7889231153`, commit `23d0814`) and the unreleased 2.5.0 in this repository. 2.5.0 is not published. Published 2.4.0 tarball sha256 is `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`. `@stagepass/loader` types referenced here are 2.5.0.
+This file is the source outline for that site page. It describes published `@stagepass/cli` 2.5.0 (npm `latest`, tarball sha256 `fe83b7ea5d0c8bb8e509191221a79e6588bf210085f7bd8e4db81a9ec563ceb3`, commit `557e7d6`). Published 2.4.1 is the security patch (tarball sha256 `ab7462d0235a7ede563fe1150430b4fa3a49e1eb62b433a1349d3e7889231153`, commit `23d0814`). Published 2.4.0 tarball sha256 is `d569578e3e5ba2df5352caf085fd808136af68f40a7e4f9fd9cd824a45f6ba34`, commit `9886c4a`. `@stagepass/loader` types referenced here are 2.5.0.
 
 ## 1. What this is
 
