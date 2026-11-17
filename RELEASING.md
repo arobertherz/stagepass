@@ -78,13 +78,13 @@ Or approve in the npm website **Staged Packages** tab. Reject with `npm stage re
 
 ### 1e. Verify on a Webflow staging site
 
-Pin the **exact** beta version (ranges like `@2` will not pick it up):
+Pin the **exact** published version (ranges like `@2` will not pick up a prerelease). The sample below uses versions that are on npm. Replace them with the version you just published, including a prerelease, only when `npm view <pkg> versions` lists it:
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.1.0-beta.1/dist/loader.min.js"
+  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.5.0/dist/loader.min.js"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.1.0-beta.1/dist/inject.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.2.2/dist/inject.min.js"></script>
 ```
 
 Test on a generic Webflow staging host such as `my-project.webflow.io` (never a real customer domain). Confirm loader/modules behaviour before promoting to stable.
@@ -132,7 +132,7 @@ Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr
 
 ## Required human checklist (not automated)
 
-`.github/workflows/release.yml` covers ref validation, install, build, package tests, packed smoke, selector, and one `npm stage publish --tag <dist_tag>`. It does **not** cover the items below. Complete them before treating a release as public-ready:
+`.github/workflows/release.yml` covers ref validation, install, build, package tests, packed smoke, selector, the published-version gate, and one `npm stage publish --tag <dist_tag>`. It does **not** cover the items below. Complete them before treating a release as public-ready:
 
 1. GitHub README and the npm package README (this repo’s `packages/<name>/README.md`) describe the same published version and do not advertise unpublished commands as available.
 2. Website changelog / release notes on stagepass.one match the public notes (manual content export; the website does not auto-sync from this repo at build time).
@@ -143,4 +143,6 @@ Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr
 7. jsDelivr/unpkg `@2` is a major-range alias and is not the npm `latest` tag. CDN aliases can keep serving an older 2.x build until they refresh. Document an exact pin when a specific build is required, and do not write that `@2` is `latest`.
 8. After the latest publish: Run scripts/mac-update-check.sh latest on a Mac with the previous version installed and attach the protocol.
 9. For a CLI release, check `packages/cli/src/lib/ai-guide.js` (the generated `AGENTS.stagepass.md`) against the published loader, modules, and CLI: new or changed APIs, flags, and PHP helpers. Do this alongside the README and `docs/`.
-10. After every published `@stagepass/loader` or `@stagepass/modules` release, update `SNIPPET_LOADER_VERSION` and/or `SNIPPET_MODULES_VERSION` in `packages/cli/src/lib/cdn-base.js`, and the tests that assert those literals, so CLI snippet exact pins match the newly published versions. Do not use `package-versions.js` / `LOADER_VERSION` for those pins. That file tracks the monorepo and can be ahead of npm.
+10. After every published `@stagepass/loader` or `@stagepass/modules` release, update `SNIPPET_LOADER_VERSION` and/or `SNIPPET_MODULES_VERSION` in `packages/cli/src/lib/cdn-base.js`, and the tests that assert those literals, so CLI snippet exact pins match the newly published versions. Then run `npm run check:published-versions` (same command as `node scripts/check-published-versions.mjs`). The release workflow runs that gate before `npm stage publish` and fails if an exact pin is missing from `npm view <pkg> versions`. Do not use `package-versions.js` / `LOADER_VERSION` for those pins. That file tracks the monorepo and can be ahead of npm.
+
+The gate treats these as exact pins: the `SNIPPET_*` literals, `data-stagepass-version` when the value is `x.y.z` or `x.y.z-prerelease`, `@stagepass/loader@x.y.z` and `@stagepass/modules@x.y.z` in docs and templates, and `loader @x.y.z` / `modules @x.y.z` on a line that says "exact pin". Major pins `@2` and `@2.x` are allowed. Prose that is not a pin (for example "ships since 2.4.0") is ignored. `CHANGELOG.md`, tests, `dist/`, and `node_modules/` are not scanned. Offline runs set `STAGEPASS_PUBLISHED_VERSIONS` to a JSON file `{ "loader": ["2.5.0"], "modules": ["2.2.2"] }` and do not call the registry. PR Tests do not run the live registry check, so a registry blip does not fail a pull request. The CLI test suite covers the gate with that mock.

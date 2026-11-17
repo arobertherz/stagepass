@@ -6,6 +6,7 @@
     ],
     "scripts": {
       "build": "npm run build --workspaces",
-      "test": "npm test --workspaces"
+      "test": "npm test --workspaces",
+      "check:published-versions": "node scripts/check-published-versions.mjs"
     }
   }
