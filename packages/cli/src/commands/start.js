@@ -428,6 +428,7 @@ export async function start(options = {}) {
           return 1;
         }
       }
+      let kickstarted = false;
       try {
         await exec('launchctl', buildLaunchctlKickstartArgs(uid));
         if (!options.verbose) {
@@ -442,8 +443,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
-        await printStartHeadSnippets(options.cwd || process.cwd());
-        return 0;
+        kickstarted = true;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
         console.log(
@@ -451,6 +451,10 @@ export async function start(options = {}) {
         );
         console.log(chalk.dim('Falling back to direct caddy start...'));
         if (!options.verbose) spinner.start('Booting background services...');
+      }
+      if (kickstarted) {
+        await printStartHeadSnippets(options.cwd || process.cwd());
+        return 0;
       }
     }
 
