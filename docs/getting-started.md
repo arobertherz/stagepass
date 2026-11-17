@@ -55,7 +55,7 @@ Stagepass enables **instant local development** on live Webflow sites without to
 
 ## Installation
 
-Stagepass CLI is distributed via npm. Published CLI 2.4.1 requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
+Stagepass CLI is distributed via npm. Published CLI 2.5.0 requires Node `>=20.17.0`. Node 18 is no longer supported; stay on `@stagepass/cli@2.2.7` if you must remain on Node 18. Prefer the major pin `@2` (exact pin optional for production embeds; see [loader.md](./loader.md#version-pinning)):
 
 ```bash
 npm install -g @stagepass/cli@2

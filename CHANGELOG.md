@@ -31,9 +31,9 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## `@stagepass/cli`
 
-### [2.5.0] - unreleased
+### [2.5.0] - 2026-11-17
 
-Minor release on top of 2.4.1. Loader and modules are separate packages and are not part of this release. Not yet published; npm dist-tag `latest` remains `@stagepass/cli@2.4.1`.
+Minor release on top of 2.4.1. Loader and modules are separate packages and are not part of this release. Published on npm as `@stagepass/cli@2.5.0` on 17 November 2026. Source tag `cli-v2.5.0` (`557e7d6`). Tarball sha256 `fe83b7ea5d0c8bb8e509191221a79e6588bf210085f7bd8e4db81a9ec563ceb3`. npm dist-tag `latest` is `@stagepass/cli@2.5.0`.
 
 #### Added
 
