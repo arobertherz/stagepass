@@ -10,7 +10,7 @@ import {
 
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { SNIPPET_LOADER_VERSION } from '../lib/cdn-base.js';
 import {
   PACKAGES_MAJOR_RANGE,
   fetchPublished,
@@ -544,7 +544,7 @@ export async function upgrade(options = {}, deps = {}) {
     snippetVersion = await resolveSnippetLoaderVersion({
       published: await getLoaderPub(),
       cwd,
-      bundled: STAGEPASS_PACKAGES_VERSION,
+      bundled: SNIPPET_LOADER_VERSION,
       fse,
     });
   }

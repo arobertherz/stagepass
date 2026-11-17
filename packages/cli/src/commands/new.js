@@ -20,7 +20,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { SNIPPET_LOADER_VERSION } from '../lib/cdn-base.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
 import { cursorDirPresent } from '../lib/project-sync.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
@@ -440,8 +440,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       install,
       dryRun: options.dryRun === true,
       cursorRule: options.cursorRule === true,
-      loaderVersion:
-        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
+      loaderVersion: deps.packagesVersion || SNIPPET_LOADER_VERSION,
     },
   };
 }

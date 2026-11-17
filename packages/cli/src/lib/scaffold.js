@@ -10,6 +10,7 @@ import {
   renderStagepassAgentsFile,
 } from './ai-guide.js';
 import { typesForModules } from './project-modules.js';
+import { SNIPPET_LOADER_VERSION } from './cdn-base.js';
 import { LOADER_VERSION, packagesRange } from './versions.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -186,7 +187,7 @@ export function buildStagepassExtraLines(options) {
  * @returns {Promise<{ relativePath: string, contents: string }[]>}
  */
 export async function planScaffoldFiles(options, deps = {}) {
-  const version = options.loaderVersion || LOADER_VERSION;
+  const version = options.loaderVersion || SNIPPET_LOADER_VERSION;
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
   const entryJs = isTs ? 'src/main.ts' : 'src/main.js';

@@ -638,9 +638,14 @@ describe('createNew robustness', () => {
         }
       );
       expect(code).toBe(0);
-      const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+      const { SNIPPET_LOADER_VERSION } = await import('../../lib/cdn-base.js');
+      const { createRequire } = await import('node:module');
+      const cliVersion = createRequire(import.meta.url)('../../../package.json').version;
       const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
-      expect(readme).toContain(`data-stagepass-version="${STAGEPASS_PACKAGES_VERSION}"`);
+      expect(readme).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
+      expect(readme).toContain(`@${SNIPPET_LOADER_VERSION}`);
+      expect(readme).not.toContain(`data-stagepass-version="${cliVersion}"`);
+      expect(readme).not.toContain(`@${cliVersion}`);
     } finally {
       await fs.remove(tmp);
     }

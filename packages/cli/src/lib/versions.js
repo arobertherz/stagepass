@@ -2,11 +2,13 @@
  * Versions of @stagepass/loader and @stagepass/modules this CLI targets.
  *
  * Values come from the generated `package-versions.js` (run
- * `node scripts/sync-cli-versions.mjs`). Used for docs and snippet examples.
- * Dependency ranges never come from the CLI version: new projects use the
- * major range (`^2`) and `stagepass upgrade` only writes ranges a published
- * version satisfies. A drift test keeps the generated file in sync with
- * packages/loader and packages/modules.
+ * `node scripts/sync-cli-versions.mjs`). They track the monorepo packages.
+ * Snippet exact pins do not use them: those live in `cdn-base.js`
+ * (`SNIPPET_LOADER_VERSION`, `SNIPPET_MODULES_VERSION`). Dependency ranges
+ * never come from the CLI version: new projects use the major range (`^2`)
+ * and `stagepass upgrade` only writes ranges a published version satisfies.
+ * A drift test keeps the generated file in sync with packages/loader and
+ * packages/modules.
  */
 
 import { LOADER_VERSION, MODULES_VERSION } from './package-versions.js';
@@ -14,9 +16,8 @@ import { LOADER_VERSION, MODULES_VERSION } from './package-versions.js';
 export { LOADER_VERSION, MODULES_VERSION };
 
 /**
- * @deprecated Prefer `LOADER_VERSION` for loader snippets / pins /
- * `data-stagepass-version`, and `MODULES_VERSION` where modules are meant.
- * Kept as an alias of `LOADER_VERSION` for older call sites and tests.
+ * @deprecated Alias of `LOADER_VERSION` for older call sites and tests.
+ * Snippet pins use `SNIPPET_LOADER_VERSION` in `cdn-base.js`.
  */
 export const STAGEPASS_PACKAGES_VERSION = LOADER_VERSION;
 

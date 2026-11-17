@@ -12,7 +12,7 @@ import {
   resolveSnippetLoaderVersion,
   satisfiesSimple,
 } from '../registry.js';
-import { STAGEPASS_PACKAGES_VERSION } from '../versions.js';
+import { SNIPPET_LOADER_VERSION } from '../cdn-base.js';
 
 describe('registry helpers', () => {
   it('major range matches the @2 embed policy', () => {
@@ -158,7 +158,7 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
     await withInstalled(undefined, async (cwd) => {
       expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.7' })).toBe('2.2.7');
-      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(STAGEPASS_PACKAGES_VERSION);
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(SNIPPET_LOADER_VERSION);
     });
   });
 });

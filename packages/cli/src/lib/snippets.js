@@ -1,9 +1,12 @@
 import { execFile as nodeExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { stagepassPackageUrl } from './cdn-base.js';
+import {
+  SNIPPET_LOADER_VERSION,
+  SNIPPET_MODULES_VERSION,
+  stagepassPackageUrl,
+} from './cdn-base.js';
 import { validateProjectName } from './project-name.js';
 import { expandModules, normalizeModulesList } from './project-modules.js';
-import { LOADER_VERSION, MODULES_VERSION } from './versions.js';
 
 const execFileAsync = promisify(nodeExecFile);
 
@@ -172,7 +175,7 @@ function footerFor(assets) {
  * @returns {{ head: string, footer: string, majorPin: string, exactPin: string, assetExampleUrl: string, assetHint: string }}
  */
 export function buildWebflowSnippets(options) {
-  const version = sanitizeSnippetVersion(options.version || LOADER_VERSION);
+  const version = sanitizeSnippetVersion(options.version || SNIPPET_LOADER_VERSION);
   /** @type {string[]} */
   let moduleFiles = [];
   if (Array.isArray(options.moduleList)) {
@@ -262,9 +265,10 @@ async function gitText(cwd, args, exec) {
   }
 }
 
-function logExactPin(log) {
+function logExactPin(log, snippets) {
+  const loader = String(snippets?.exactPin || '').replace(/^@/, '') || SNIPPET_LOADER_VERSION;
   log(
-    `\nOptional exact pin example (instead of @2): loader @${LOADER_VERSION}, modules @${MODULES_VERSION}.`
+    `\nOptional exact pin example (instead of @2): loader @${loader}, modules @${SNIPPET_MODULES_VERSION}.`
   );
 }
 
@@ -276,7 +280,7 @@ function logExactPin(log) {
 export function printWebflowHeadSnippets(snippets, log = console.log) {
   log('\nWebflow Custom Code (Head):');
   log(snippets.head);
-  logExactPin(log);
+  logExactPin(log, snippets);
 }
 
 /**
@@ -289,5 +293,5 @@ export function printWebflowSnippets(snippets, log = console.log) {
   log(snippets.head);
   log('\nWebflow Custom Code (Footer):');
   log(snippets.footer);
-  logExactPin(log);
+  logExactPin(log, snippets);
 }

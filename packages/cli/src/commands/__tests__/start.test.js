@@ -9,7 +9,10 @@ import {
   isSafePid,
   start,
 } from '../start.js';
+import { createRequire } from 'node:module';
 import { LAUNCH_AGENT_LABEL } from '../../lib/autostart.js';
+
+const cliVersion = createRequire(import.meta.url)('../../../package.json').version;
 
 describe('start helpers', () => {
   it('summarizes cert findings including orphans', () => {
@@ -382,6 +385,11 @@ describe('start autostart / certs integration', () => {
       const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
       expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
       expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js');
+      expect(joined).toContain('data-stagepass-version="2.4.0"');
+      expect(joined).toContain('loader @2.4.0');
+      expect(joined).toContain('modules @2.2.2');
+      expect(joined).not.toContain(`data-stagepass-version="${cliVersion}"`);
+      expect(joined).not.toContain(`loader @${cliVersion}`);
       expect(joined).not.toContain('inject.min.js');
       expect(joined).not.toContain('maintenance.min.js');
       expect(joined).not.toContain('No modules are declared');
