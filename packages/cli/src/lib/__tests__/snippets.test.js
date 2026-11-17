@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {
   SNIPPET_LOADER_VERSION,
@@ -249,7 +252,7 @@ describe('readSnippetGitRef', () => {
     const ref = await readSnippetGitRef('/proj', async (file, args) => {
       expect(file).toBe('git');
       if (args[0] === 'remote') return { stdout: 'git@github.com:acme/widgets.git\n' };
-      if (args[0] === 'rev-parse') return { stdout: 'release/cli-2.5.0\n' };
+      if (args[0] === 'symbolic-ref') return { stdout: 'release/cli-2.5.0\n' };
       throw new Error(`unexpected ${args.join(' ')}`);
     });
     expect(ref).toEqual({
@@ -263,6 +266,91 @@ describe('readSnippetGitRef', () => {
       throw new Error('not a repo');
     });
     expect(ref).toEqual({ gitRemote: '', gitBranch: 'main' });
+  });
+
+  it('falls back to branch --show-current when symbolic-ref fails', async () => {
+    const ref = await readSnippetGitRef('/proj', async (file, args) => {
+      expect(file).toBe('git');
+      if (args[0] === 'remote') return { stdout: 'https://github.com/acme/widgets.git\n' };
+      if (args[0] === 'symbolic-ref') throw new Error('detached');
+      if (args[0] === 'branch' && args[1] === '--show-current') return { stdout: 'hotfix\n' };
+      throw new Error(`unexpected ${args.join(' ')}`);
+    });
+    expect(ref).toEqual({
+      gitRemote: 'https://github.com/acme/widgets.git',
+      gitBranch: 'hotfix',
+    });
+  });
+});
+
+describe('readSnippetGitRef with a real git repo', () => {
+  const gitEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: 'Stagepass Test',
+    GIT_AUTHOR_EMAIL: 'test@example.com',
+    GIT_COMMITTER_NAME: 'Stagepass Test',
+    GIT_COMMITTER_EMAIL: 'test@example.com',
+  };
+
+  function git(cwd, args) {
+    return execFileSync('git', args, { cwd, encoding: 'utf8', env: gitEnv });
+  }
+
+  function makeRepo() {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-gitref-'));
+    git(dir, ['init', '-b', 'main']);
+    git(dir, ['config', 'user.name', 'Stagepass Test']);
+    git(dir, ['config', 'user.email', 'test@example.com']);
+    git(dir, ['remote', 'add', 'origin', 'https://github.com/acme/widgets.git']);
+    return dir;
+  }
+
+  it('reads the current branch in a repo with no commits', async () => {
+    const dir = makeRepo();
+    try {
+      git(dir, ['checkout', '-b', 'develop']);
+      const ref = await readSnippetGitRef(dir);
+      expect(ref).toEqual({
+        gitRemote: 'https://github.com/acme/widgets.git',
+        gitBranch: 'develop',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a normal branch after a commit', async () => {
+    const dir = makeRepo();
+    try {
+      writeFileSync(path.join(dir, 'README.md'), 'ok\n');
+      git(dir, ['add', 'README.md']);
+      git(dir, ['commit', '-m', 'init']);
+      git(dir, ['checkout', '-b', 'feature/footer']);
+      const ref = await readSnippetGitRef(dir);
+      expect(ref).toEqual({
+        gitRemote: 'https://github.com/acme/widgets.git',
+        gitBranch: 'feature/footer',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to main on a detached HEAD', async () => {
+    const dir = makeRepo();
+    try {
+      writeFileSync(path.join(dir, 'README.md'), 'ok\n');
+      git(dir, ['add', 'README.md']);
+      git(dir, ['commit', '-m', 'init']);
+      git(dir, ['checkout', '--detach']);
+      const ref = await readSnippetGitRef(dir);
+      expect(ref).toEqual({
+        gitRemote: 'https://github.com/acme/widgets.git',
+        gitBranch: 'main',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

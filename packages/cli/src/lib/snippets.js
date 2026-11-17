@@ -238,7 +238,10 @@ export function buildOfficialHeadSnippets(options = {}) {
  */
 export async function readSnippetGitRef(cwd, exec) {
   const gitRemote = await gitText(cwd, ['remote', 'get-url', 'origin'], exec);
-  let gitBranch = await gitText(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'], exec);
+  // symbolic-ref and branch --show-current still work on an unborn branch
+  // (no commits yet). rev-parse --abbrev-ref HEAD does not.
+  let gitBranch = await gitText(cwd, ['symbolic-ref', '--short', 'HEAD'], exec);
+  if (!gitBranch) gitBranch = await gitText(cwd, ['branch', '--show-current'], exec);
   if (!gitBranch || gitBranch === 'HEAD') gitBranch = 'main';
   return { gitRemote, gitBranch };
 }
