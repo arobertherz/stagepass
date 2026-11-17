@@ -32,7 +32,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXACT = String.raw`[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?`;
+const EXACT = String.raw`[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?`;
 
 const FILE_GLOBS = [
   'README.md',
@@ -89,10 +89,10 @@ export function pinsInText(text, file) {
   const loaderConst = new RegExp(`SNIPPET_LOADER_VERSION\\s*=\\s*['"](${EXACT})['"]`, 'g');
   const modulesConst = new RegExp(`SNIPPET_MODULES_VERSION\\s*=\\s*['"](${EXACT})['"]`, 'g');
   const attr = new RegExp(`data-stagepass-version\\s*=\\s*['"](${EXACT})['"]`, 'g');
-  const loaderUrl = new RegExp(`@stagepass/loader@(${EXACT})(?![0-9A-Za-z.-])`, 'g');
-  const modulesUrl = new RegExp(`@stagepass/modules@(${EXACT})(?![0-9A-Za-z.-])`, 'g');
-  const loaderHint = new RegExp(`\\bloader\\s+@(${EXACT})(?![0-9A-Za-z.-])`, 'g');
-  const modulesHint = new RegExp(`\\bmodules\\s+@(${EXACT})(?![0-9A-Za-z.-])`, 'g');
+  const loaderUrl = new RegExp(`@stagepass/loader@(${EXACT})(?![0-9A-Za-z-])`, 'g');
+  const modulesUrl = new RegExp(`@stagepass/modules@(${EXACT})(?![0-9A-Za-z-])`, 'g');
+  const loaderHint = new RegExp(`\\bloader\\s+@(${EXACT})(?![0-9A-Za-z-])`, 'g');
+  const modulesHint = new RegExp(`\\bmodules\\s+@(${EXACT})(?![0-9A-Za-z-])`, 'g');
 
   lines.forEach((line, index) => {
     const lineNo = index + 1;
@@ -228,6 +228,12 @@ function main() {
     published = loadPublishedVersions();
   } catch (error) {
     console.error(error.message || error);
+    process.exit(1);
+  }
+  if (pins.length === 0) {
+    console.error(
+      'Published-version gate found no exact pins (check the scan root and pin files).'
+    );
     process.exit(1);
   }
   const missing = unpublishedPins(pins, published);

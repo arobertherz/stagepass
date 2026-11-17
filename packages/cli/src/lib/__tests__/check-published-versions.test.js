@@ -131,7 +131,18 @@ describe('check-published-versions', () => {
     expect(res.stderr).not.toContain('npm-called');
   });
 
-  it('passes a tree that only uses major @2 pins', () => {
+  it('detects an exact pin at the end of a sentence', () => {
+    const text = 'See @stagepass/loader@2.9.9.';
+    expect(pinsInText(text, 'docs/note.md')).toEqual([
+      { file: 'docs/note.md', line: 1, package: 'loader', version: '2.9.9' },
+    ]);
+    const pre = 'See @stagepass/modules@2.2.2-beta.1.';
+    expect(pinsInText(pre, 'docs/note.md')).toEqual([
+      { file: 'docs/note.md', line: 1, package: 'modules', version: '2.2.2-beta.1' },
+    ]);
+  });
+
+  it('fails when a tree has no exact pins', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-pins-major-'));
     writeFixture(dir, {
       'README.md': [
@@ -147,8 +158,20 @@ describe('check-published-versions', () => {
       latest: { loader: '2.5.0', modules: '2.2.2' },
     }));
     rmSync(dir, { recursive: true, force: true });
-    expect(res.status).toBe(0);
-    expect(res.stderr).not.toContain('warning:');
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('found no exact pins');
+    expect(res.stderr).not.toContain('npm-called');
+  });
+
+  it('fails an unpublished pin that sits at the end of a sentence', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-pins-period-'));
+    writeFixture(dir, {
+      'README.md': 'Do not use @stagepass/loader@9.9.9.\n',
+    });
+    const res = runGate(dir, mockEnv(dir, { loader: ['2.5.0'], modules: ['2.2.2'] }));
+    rmSync(dir, { recursive: true, force: true });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('unpublished @stagepass/loader@9.9.9');
     expect(res.stderr).not.toContain('npm-called');
   });
 
