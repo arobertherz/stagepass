@@ -190,16 +190,18 @@ export async function installedLoaderVersion(cwd, fse = fs) {
 
 /**
  * Loader version for Webflow snippets; never the CLI version.
- * Prefers the newest published stable 2.x, then installed, then the published pin.
+ * Prefers the newest published stable 2.x from the registry, otherwise
+ * the explicit bundled fallback or SNIPPET_LOADER_VERSION. Does not use a
+ * locally installed loader (it may be unpublished).
  * @param {object} options
  * @param {{ distTags: Record<string, string>, versions: string[] } | null} options.published
- * @param {string} options.cwd
+ * @param {string} [options.cwd] Unused; kept so existing callers stay valid.
  * @param {string} [options.bundled]
- * @param {typeof fs} [options.fse]
+ * @param {typeof fs} [options.fse] Unused; kept so existing callers stay valid.
  * @returns {Promise<string>}
  */
-export async function resolveSnippetLoaderVersion({ published, cwd, bundled, fse = fs }) {
+export async function resolveSnippetLoaderVersion({ published, bundled }) {
   const best = published ? maxSatisfying(published.versions, PACKAGES_MAJOR_RANGE) : null;
   if (best) return best;
-  return (await installedLoaderVersion(cwd, fse)) || bundled || SNIPPET_LOADER_VERSION;
+  return bundled || SNIPPET_LOADER_VERSION;
 }

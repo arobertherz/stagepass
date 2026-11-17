@@ -151,10 +151,11 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
   });
 
-  it('offline (or no 2.x published) uses the installed loader, then the bundled one', async () => {
+  it('offline (or no 2.x published) uses the bundled pin, not a local install', async () => {
     await withInstalled('2.3.9', async (cwd) => {
-      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.3.9');
-      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['3.0.0']), cwd, bundled: '2.2.0' })).toBe('2.3.9');
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.2.0');
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['3.0.0']), cwd, bundled: '2.2.0' })).toBe('2.2.0');
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(SNIPPET_LOADER_VERSION);
     });
     await withInstalled(undefined, async (cwd) => {
       expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.7' })).toBe('2.2.7');
