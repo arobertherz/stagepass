@@ -506,6 +506,30 @@ export async function upgrade(options = {}, deps = {}) {
     );
   }
 
+  if (!snippetVersion) {
+    snippetVersion = await resolveSnippetLoaderVersion({
+      published: await getLoaderPub(),
+      cwd,
+      bundled: SNIPPET_LOADER_VERSION,
+      fse,
+    });
+  }
+  let snippets;
+  try {
+    const readGitRef = deps.readGitRef || readSnippetGitRef;
+    const gitRef = await readGitRef(cwd);
+    snippets = buildWebflowSnippets({
+      version: snippetVersion,
+      moduleList: resolved.modules,
+      gitRemote: gitRef && gitRef.gitRemote,
+      gitBranch: gitRef && gitRef.gitBranch,
+      projectName: pkg.name,
+    });
+  } catch (err) {
+    log(chalk.red(err instanceof Error ? err.message : String(err)));
+    return 1;
+  }
+
   if (options.dryRun) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
@@ -540,29 +564,6 @@ export async function upgrade(options = {}, deps = {}) {
     }
   }
 
-  if (!snippetVersion) {
-    snippetVersion = await resolveSnippetLoaderVersion({
-      published: await getLoaderPub(),
-      cwd,
-      bundled: SNIPPET_LOADER_VERSION,
-      fse,
-    });
-  }
-  let snippets;
-  try {
-    const readGitRef = deps.readGitRef || readSnippetGitRef;
-    const gitRef = await readGitRef(cwd);
-    snippets = buildWebflowSnippets({
-      version: snippetVersion,
-      moduleList: resolved.modules,
-      gitRemote: gitRef && gitRef.gitRemote,
-      gitBranch: gitRef && gitRef.gitBranch,
-      projectName: pkg.name,
-    });
-  } catch (err) {
-    log(chalk.red(err instanceof Error ? err.message : String(err)));
-    return 1;
-  }
   printWebflowSnippets(snippets, log);
 
   log(chalk.bold('\nNext step (not run automatically):'));

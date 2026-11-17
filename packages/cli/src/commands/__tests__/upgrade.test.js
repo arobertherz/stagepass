@@ -167,6 +167,7 @@ describe('upgrade command', () => {
 
   it('does not print a malicious repo name in the footer', async () => {
     await oldStyleProject({ modulesDep: true });
+    const before = await snapshot(dir);
     const logs = [];
     const code = await upgrade(
       { siteModules: 'cookies' },
@@ -178,9 +179,13 @@ describe('upgrade command', () => {
       })
     );
     expect(code).toBe(1);
+    expect(await snapshot(dir)).toEqual(before);
     const out = logs.join('\n');
+    expect(out).toMatch(/Invalid name/);
     expect(out).not.toContain('<img');
     expect(out).not.toContain('cdn.jsdelivr.net/gh/');
+    expect(out).not.toContain('Updated package.json');
+    expect(out).not.toContain('YOUR-PRODUCTION-URL');
   });
 
   it('--dry-run prints the plan and writes nothing', async () => {
