@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'fs-extra';
 import {
   findPort443Conflict,
   resolvePort443Conflict,
@@ -7,6 +10,7 @@ import {
   start,
 } from '../start.js';
 import { LAUNCH_AGENT_LABEL } from '../../lib/autostart.js';
+import { SNIPPET_LOADER_VERSION, SNIPPET_MODULES_VERSION } from '../../lib/cdn-base.js';
 
 describe('start helpers', () => {
   it('summarizes cert findings including orphans', () => {
@@ -280,6 +284,184 @@ describe('start autostart / certs integration', () => {
     ).toBe(true);
     const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
     expect(joined).toMatch(/kickstart/);
+    expect(joined).toContain('Webflow Custom Code (Head):');
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+    );
+    expect(joined).toContain('No modules are declared in stagepass.json.');
+    expect(joined).not.toContain('@stagepass/modules');
+    expect(joined).not.toContain('Webflow Custom Code (Footer):');
+    expect(joined).not.toContain('cdn.stagepass.one');
+  });
+
+  it('prints head snippets after a direct caddy start', async () => {
+    const code = await start({
+      verbose: true,
+      interactive: false,
+      skipHandshake: true,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: false,
+        plistExists: false,
+      }),
+    });
+    expect(code).toBe(0);
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).toMatch(/Stagepass is active/);
+    expect(joined).toContain('Webflow Custom Code (Head):');
+    expect(joined).toContain(
+      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+    );
+    expect(joined).toContain('No modules are declared in stagepass.json.');
+    expect(joined).not.toContain('@stagepass/modules');
+    expect(joined).not.toContain('Webflow Custom Code (Footer):');
+  });
+
+  it('does not print head snippets when start fails', async () => {
+    const code = await start({
+      verbose: true,
+      interactive: false,
+      skipHandshake: true,
+      exec: async (file, args) => {
+        if (file === 'caddy' && args && args[0] === 'start') throw new Error('nope');
+        return { stdout: '', stderr: '', code: 0 };
+      },
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({
+        loaded: false,
+        plistExists: false,
+      }),
+    });
+    expect(code).toBe(1);
+    const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(joined).not.toContain('Webflow Custom Code (Head):');
+    expect(joined).not.toContain('loader.min.js');
+  });
+
+  async function projectWith(modules) {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-start-'));
+    const body = modules === undefined ? { name: 'demo' } : { name: 'demo', modules };
+    await fs.writeJson(path.join(cwd, 'stagepass.json'), body);
+    return cwd;
+  }
+
+  function startOk(cwd) {
+    return start({
+      cwd,
+      verbose: true,
+      interactive: false,
+      skipHandshake: true,
+      exec: async () => ({ stdout: '', stderr: '', code: 0 }),
+      runCertsCheck: async () => ({
+        root: { status: 'ok', reason: 'ok' },
+        trust: { trusted: true },
+        handshakes: [],
+        orphans: [],
+      }),
+      findPort443Conflict: async () => null,
+      getAutostartStatus: async () => ({ loaded: false, plistExists: false }),
+    });
+  }
+
+  it('prints the loader and only the one declared module', async () => {
+    const cwd = await projectWith(['cookies']);
+    try {
+      expect(await startOk(cwd)).toBe(0);
+      const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
+      expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js');
+      expect(joined).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
+      expect(joined).toContain(`loader @${SNIPPET_LOADER_VERSION}`);
+      expect(joined).toContain(`modules @${SNIPPET_MODULES_VERSION}`);
+      expect(joined).not.toContain('inject.min.js');
+      expect(joined).not.toContain('maintenance.min.js');
+      expect(joined).not.toContain('No modules are declared');
+      expect(joined).not.toContain('Webflow Custom Code (Footer):');
+      expect(joined).not.toContain('cdn.stagepass.one');
+    } finally {
+      await fs.remove(cwd);
+    }
+  });
+
+  it('prints several declared modules in inject, cookies, maintenance order', async () => {
+    const cwd = await projectWith(['maintenance', 'cookies', 'inject']);
+    try {
+      expect(await startOk(cwd)).toBe(0);
+      const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      const inject = joined.indexOf('inject.min.js');
+      const cookies = joined.indexOf('cookies.min.js');
+      const maintenance = joined.indexOf('maintenance.min.js');
+      expect(inject).toBeGreaterThan(-1);
+      expect(cookies).toBeGreaterThan(inject);
+      expect(maintenance).toBeGreaterThan(cookies);
+      expect(joined).not.toContain('all.min.js');
+      expect(joined).not.toContain('Webflow Custom Code (Footer):');
+    } finally {
+      await fs.remove(cwd);
+    }
+  });
+
+  it('prints the loader and a hint when no modules are declared', async () => {
+    const missing = await projectWith(undefined);
+    const empty = await projectWith([]);
+    try {
+      for (const cwd of [missing, empty]) {
+        logSpy.mockClear();
+        expect(await startOk(cwd)).toBe(0);
+        const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+        expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
+        expect(joined).toContain('No modules are declared in stagepass.json.');
+        expect(joined).not.toContain('@stagepass/modules');
+        expect(joined).not.toContain('Webflow Custom Code (Footer):');
+      }
+    } finally {
+      await fs.remove(missing);
+      await fs.remove(empty);
+    }
+  });
+
+  it('prints no head block when start fails for a project that declares a module', async () => {
+    const cwd = await projectWith(['cookies']);
+    try {
+      const code = await start({
+        cwd,
+        verbose: true,
+        interactive: false,
+        skipHandshake: true,
+        exec: async (file, args) => {
+          if (file === 'caddy' && args && args[0] === 'start') throw new Error('nope');
+          return { stdout: '', stderr: '', code: 0 };
+        },
+        runCertsCheck: async () => ({
+          root: { status: 'ok', reason: 'ok' },
+          trust: { trusted: true },
+          handshakes: [],
+          orphans: [],
+        }),
+        findPort443Conflict: async () => null,
+        getAutostartStatus: async () => ({ loaded: false, plistExists: false }),
+      });
+      expect(code).toBe(1);
+      const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(joined).not.toContain('Webflow Custom Code (Head):');
+      expect(joined).not.toContain('cookies.min.js');
+      expect(joined).not.toContain('No modules are declared');
+    } finally {
+      await fs.remove(cwd);
+    }
   });
 
   it('prints cert findings and hint when non-interactive', async () => {

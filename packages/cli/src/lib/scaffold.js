@@ -10,6 +10,7 @@ import {
   renderStagepassAgentsFile,
 } from './ai-guide.js';
 import { typesForModules } from './project-modules.js';
+import { SNIPPET_LOADER_VERSION } from './cdn-base.js';
 import { LOADER_VERSION, packagesRange } from './versions.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -186,7 +187,7 @@ export function buildStagepassExtraLines(options) {
  * @returns {Promise<{ relativePath: string, contents: string }[]>}
  */
 export async function planScaffoldFiles(options, deps = {}) {
-  const version = options.loaderVersion || LOADER_VERSION;
+  const version = options.loaderVersion || SNIPPET_LOADER_VERSION;
   const isTs = options.lang === 'ts';
   const useSass = options.styles === 'scss';
   const entryJs = isTs ? 'src/main.ts' : 'src/main.js';
@@ -199,6 +200,9 @@ export async function planScaffoldFiles(options, deps = {}) {
   const snippets = buildWebflowSnippets({
     version,
     moduleList: siteModules,
+    gitRemote: options.git ? options.remote || '' : '',
+    gitBranch: options.git ? 'main' : '',
+    projectName: options.name,
   });
   const types = typesForModules(siteModules, {
     modulesDependency: options.modules === true,
@@ -218,6 +222,8 @@ export async function planScaffoldFiles(options, deps = {}) {
     LOADER_VERSION: version,
     HEAD_SNIPPET: snippets.head,
     FOOTER_SNIPPET: snippets.footer,
+    ASSET_EXAMPLE_URL: snippets.assetExampleUrl,
+    ASSET_URL_HINT: snippets.assetHint,
     ENTRY_JS: entryJs,
     ENTRY_CSS: entryCss,
     USE_SASS: useSass ? 'true' : 'false',
@@ -290,7 +296,9 @@ export async function planScaffoldFiles(options, deps = {}) {
       })
     ),
   });
-  files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule() });
+  if (options.cursorRule === true) {
+    files.push({ relativePath: CURSOR_RULE_PATH, contents: buildCursorRule() });
+  }
 
   return files;
 }

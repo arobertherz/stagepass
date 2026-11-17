@@ -26,7 +26,23 @@ import {
   LAUNCH_AGENT_LABEL,
 } from '../lib/autostart.js';
 import { ensurePhpFpm } from '../lib/php-fpm.js';
+import { buildOfficialHeadSnippets, printWebflowHeadSnippets } from '../lib/snippets.js';
+import { declaredModules, readStagepassJson } from '../lib/project-sync.js';
 import { certsTrust, certsRenew } from './certs.js';
+
+/**
+ * Loader plus the modules declared in this project's stagepass.json.
+ * @param {string} cwd
+ */
+async function printStartHeadSnippets(cwd) {
+  const sp = await readStagepassJson(cwd);
+  const declared = declaredModules(sp.data);
+  const moduleList = Array.isArray(declared) ? declared : [];
+  printWebflowHeadSnippets(buildOfficialHeadSnippets({ moduleList }));
+  if (moduleList.length === 0) {
+    console.log('No modules are declared in stagepass.json.');
+  }
+}
 
 const PORT_IGNORE = ['Google Chrome', 'Chrome Helper', 'OneDrive', 'Music', 'Safari', 'caddy'];
 
@@ -412,6 +428,7 @@ export async function start(options = {}) {
           return 1;
         }
       }
+      let kickstarted = false;
       try {
         await exec('launchctl', buildLaunchctlKickstartArgs(uid));
         if (!options.verbose) {
@@ -426,7 +443,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
-        return 0;
+        kickstarted = true;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
         console.log(
@@ -434,6 +451,10 @@ export async function start(options = {}) {
         );
         console.log(chalk.dim('Falling back to direct caddy start...'));
         if (!options.verbose) spinner.start('Booting background services...');
+      }
+      if (kickstarted) {
+        await printStartHeadSnippets(options.cwd || process.cwd());
+        return 0;
       }
     }
 
@@ -454,6 +475,7 @@ export async function start(options = {}) {
     } else {
       console.log(chalk.green('✔ Stagepass is active.'));
     }
+    await printStartHeadSnippets(options.cwd || process.cwd());
     return 0;
   } catch (error) {
     if (!options.verbose) spinner.fail('Failed to start.');

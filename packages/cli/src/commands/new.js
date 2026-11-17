@@ -20,8 +20,9 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { SNIPPET_LOADER_VERSION } from '../lib/cdn-base.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
+import { cursorDirPresent } from '../lib/project-sync.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
 import {
   PACKAGES_MAJOR_RANGE,
@@ -438,8 +439,8 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       remote: remoteCheck.remote,
       install,
       dryRun: options.dryRun === true,
-      loaderVersion:
-        deps.packagesVersion || deps.cliVersion || STAGEPASS_PACKAGES_VERSION,
+      cursorRule: options.cursorRule === true,
+      loaderVersion: deps.packagesVersion || SNIPPET_LOADER_VERSION,
     },
   };
 }
@@ -653,6 +654,9 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const targetDir = path.isAbsolute(config.dir)
     ? config.dir
     : path.resolve(cwd, config.dir);
+  if (config.cursorRule !== true) {
+    config.cursorRule = await cursorDirPresent(targetDir, fse);
+  }
 
   const templatesRootResolved = path.resolve(templatesRoot);
   const readTemplate = async (rel) => {
@@ -847,6 +851,9 @@ export async function createNew(nameArg, options = {}, deps = {}) {
   const snippets = buildWebflowSnippets({
     version: config.loaderVersion,
     moduleList: config.siteModules,
+    gitRemote: config.git ? config.remote || '' : '',
+    gitBranch: config.git ? 'main' : '',
+    projectName: config.name,
   });
   printWebflowSnippets(snippets, log);
 

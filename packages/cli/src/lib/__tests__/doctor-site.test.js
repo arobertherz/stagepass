@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'fs-extra';
+import { buildCursorRule } from '../ai-guide.js';
 import { runProjectSiteChecks } from '../doctor-site.js';
 
 const live = (list, version = '2') =>
@@ -24,6 +25,41 @@ describe('runProjectSiteChecks', () => {
 
   it('returns nothing outside a project', async () => {
     expect(await runProjectSiteChecks({ cwd: dir })).toEqual([]);
+  });
+
+  it('does not warn about a missing Cursor rule when .cursor/ is absent', async () => {
+    await write({ modules: [] });
+    const checks = await runProjectSiteChecks({ cwd: dir, skipSite: true });
+    expect(checks.find((c) => c.id === 'project.cursor')).toBeUndefined();
+    expect(checks.some((c) => c.status === 'warn' && /stagepass\.mdc/.test(c.message))).toBe(false);
+  });
+
+  it('warns when .cursor/ exists and the rule is missing or stale', async () => {
+    await write({ modules: [] });
+    await fs.ensureDir(path.join(dir, '.cursor'));
+    const missing = await runProjectSiteChecks({ cwd: dir, skipSite: true });
+    expect(missing.find((c) => c.id === 'project.cursor')).toMatchObject({
+      status: 'warn',
+      message: '.cursor/rules/stagepass.mdc is missing',
+    });
+    expect(missing.find((c) => c.id === 'project.cursor').detail).toMatch(/stagepass upgrade/);
+
+    await fs.outputFile(
+      path.join(dir, '.cursor/rules/stagepass.mdc'),
+      '---\nalwaysApply: false\n---\n\n<!-- stagepass:begin -->\nold\n<!-- stagepass:end -->\n'
+    );
+    const stale = await runProjectSiteChecks({ cwd: dir, skipSite: true });
+    expect(stale.find((c) => c.id === 'project.cursor')).toMatchObject({
+      status: 'warn',
+      message: '.cursor/rules/stagepass.mdc is out of date',
+    });
+
+    await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), buildCursorRule());
+    const current = await runProjectSiteChecks({ cwd: dir, skipSite: true });
+    expect(current.find((c) => c.id === 'project.cursor')).toMatchObject({
+      status: 'ok',
+      message: 'Cursor rule points at AGENTS.stagepass.md',
+    });
   });
 
   it('reports the loaded version when everything matches', async () => {

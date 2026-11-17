@@ -326,6 +326,7 @@ export function createProgram(deps = {}) {
       'Bump @stagepass/*, sync project files, replace an unmodified scripts/build.mjs, add a missing PHP .htaccess, print Webflow snippets'
     )
     .option('--dry-run', 'Show changes without writing any file')
+    .option('--cursor-rule', 'Write .cursor/rules/stagepass.mdc even when .cursor/ is absent')
     .option('--site <host>', 'Live Webflow site to detect loaded modules from (https)')
     .option('--site-modules <list>', 'Modules the site loads: none, all, or inject,cookies,maintenance')
     .option('--skip-site', 'Do not fetch the live site')
@@ -397,6 +398,7 @@ export function createProgram(deps = {}) {
     .option('--git', 'Initialize a git repository')
     .option('--no-git', 'Do not initialize git')
     .option('--remote <url>', 'Git remote URL (requires git)')
+    .option('--cursor-rule', 'Write .cursor/rules/stagepass.mdc even when .cursor/ is absent')
     .option('--install', 'Run npm install after scaffolding')
     .option('--no-install', 'Do not run npm install (default)')
     .option('-y, --yes', 'Non-interactive; accept defaults for omitted flags')

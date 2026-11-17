@@ -85,12 +85,12 @@ describe('planProjectSync / applyProjectSync', () => {
   it('creates stagepass.json, AGENTS.md and the rule in an empty project', async () => {
     const plan = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
     expect(plan.writes.map((w) => w.file).sort()).toEqual([
-      '.cursor/rules/stagepass.mdc',
       'AGENTS.md',
       'AGENTS.stagepass.md',
       'stagepass.d.ts',
       'stagepass.json',
     ]);
+    expect(plan.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
     expect(plan.writes.find((w) => w.file === 'AGENTS.md').content).toBe(
       `# demo (Stagepass project)\n\n${buildAgentsPointerBlock()}\n`
     );
@@ -101,6 +101,7 @@ describe('planProjectSync / applyProjectSync', () => {
     expect(plan.writes.find((w) => w.file === 'stagepass.d.ts').content).toContain(STAGEPASS_TYPES_MARKER);
     expect(plan.notes.join('\n')).toContain('No tsconfig.json or jsconfig.json:');
     await applyProjectSync(dir, plan.writes);
+    expect(await fs.pathExists(path.join(dir, '.cursor'))).toBe(false);
     expect(await fs.readJson(path.join(dir, 'stagepass.json'))).toEqual({ name: 'demo', modules: [], version: 1 });
     const again = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
     expect(again.writes).toEqual([]);
@@ -273,11 +274,41 @@ describe('planProjectSync / applyProjectSync', () => {
     expect(rule).toContain('@AGENTS.stagepass.md');
     expect(rule).not.toContain('old api');
     expect(rule.endsWith('User tail\n')).toBe(true);
+    await applyProjectSync(dir, plan.writes.filter((w) => w.file === '.cursor/rules/stagepass.mdc'));
+    const kept = await fs.readFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'utf8');
+    expect(kept.endsWith('User tail\n')).toBe(true);
+    expect(kept).toContain('@AGENTS.stagepass.md');
 
     await fs.outputFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'my own rule\n');
     const foreign = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
     expect(foreign.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
     expect(foreign.notes.join('\n')).toContain('without stagepass markers');
+    expect(await fs.readFile(path.join(dir, '.cursor/rules/stagepass.mdc'), 'utf8')).toBe('my own rule\n');
+  });
+
+  it('writes the Cursor rule when .cursor/ exists or --cursor-rule is set', async () => {
+    const absent = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(absent.writes.map((w) => w.file)).not.toContain('.cursor/rules/stagepass.mdc');
+
+    await fs.ensureDir(path.join(dir, '.cursor'));
+    const fromDir = await planProjectSync({ cwd: dir, modules: [], pkg: { name: 'demo' } });
+    expect(fromDir.writes.find((w) => w.file === '.cursor/rules/stagepass.mdc').action).toBe('created');
+
+    const fresh = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-sync-flag-'));
+    try {
+      const flagged = await planProjectSync({
+        cwd: fresh,
+        modules: [],
+        pkg: { name: 'demo' },
+        cursorRule: true,
+      });
+      const rule = flagged.writes.find((w) => w.file === '.cursor/rules/stagepass.mdc');
+      expect(rule.action).toBe('created');
+      await applyProjectSync(fresh, [rule]);
+      expect(await fs.pathExists(path.join(fresh, '.cursor/rules/stagepass.mdc'))).toBe(true);
+    } finally {
+      await fs.remove(fresh);
+    }
   });
 
   it('points CLAUDE.md at the guide only when the file already exists', async () => {

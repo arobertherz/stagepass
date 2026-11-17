@@ -468,7 +468,7 @@ try {
       readFileSync(gitignore, 'utf8').includes('node_modules/'),
       `${lang}: .gitignore content`
     );
-    assert(existsSync(join(dir, '.cursor', 'rules', 'stagepass.mdc')), `${lang}: cursor rule`);
+    assert(!existsSync(join(dir, '.cursor')), `${lang}: no cursor rule without .cursor/ or --cursor-rule`);
     assert(existsSync(join(dir, lang === 'ts' ? 'src/main.ts' : 'src/main.js')), `${lang}: entry`);
     assert(existsSync(join(dir, 'node_modules', '@stagepass', 'loader')), `${lang}: loader installed`);
     assert(existsSync(join(dir, 'node_modules', '@stagepass', 'modules')), `${lang}: modules installed`);
@@ -564,7 +564,7 @@ try {
   const guide = readFileSync(join(old, 'AGENTS.stagepass.md'), 'utf8');
   assert(guide.includes('stagepass:managed') && guide.includes('sp.cookies'), 'upgrade writes the managed guide');
   assert(guide.includes('Do not rebuild'), 'php without api/lib tells agents not to rebuild the boilerplate');
-  assert(existsSync(join(old, '.cursor', 'rules', 'stagepass.mdc')), 'upgrade adds cursor rule');
+  assert(!existsSync(join(old, '.cursor')), 'upgrade does not add a cursor rule without .cursor/ or --cursor-rule');
   // upgrade only writes published ranges, and per-module types only when the
   // published @stagepass/modules ships them (>= 2.2.0). Expectations follow
   // the real registry state, so this works before and after a release.

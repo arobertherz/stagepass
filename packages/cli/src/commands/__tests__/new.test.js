@@ -243,10 +243,8 @@ describe('createNew', () => {
     expect(buildScript).toContain('sriSha384');
     const tsconfig = await fs.readJson(path.join(target, 'tsconfig.json'));
     expect(tsconfig.compilerOptions.types).toEqual(['@stagepass/loader', '@stagepass/modules/cookies']);
-    const rule = await fs.readFile(path.join(target, '.cursor/rules/stagepass.mdc'), 'utf8');
-    expect(rule).toContain('alwaysApply: true');
-    expect(rule).toContain('@AGENTS.stagepass.md');
-    expect(rule).not.toContain('globs:');
+    expect(await fs.pathExists(path.join(target, '.cursor'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, '.cursor/rules/stagepass.mdc'))).toBe(false);
     const gitignore = await fs.readFile(path.join(target, '.gitignore'), 'utf8');
     expect(gitignore).toContain('node_modules/');
     expect(pkg.devDependencies.sass).toBeTruthy();
@@ -316,9 +314,53 @@ describe('createNew', () => {
     expect(pkg.devDependencies['@stagepass/modules']).toBeUndefined();
     expect((await fs.readJson(path.join(target, 'stagepass.json'))).modules).toEqual([]);
     expect((await fs.readJson(path.join(target, 'jsconfig.json'))).compilerOptions.types).toEqual(['@stagepass/loader']);
-    expect(await fs.pathExists(path.join(target, '.cursor/rules/stagepass.mdc'))).toBe(true);
+    expect(await fs.pathExists(path.join(target, '.cursor/rules/stagepass.mdc'))).toBe(false);
+    expect(await fs.pathExists(path.join(target, '.cursor'))).toBe(false);
     expect(pkg.devDependencies.sass).toBeUndefined();
     expect(pkg.devDependencies.typescript).toBeUndefined();
+  });
+
+  it('writes the Cursor rule for --cursor-rule and for an existing .cursor directory', async () => {
+    const flagged = path.join(tmp, 'flagged');
+    const flaggedCode = await createNew(
+      'flag-app',
+      { yes: true, dir: flagged, lang: 'js', styles: 'css', modules: false, git: false, cursorRule: true },
+      {
+        isTTY: false,
+        argv: ['--yes', '--lang', 'js', '--styles', 'css', '--no-modules', '--no-git', '--cursor-rule'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: tmp,
+        log: () => {},
+        error: () => {},
+        exec: vi.fn(),
+        spawn: vi.fn(),
+        cliVersion: '2.0.0',
+      }
+    );
+    expect(flaggedCode).toBe(0);
+    const rule = await fs.readFile(path.join(flagged, '.cursor/rules/stagepass.mdc'), 'utf8');
+    expect(rule).toContain('alwaysApply: true');
+    expect(rule).toContain('@AGENTS.stagepass.md');
+
+    const existing = path.join(tmp, 'has-cursor');
+    await fs.ensureDir(path.join(existing, '.cursor'));
+    const existingCode = await createNew(
+      'cursor-app',
+      { yes: true, dir: existing, lang: 'js', styles: 'css', modules: false, git: false },
+      {
+        isTTY: false,
+        argv: ['--yes', '--lang', 'js', '--styles', 'css', '--no-modules', '--no-git'],
+        templatesRoot: defaultTemplatesRoot(),
+        cwd: tmp,
+        log: () => {},
+        error: () => {},
+        exec: vi.fn(),
+        spawn: vi.fn(),
+        cliVersion: '2.0.0',
+      }
+    );
+    expect(existingCode).toBe(0);
+    expect(await fs.pathExists(path.join(existing, '.cursor/rules/stagepass.mdc'))).toBe(true);
   });
 });
 
@@ -577,7 +619,7 @@ describe('createNew robustness', () => {
     }
   });
 
-  it('defaults snippets to the loader/modules version, not the CLI version', async () => {
+  it('defaults snippets to SNIPPET_LOADER_VERSION', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'sp-ver-'));
     const target = path.join(tmp, 'ver');
     try {
@@ -596,9 +638,10 @@ describe('createNew robustness', () => {
         }
       );
       expect(code).toBe(0);
-      const { STAGEPASS_PACKAGES_VERSION } = await import('../../lib/versions.js');
+      const { SNIPPET_LOADER_VERSION } = await import('../../lib/cdn-base.js');
       const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
-      expect(readme).toContain(`data-stagepass-version="${STAGEPASS_PACKAGES_VERSION}"`);
+      expect(readme).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
+      expect(readme).toContain(`@${SNIPPET_LOADER_VERSION}`);
     } finally {
       await fs.remove(tmp);
     }

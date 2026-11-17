@@ -12,7 +12,7 @@ import {
   resolveSnippetLoaderVersion,
   satisfiesSimple,
 } from '../registry.js';
-import { STAGEPASS_PACKAGES_VERSION } from '../versions.js';
+import { SNIPPET_LOADER_VERSION } from '../cdn-base.js';
 
 describe('registry helpers', () => {
   it('major range matches the @2 embed policy', () => {
@@ -151,14 +151,15 @@ describe('resolveSnippetLoaderVersion (AC-14)', () => {
     });
   });
 
-  it('offline (or no 2.x published) uses the installed loader, then the bundled one', async () => {
+  it('offline (or no 2.x published) uses the bundled pin, not a local install', async () => {
     await withInstalled('2.3.9', async (cwd) => {
-      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.3.9');
-      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['3.0.0']), cwd, bundled: '2.2.0' })).toBe('2.3.9');
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.0' })).toBe('2.2.0');
+      expect(await resolveSnippetLoaderVersion({ published: pub('3.0.0', ['3.0.0']), cwd, bundled: '2.2.0' })).toBe('2.2.0');
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(SNIPPET_LOADER_VERSION);
     });
     await withInstalled(undefined, async (cwd) => {
       expect(await resolveSnippetLoaderVersion({ published: null, cwd, bundled: '2.2.7' })).toBe('2.2.7');
-      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(STAGEPASS_PACKAGES_VERSION);
+      expect(await resolveSnippetLoaderVersion({ published: null, cwd })).toBe(SNIPPET_LOADER_VERSION);
     });
   });
 });

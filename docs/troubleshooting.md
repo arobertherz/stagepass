@@ -2,9 +2,9 @@
 
 ## Editor reports Cannot find name 'sp'
 
-The page can run while the editor reports `Cannot find name 'sp'. ts(2304)`. `sp` is typed by `@stagepass/loader` (and `@stagepass/modules` for declared modules). Published CLI 2.4.0 only fills `compilerOptions.types` when that array already exists in plain JSON.
+The page can run while the editor reports `Cannot find name 'sp'. ts(2304)`. `sp` is typed by `@stagepass/loader` (and `@stagepass/modules` for declared modules). CLI 2.4.1 and older only fill `compilerOptions.types` when that array already exists in plain JSON.
 
-On the unreleased CLI (2.5.0):
+Since CLI 2.5.0:
 
 1. `stagepass upgrade`
 2. `npm install`

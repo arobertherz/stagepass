@@ -5,11 +5,12 @@ import { defaultExec } from '../lib/exec.js';
 import {
   buildWebflowSnippets,
   printWebflowSnippets,
+  readSnippetGitRef,
 } from '../lib/snippets.js';
 
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { STAGEPASS_PACKAGES_VERSION } from '../lib/versions.js';
+import { SNIPPET_LOADER_VERSION } from '../lib/cdn-base.js';
 import {
   PACKAGES_MAJOR_RANGE,
   fetchPublished,
@@ -399,6 +400,7 @@ export async function upgrade(options = {}, deps = {}) {
       interactive,
       assumeYes,
       confirm: confirmFn,
+      cursorRule: options.cursorRule === true,
     },
     fse
   );
@@ -504,6 +506,30 @@ export async function upgrade(options = {}, deps = {}) {
     );
   }
 
+  if (!snippetVersion) {
+    snippetVersion = await resolveSnippetLoaderVersion({
+      published: await getLoaderPub(),
+      cwd,
+      bundled: SNIPPET_LOADER_VERSION,
+      fse,
+    });
+  }
+  let snippets;
+  try {
+    const readGitRef = deps.readGitRef || readSnippetGitRef;
+    const gitRef = await readGitRef(cwd);
+    snippets = buildWebflowSnippets({
+      version: snippetVersion,
+      moduleList: resolved.modules,
+      gitRemote: gitRef && gitRef.gitRemote,
+      gitBranch: gitRef && gitRef.gitBranch,
+      projectName: pkg.name,
+    });
+  } catch (err) {
+    log(chalk.red(err instanceof Error ? err.message : String(err)));
+    return 1;
+  }
+
   if (options.dryRun) {
     log(chalk.dim('\nDry run: no files were modified.'));
   } else {
@@ -538,18 +564,6 @@ export async function upgrade(options = {}, deps = {}) {
     }
   }
 
-  if (!snippetVersion) {
-    snippetVersion = await resolveSnippetLoaderVersion({
-      published: await getLoaderPub(),
-      cwd,
-      bundled: STAGEPASS_PACKAGES_VERSION,
-      fse,
-    });
-  }
-  const snippets = buildWebflowSnippets({
-    version: snippetVersion,
-    moduleList: resolved.modules,
-  });
   printWebflowSnippets(snippets, log);
 
   log(chalk.bold('\nNext step (not run automatically):'));
