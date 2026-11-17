@@ -165,19 +165,51 @@ describe('buildWebflowSnippets', () => {
 });
 
 describe('official head snippets', () => {
-  it('prints loader and module tags from the package CDN', () => {
+  function printed(moduleList) {
     const lines = [];
-    const snippets = buildOfficialHeadSnippets({ version: '2.5.0' });
+    const snippets = buildOfficialHeadSnippets({ version: '2.5.0', moduleList });
     printWebflowHeadSnippets(snippets, (msg) => lines.push(String(msg)));
-    const text = lines.join('\n');
+    return lines.join('\n');
+  }
+
+  it('prints loader and module tags from the package CDN', () => {
+    const text = printed(['all']);
     expect(text).toContain('Webflow Custom Code (Head):');
     expect(text).toContain(stagepassPackageUrl('loader', '@2', 'loader.min.js'));
-    expect(text).toContain(stagepassPackageUrl('modules', '@2', 'inject.min.js'));
-    expect(text).toContain(stagepassPackageUrl('modules', '@2', 'cookies.min.js'));
-    expect(text).toContain(stagepassPackageUrl('modules', '@2', 'maintenance.min.js'));
+    const inject = text.indexOf(stagepassPackageUrl('modules', '@2', 'inject.min.js'));
+    const cookies = text.indexOf(stagepassPackageUrl('modules', '@2', 'cookies.min.js'));
+    const maintenance = text.indexOf(stagepassPackageUrl('modules', '@2', 'maintenance.min.js'));
+    expect(inject).toBeGreaterThan(-1);
+    expect(cookies).toBeGreaterThan(inject);
+    expect(maintenance).toBeGreaterThan(cookies);
     expect(text).toContain('data-stagepass-version="2.5.0"');
     expect(text).not.toContain('Webflow Custom Code (Footer):');
+    expect(text).not.toContain('all.min.js');
     expect(text).not.toContain('stagepass.one');
+  });
+
+  it('prints only the declared module, in inject, cookies, maintenance order', () => {
+    const only = printed(['cookies']);
+    expect(only).toContain(stagepassPackageUrl('loader', '@2', 'loader.min.js'));
+    expect(only).toContain(stagepassPackageUrl('modules', '@2', 'cookies.min.js'));
+    expect(only).not.toContain('inject.min.js');
+    expect(only).not.toContain('maintenance.min.js');
+
+    const several = printed(['maintenance', 'inject']);
+    const inject = several.indexOf('inject.min.js');
+    const maintenance = several.indexOf('maintenance.min.js');
+    expect(inject).toBeGreaterThan(-1);
+    expect(maintenance).toBeGreaterThan(inject);
+    expect(several).not.toContain('cookies.min.js');
+  });
+
+  it('prints the loader only when no modules are declared', () => {
+    for (const moduleList of [[], undefined]) {
+      const text = printed(moduleList);
+      expect(text).toContain(stagepassPackageUrl('loader', '@2', 'loader.min.js'));
+      expect(text).not.toContain('@stagepass/modules');
+      expect(text).not.toContain('Webflow Custom Code (Footer):');
+    }
   });
 });
 

@@ -2,7 +2,7 @@ import { execFile as nodeExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stagepassPackageUrl } from './cdn-base.js';
 import { validateProjectName } from './project-name.js';
-import { MODULE_IDS, normalizeModulesList } from './project-modules.js';
+import { expandModules, normalizeModulesList } from './project-modules.js';
 import { LOADER_VERSION, MODULES_VERSION } from './versions.js';
 
 const execFileAsync = promisify(nodeExecFile);
@@ -211,14 +211,19 @@ export function buildWebflowSnippets(options) {
 }
 
 /**
- * Head snippet for loader plus every individual module. Used by `stagepass start`.
+ * Head snippet for the loader and the declared modules. Used by `stagepass start`.
+ * `all` expands to inject, cookies, maintenance, in that order. An empty list is the loader only.
  * @param {object} [options]
  * @param {string} [options.version]
+ * @param {string[]} [options.moduleList] Declared modules (`[]` when none)
  */
 export function buildOfficialHeadSnippets(options = {}) {
+  const raw = Array.isArray(options.moduleList) ? options.moduleList : [];
+  const parsed = normalizeModulesList(raw);
+  if (!parsed.ok) throw new Error(parsed.error);
   return buildWebflowSnippets({
     version: options.version,
-    moduleList: [...MODULE_IDS],
+    moduleList: expandModules(parsed.modules),
   });
 }
 

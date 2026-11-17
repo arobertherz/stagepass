@@ -27,10 +27,21 @@ import {
 } from '../lib/autostart.js';
 import { ensurePhpFpm } from '../lib/php-fpm.js';
 import { buildOfficialHeadSnippets, printWebflowHeadSnippets } from '../lib/snippets.js';
+import { declaredModules, readStagepassJson } from '../lib/project-sync.js';
 import { certsTrust, certsRenew } from './certs.js';
 
-function printStartHeadSnippets() {
-  printWebflowHeadSnippets(buildOfficialHeadSnippets());
+/**
+ * Loader plus the modules declared in this project's stagepass.json.
+ * @param {string} cwd
+ */
+async function printStartHeadSnippets(cwd) {
+  const sp = await readStagepassJson(cwd);
+  const declared = declaredModules(sp.data);
+  const moduleList = Array.isArray(declared) ? declared : [];
+  printWebflowHeadSnippets(buildOfficialHeadSnippets({ moduleList }));
+  if (moduleList.length === 0) {
+    console.log('No modules are declared in stagepass.json.');
+  }
 }
 
 const PORT_IGNORE = ['Google Chrome', 'Chrome Helper', 'OneDrive', 'Music', 'Safari', 'caddy'];
@@ -431,7 +442,7 @@ export async function start(options = {}) {
             chalk.green(`✔ kickstart gui/${uid}/${LAUNCH_AGENT_LABEL}`)
           );
         }
-        printStartHeadSnippets();
+        await printStartHeadSnippets(options.cwd || process.cwd());
         return 0;
       } catch (error) {
         if (!options.verbose) spinner.fail('launchctl kickstart failed.');
@@ -460,7 +471,7 @@ export async function start(options = {}) {
     } else {
       console.log(chalk.green('✔ Stagepass is active.'));
     }
-    printStartHeadSnippets();
+    await printStartHeadSnippets(options.cwd || process.cwd());
     return 0;
   } catch (error) {
     if (!options.verbose) spinner.fail('Failed to start.');
