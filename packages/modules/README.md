@@ -16,7 +16,7 @@ Without the loader, `inject` and `cookies` still attach their APIs and warn; `ma
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.2`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs).
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.2`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see [Version pinning](https://github.com/stagepass-one/os/blob/master/docs/loader.md#version-pinning) in the docs).
 
 ```html
 <script
@@ -179,5 +179,5 @@ Module members are optional (`sp.cookies?`), because a page may not load the fil
 
 ## Repository
 
-- Full docs and examples: [stagepass repository](https://github.com/arobertherz/stagepass)
+- Full docs and examples: [stagepass repository](https://github.com/stagepass-one/os)
 - Migration: [MIGRATION.md](../../MIGRATION.md)

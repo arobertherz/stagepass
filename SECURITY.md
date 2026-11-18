@@ -13,7 +13,7 @@ Sites that pin `@stagepass/...@1` (or an exact 1.x version) are unaffected by 2.
 
 Please report security issues privately via GitHub Security Advisories:
 
-https://github.com/arobertherz/stagepass/security/advisories/new
+https://github.com/stagepass-one/os/security/advisories/new
 
 Do **not** open a public GitHub issue for vulnerabilities.
 

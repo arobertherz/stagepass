@@ -29,9 +29,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arobertherz/stagepass.git",
+    "url": "git+https://github.com/stagepass-one/os.git",
     "directory": "packages/modules"
   },
+  "bugs": {
+    "url": "https://github.com/stagepass-one/os/issues"
+  },
+  "homepage": "https://github.com/stagepass-one/os/tree/master/packages/modules#readme",
   "license": "MIT",
   "peerDependencies": {
     "@stagepass/loader": ">=2.0.0 || >=2.3.0-beta.0"
