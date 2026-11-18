@@ -35,9 +35,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/arobertherz/stagepass.git",
+    "url": "git+https://github.com/stagepass-one/os.git",
     "directory": "packages/cli"
   },
+  "bugs": {
+    "url": "https://github.com/stagepass-one/os/issues"
+  },
+  "homepage": "https://github.com/stagepass-one/os/tree/master/packages/cli#readme",
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^8.7.5",

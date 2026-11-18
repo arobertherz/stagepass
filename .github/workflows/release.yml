@@ -16,7 +16,7 @@ on:
 jobs:
   stage:
     # Only publish from the canonical public repo
-    if: github.repository == 'arobertherz/stagepass'
+    if: github.repository == 'stagepass-one/os'
     runs-on: [self-hosted, cerebro]
     permissions:
       contents: read

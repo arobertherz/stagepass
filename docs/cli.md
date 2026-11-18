@@ -194,7 +194,7 @@ For projects without the CLI, use one of the following canonical profiles in you
 
 Example raw URLs:
 
-* `https://raw.githubusercontent.com/arobertherz/stagepass/master/AGENTS.LOADER.md`
-* `https://raw.githubusercontent.com/arobertherz/stagepass/master/AGENTS.MODULES.md`
+* `https://raw.githubusercontent.com/stagepass-one/os/master/AGENTS.LOADER.md`
+* `https://raw.githubusercontent.com/stagepass-one/os/master/AGENTS.MODULES.md`
 
 If your tooling does **not** support remote include/import, use copy-paste from the files above.

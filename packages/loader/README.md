@@ -12,7 +12,7 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.5.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
+Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.5.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/stagepass-one/os/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
@@ -107,7 +107,7 @@ Shown only while a session is active (including debug).
 
 ## Zero-cost production mode
 
-Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0** and later). Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See [Zero-cost production mode](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#zero-cost-production-mode) for migration, SRI, and limitations.
+Opt-in with `data-stagepass-live-src="true"` on the loader tag (loader **2.4.0** and later). Put a normal `src` / `href` (optional `integrity` + `crossorigin`) on `data-stagepass` assets instead of `data-src` / `data-href`. Without a session the browser loads those URLs directly; with a session Stagepass rewrites them to the local `.sp` host before classic scripts run (loader must be a sync script in `<head>` before the assets). Legacy `data-src` / `data-href` stays the default and keeps working. See [Zero-cost production mode](https://github.com/stagepass-one/os/blob/master/docs/loader.md#zero-cost-production-mode) for migration, SRI, and limitations.
 
 ## Permanent per-asset cache busting
 
@@ -174,4 +174,4 @@ With an active session (or debug), the loader warns when two tagged assets resol
 
 ## Repository
 
-- Full docs and examples: [stagepass repository](https://github.com/arobertherz/stagepass)
+- Full docs and examples: [stagepass repository](https://github.com/stagepass-one/os)
