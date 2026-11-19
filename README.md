@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/npm/l/@stagepass%2Fcli)
 ![CLI Version](https://img.shields.io/npm/v/@stagepass/cli)
 ![Loader Version](https://img.shields.io/npm/v/@stagepass/loader)
-![Tests](https://img.shields.io/github/actions/workflow/status/arobertherz/stagepass/test.yml)
+![Tests](https://img.shields.io/github/actions/workflow/status/stagepass-one/os/test.yml)
 
 **Develop locally. Preview globally. Keep Webflow happy.**
 

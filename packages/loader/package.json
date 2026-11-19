@@ -27,9 +27,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arobertherz/stagepass.git",
+    "url": "git+https://github.com/stagepass-one/os.git",
     "directory": "packages/loader"
   },
+  "bugs": {
+    "url": "https://github.com/stagepass-one/os/issues"
+  },
+  "homepage": "https://github.com/stagepass-one/os/tree/master/packages/loader#readme",
   "license": "MIT",
   "devDependencies": {
     "jsdom": "^24.0.0",

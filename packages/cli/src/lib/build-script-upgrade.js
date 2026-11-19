@@ -22,7 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const BUILD_SCRIPT_REL = 'scripts/build.mjs';
 
 export const BUILD_SCRIPT_DOC_URL =
-  'https://github.com/arobertherz/stagepass/blob/master/docs/cli.md#upgrade';
+  'https://github.com/stagepass-one/os/blob/master/docs/cli.md#upgrade';
 
 export const BUILD_SCRIPT_CUSTOM_HINT = [
   'scripts/build.mjs has local edits, so stagepass upgrade left it unchanged.',
