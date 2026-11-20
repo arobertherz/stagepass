@@ -11,3 +11,7 @@ dist/
 !packages/loader/dist/
 !packages/modules/dist/
 ISSUES.md
+
+# CDN worker build output and local Wrangler state
+cdn/dist/
+.wrangler/

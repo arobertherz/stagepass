@@ -1,0 +1,53 @@
+{
+  // Stagepass script CDN. Account id comes from CLOUDFLARE_ACCOUNT_ID, never from this file.
+  // Wrangler pin: 4.165.0 (npm view wrangler version, node:22, 2026-11-20).
+  "name": "stagepass-cdn",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-20",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // The worker owns routing and headers. The asset server's "@" -> "%40" 307
+    // must not reach the client. See cdn/README.md.
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "env": {
+    "staging": {
+      "name": "stagepass-cdn-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "staging-cdn.stagepass.one",
+          "custom_domain": true
+        }
+      ]
+    },
+    "production": {
+      "name": "stagepass-cdn",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "cdn.stagepass.one",
+          "custom_domain": true
+        }
+      ]
+    }
+  }
+}
