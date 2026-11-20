@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  aliasLocation,
+  resolveLatestVersion,
+  resolveMajorVersion,
+  stableMajors,
+} from '../src/catalog.js';
 import { loadPackageConfig, missingVersions, readRegistryVersions, selectVersions } from './build-assets.mjs';
 import { contentTypeFor } from '../src/worker.js';
 
@@ -134,6 +140,45 @@ export function sampleEntries(entries, count) {
     picked.push(entries[idx]);
   }
   return picked;
+}
+
+export function shortUrlChecks(manifest) {
+  const entries = [];
+  const redirects = [];
+  const packages = manifest && Array.isArray(manifest.packages) ? manifest.packages : [];
+  const seen = new Set();
+  for (const pkg of packages) {
+    if (!pkg || typeof pkg.package !== 'string' || typeof pkg.version !== 'string') continue;
+    const file = (pkg.files || []).find((item) => item && item.path === pkg.entry);
+    entries.push({
+      package: pkg.package,
+      version: pkg.version,
+      entry: typeof pkg.entry === 'string' ? pkg.entry : '',
+      urlPath: `/${pkg.package}@${pkg.version}`,
+      sha256: file && typeof file.sha256 === 'string' ? file.sha256.toLowerCase() : '',
+      bytes: file && Number.isInteger(file.bytes) ? file.bytes : null,
+    });
+    seen.add(pkg.package);
+  }
+  for (const packageName of [...seen].sort()) {
+    const latest = resolveLatestVersion(manifest, packageName);
+    const latestLocation = latest ? aliasLocation(manifest, packageName, latest, null) : null;
+    redirects.push({ urlPath: `/${packageName}`, location: latestLocation });
+    redirects.push({ urlPath: `/${packageName}@latest`, location: latestLocation });
+    for (const major of stableMajors(manifest, packageName)) {
+      const version = resolveMajorVersion(manifest, packageName, major);
+      redirects.push({
+        urlPath: `/${packageName}@${major}`,
+        location: version ? aliasLocation(manifest, packageName, version, null) : null,
+      });
+    }
+  }
+  return { entries, redirects };
+}
+
+function redirectCacheOk(value) {
+  const text = String(value || '').toLowerCase();
+  return text.includes('public') && text.includes('max-age=300') && !text.includes('immutable');
 }
 
 export function manifestDrift(local, remote) {
@@ -278,23 +323,23 @@ export async function verifyLive({ base, files, warnings }) {
     rows.push(['/', 'OPTIONS', '204', 'ok']);
   }
 
-  const alias = await request(`${base}/loader@latest/loader.min.js`);
+  const alias = await request(`${base}/loader@next/loader.min.js`);
   const aliasBody = await alias.text();
   if (
     alias.status !== 404 ||
     (alias.status >= 300 && alias.status < 400) ||
     !aliasBody.includes('exact versions') ||
-    !aliasBody.includes('@latest') ||
+    !aliasBody.includes('@next') ||
     alias.headers.get('access-control-allow-origin') !== '*'
   ) {
     failures.push(`alias status ${alias.status}`);
-    rows.push(['/loader@latest/loader.min.js', '@', String(alias.status), 'alias']);
+    rows.push(['/loader@next/loader.min.js', '@', String(alias.status), 'alias']);
   } else {
     noteWarnings(evaluateAssetHeaders(alias.headers, {
       contentType: 'text/plain; charset=utf-8',
       immutable: false,
     }).warnings);
-    rows.push(['/loader@latest/loader.min.js', '@', '404', 'ok']);
+    rows.push(['/loader@next/loader.min.js', '@', '404', 'ok']);
   }
 
   const post = await request(`${base}/manifest.json`, { method: 'POST' });
@@ -307,6 +352,89 @@ export async function verifyLive({ base, files, warnings }) {
     rows.push(['/manifest.json', 'POST', '405', 'acao']);
   } else {
     rows.push(['/manifest.json', 'POST', '405', 'ok']);
+  }
+
+  return { failures, rows };
+}
+
+function urlForms(urlPath) {
+  const encoded = encodedUrlPath(urlPath);
+  if (encoded === urlPath) return [['@', urlPath]];
+  return [['@', urlPath], ['%40', encoded]];
+}
+
+export async function verifyShortUrls({ base, manifest, warnings, fetchImpl }) {
+  const failures = [];
+  const rows = [];
+  const plan = shortUrlChecks(manifest);
+  const send = fetchImpl || request;
+
+  function noteWarnings(headerList) {
+    if (!warnings) return;
+    for (const name of headerList) warnings.add(name);
+  }
+
+  for (const entry of plan.entries) {
+    for (const [label, urlPath] of urlForms(entry.urlPath)) {
+      const url = base + urlPath;
+      let response;
+      try {
+        response = await send(url);
+      } catch (error) {
+        failures.push(`${label} ${urlPath} ${error instanceof Error ? error.message : String(error)}`);
+        rows.push([urlPath, label, 'ERR', 'request failed']);
+        continue;
+      }
+      if (response.status !== 200) {
+        failures.push(`${label} ${urlPath} status ${response.status}`);
+        rows.push([urlPath, label, String(response.status), 'status']);
+        continue;
+      }
+      const body = Buffer.from(await response.arrayBuffer());
+      const hash = sha256(body);
+      const evaluated = evaluateAssetHeaders(response.headers, {
+        contentType: contentTypeFor(entry.entry),
+        immutable: true,
+      });
+      noteWarnings(evaluated.warnings);
+      const problems = [];
+      if (response.headers.get('location')) problems.push('location');
+      if (!entry.sha256 || hash !== entry.sha256) problems.push('sha256');
+      if (entry.bytes != null && body.length !== entry.bytes) problems.push('bytes');
+      problems.push(...evaluated.errors);
+      if (problems.length) {
+        failures.push(`${label} ${urlPath} ${problems.join(',')}`);
+        rows.push([urlPath, label, '200', problems.join(',')]);
+      } else {
+        rows.push([urlPath, label, '200', 'ok']);
+      }
+    }
+  }
+
+  for (const redirect of plan.redirects) {
+    for (const [label, urlPath] of urlForms(redirect.urlPath)) {
+      const url = base + urlPath;
+      let response;
+      try {
+        response = await send(url);
+      } catch (error) {
+        failures.push(`${label} ${urlPath} ${error instanceof Error ? error.message : String(error)}`);
+        rows.push([urlPath, label, 'ERR', 'request failed']);
+        continue;
+      }
+      const location = response.headers.get('location');
+      const problems = [];
+      if (response.status !== 302) problems.push(`status ${response.status}`);
+      if (!redirect.location || location !== redirect.location) problems.push('location');
+      if (!redirectCacheOk(response.headers.get('cache-control'))) problems.push('cache-control');
+      if (response.headers.get('access-control-allow-origin') !== '*') problems.push('access-control-allow-origin');
+      if (problems.length) {
+        failures.push(`${label} ${urlPath} ${problems.join(',')}`);
+        rows.push([urlPath, label, String(response.status), problems.join(',')]);
+      } else {
+        rows.push([urlPath, label, '302', 'ok']);
+      }
+    }
   }
 
   return { failures, rows };
@@ -390,7 +518,10 @@ async function main() {
   const files = args.all ? allFiles : sampleEntries(allFiles, args.sample);
   process.stdout.write(`checking ${files.length} of ${allFiles.length} files at ${base}\n`);
   const warnings = new Set();
-  const { failures, rows } = await verifyLive({ base, files, warnings });
+  const short = await verifyShortUrls({ base, manifest: remote, warnings });
+  const checked = await verifyLive({ base, files, warnings });
+  const failures = [...short.failures, ...checked.failures];
+  const rows = [...short.rows, ...checked.rows];
   printTable(rows, warnings, failures);
   if (failures.length) {
     for (const failure of failures) console.error(failure);

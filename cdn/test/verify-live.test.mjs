@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
   checkRegistryCoverage,
@@ -10,6 +11,8 @@ import {
   normalizeBase,
   parseVerifyArgs,
   sampleEntries,
+  shortUrlChecks,
+  verifyShortUrls,
 } from '../scripts/verify-live.mjs';
 
 function headers(entries) {
@@ -171,4 +174,125 @@ test('checkRegistryCoverage uses the injected version list', async () => {
     { package: 'loader', version: '2.0.0-rc.1' },
     { package: 'loader', version: '2.5.0' },
   ]);
+});
+
+test('short URL plan covers every version and the alias targets', () => {
+  const manifest = {
+    distTags: {
+      loader: { latest: '2.5.0' },
+      modules: { latest: '9.9.9' },
+    },
+    packages: [
+      {
+        package: 'loader',
+        version: '1.0.0',
+        entry: 'loader.js',
+        files: [{ path: 'loader.js', bytes: 4, sha256: 'aaa' }, { path: 'loader.min.js', bytes: 3, sha256: 'bbb' }],
+      },
+      {
+        package: 'loader',
+        version: '1.2.0',
+        entry: 'loader.min.js',
+        files: [{ path: 'loader.min.js', bytes: 3, sha256: 'ccc' }],
+      },
+      {
+        package: 'loader',
+        version: '2.5.0',
+        entry: 'loader.min.js',
+        files: [{ path: 'loader.min.js', bytes: 3, sha256: 'ddd' }, { path: 'loader.js', bytes: 4, sha256: 'eee' }],
+      },
+      {
+        package: 'loader',
+        version: '2.6.0-rc.1',
+        entry: 'loader.min.js',
+        files: [{ path: 'loader.min.js', bytes: 3, sha256: 'fff' }],
+      },
+      {
+        package: 'modules',
+        version: '1.1.0',
+        entry: 'all.min.js',
+        files: [{ path: 'all.min.js', bytes: 2, sha256: '111' }],
+      },
+      {
+        package: 'modules',
+        version: '2.2.2',
+        entry: 'all.min.js',
+        files: [{ path: 'all.min.js', bytes: 2, sha256: '222' }],
+      },
+    ],
+  };
+  const plan = shortUrlChecks(manifest);
+  assert.deepEqual(plan.entries.map((entry) => [entry.urlPath, entry.entry, entry.sha256]), [
+    ['/loader@1.0.0', 'loader.js', 'aaa'],
+    ['/loader@1.2.0', 'loader.min.js', 'ccc'],
+    ['/loader@2.5.0', 'loader.min.js', 'ddd'],
+    ['/loader@2.6.0-rc.1', 'loader.min.js', 'fff'],
+    ['/modules@1.1.0', 'all.min.js', '111'],
+    ['/modules@2.2.2', 'all.min.js', '222'],
+  ]);
+  assert.deepEqual(plan.redirects, [
+    { urlPath: '/loader', location: '/loader@2.5.0/loader.min.js' },
+    { urlPath: '/loader@latest', location: '/loader@2.5.0/loader.min.js' },
+    { urlPath: '/loader@1', location: '/loader@1.2.0/loader.min.js' },
+    { urlPath: '/loader@2', location: '/loader@2.5.0/loader.min.js' },
+    { urlPath: '/modules', location: '/modules@2.2.2/all.min.js' },
+    { urlPath: '/modules@latest', location: '/modules@2.2.2/all.min.js' },
+    { urlPath: '/modules@1', location: '/modules@1.1.0/all.min.js' },
+    { urlPath: '/modules@2', location: '/modules@2.2.2/all.min.js' },
+  ]);
+});
+
+test('verifyShortUrls accepts entry bytes and 300 second redirects', async () => {
+  const body = 'loader-js';
+  const sha = createHash('sha256').update(body).digest('hex');
+  const manifest = {
+    distTags: { loader: { latest: '1.0.0' } },
+    packages: [
+      {
+        package: 'loader',
+        version: '1.0.0',
+        entry: 'loader.js',
+        files: [{ path: 'loader.js', bytes: body.length, sha256: sha }],
+      },
+    ],
+  };
+  const headers = {
+    'access-control-allow-origin': '*',
+    'cross-origin-resource-policy': 'cross-origin',
+    'x-content-type-options': 'nosniff',
+    'timing-allow-origin': '*',
+    'content-type': 'text/javascript; charset=utf-8',
+    'cache-control': 'public, max-age=31536000, immutable',
+  };
+  const result = await verifyShortUrls({
+    base: 'https://cdn.example',
+    manifest,
+    warnings: new Set(),
+    fetchImpl: async (url) => {
+      const path = decodeURIComponent(new URL(url).pathname);
+      if (path === '/loader@1.0.0') {
+        return new Response(body, { status: 200, headers });
+      }
+      return new Response('', {
+        status: 302,
+        headers: {
+          location: '/loader@1.0.0/loader.js',
+          'cache-control': 'public, max-age=300',
+          'access-control-allow-origin': '*',
+        },
+      });
+    },
+  });
+  assert.deepEqual(result.failures, []);
+
+  const missed = await verifyShortUrls({
+    base: 'https://cdn.example',
+    manifest,
+    warnings: new Set(),
+    fetchImpl: async () => new Response('nope', {
+      status: 200,
+      headers: { ...headers, 'cache-control': 'public, max-age=60' },
+    }),
+  });
+  assert.ok(missed.failures.length > 0);
 });
