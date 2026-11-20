@@ -11,43 +11,46 @@ Worker plus static assets for the published `dist/` files of `@stagepass/loader`
 
 ## URL shape
 
+Use an exact version in production. The response is immutable, so a page can pin it with SRI. Aliases move.
+
 ```text
-/loader@<exact-version>/<file>
-/modules@<exact-version>/<file>
-/loader@<major>/<file>
-/modules@<major>/<file>
-/loader@<major>.x/<file>
-/modules@<major>.x/<file>
-/manifest.json
-/
+https://cdn.stagepass.one/loader@2.5.0
+https://cdn.stagepass.one/modules@2.2.2
 ```
 
-`<file>` is the path under that package version's `dist/` (`loader.min.js`, `cookies.min.js`, `vendor/file.js`). `<exact-version>` is semver, and prereleases are allowed (`2.3.0-beta.1`). Both of these are the same object and both answer 200:
+That short URL serves the version's default file with 200 and `cache-control: public, max-age=31536000, immutable`. The same headers as the full file form. A trailing slash is optional (`/loader@2.5.0/`). `%40` is the same object (`/loader%402.5.0`). An exact version that is not in the manifest is 404.
+
+The default file is the version's `entry` in `manifest.json`. The build reads that version's `package.json` and takes the first of `jsdelivr`, `unpkg`, `browser` (a string; an object is skipped), and `main`. The value is normalised to a path under `dist/` (a leading `./` and a leading `dist/` are removed). It is used only when that file is in the version. Otherwise the build uses `loader.min.js` for loader and `all.min.js` for modules. The build fails when that fallback is missing too. Published packages set `main` only. `loader@1.0.0` has `main` of `dist/loader.js`, so its entry is `loader.js`. Every other current version uses `loader.min.js` or `all.min.js`.
+
+The full file form is the same bytes when the file is the entry, and it is how you request any other file:
 
 ```text
 /loader@2.5.0/loader.min.js
 /loader%402.5.0/loader.min.js
+/modules@2.2.2/cookies.min.js
 ```
 
-`%40` is accepted in any hex case. Encoded slashes (`%2F`, `%2f`), encoded backslashes, encoded dots, `..`, empty segments, and NUL are 404.
+`<file>` is the path under that package version's `dist/`. `<exact-version>` is semver, and prereleases are allowed (`2.3.0-beta.1`). `%40` is accepted in any hex case. Encoded slashes (`%2F`, `%2f`), encoded backslashes, encoded dots, `..`, empty segments, and NUL are 404. A trailing slash after a file name stays 404.
 
-`@1` and `@1.x` are the same major alias. The same rule applies to every major (`@2` and `@2.x` are the same pointer). Both the `@` and `%40` spellings are accepted. The worker reads `manifest.json` from the asset binding once per isolate and answers 302 to the highest stable version of that major in the manifest. A stable version has no prerelease. With the versions published when this was written, the targets are:
+Aliases answer 302 with an empty body, `cache-control: public, max-age=300`, and the same CORS, `Cross-Origin-Resource-Policy`, `nosniff`, and `Timing-Allow-Origin` headers. `Location` is an absolute path with a literal `@`. HEAD is the same response. Both `@` and `%40` are accepted. A trailing slash on the short alias is optional.
 
 ```text
-/loader@1/loader.min.js   ->  /loader@1.2.0/loader.min.js
-/modules@1/inject.min.js  ->  /modules@1.1.0/inject.min.js
-/loader@2/loader.min.js   ->  /loader@2.5.0/loader.min.js
+/loader@2        ->  /loader@2.5.0/loader.min.js
+/loader@2.x      ->  /loader@2.5.0/loader.min.js
+/modules@1       ->  /modules@1.1.0/all.min.js
+/loader          ->  /loader@2.5.0/loader.min.js
+/loader@latest   ->  /loader@2.5.0/loader.min.js
 ```
 
-`Location` is an absolute path with a literal `@`. The body is empty. HEAD is the same response with an empty body. `Cache-Control` is `public, max-age=300`, together with `Access-Control-Allow-Origin: *`, `Cross-Origin-Resource-Policy: cross-origin`, `X-Content-Type-Options: nosniff`, and `Timing-Allow-Origin: *`.
+`@1` and `@1.x` are the same major alias. The target is the highest stable version of that major in the manifest, then that version's `entry`. A stable version has no prerelease. `/loader` and `/loader@latest` use `distTags.latest` from `npm view <pkg> dist-tags`. When that tag is missing or the version is not in the manifest, the target is the highest stable version of the package. `/loader@latest/loader.min.js` is a 302 to that file on the resolved version (`max-age=300`), not a 404. The targets above are the versions published when this was written.
 
-A major with no stable version, or a file that is not listed on that resolved version, is 404 with `public, max-age=60`. `@9` is that case while no 9.x release is published. A major that contains only prereleases is also 404.
+A major with no stable version, or a file that is not listed on the resolved version, is 404 with `public, max-age=60`. `@9` is that case while no 9.x release is published. A major that contains only prereleases is also 404.
 
-`@latest`, `@next`, `@2.5`, and any other range stay 404 with `public, max-age=60`. The body names the rule and points at an exact URL.
+`@next`, `@2.5`, and any other range stay 404 with `public, max-age=60`. The body names the rule and points at an exact URL.
 
-Exact version responses stay byte-identical and `immutable`. The alias does not change the bytes at an exact URL. Those URLs remain safe to pin with SRI.
+Exact version responses, short or with a file path, stay byte-identical and `immutable`. An alias does not change the bytes at an exact URL.
 
-`/` is a one-line `text/plain` description. `/manifest.json` is the build manifest: package, version, npm tarball integrity, and each file's path, byte length, and sha256.
+`/` is a one-line `text/plain` description. `/manifest.json` is the build manifest: `distTags` per package, and for each version the package, version, `entry`, npm tarball integrity, and each file's path, byte length, and sha256.
 
 ## Why the worker runs first
 
@@ -88,7 +91,7 @@ The worker does not set `Content-Security-Policy`, `Cross-Origin-Opener-Policy`,
 
 Versioned files stay `immutable` for a year. The URL is the version. A published file is replaced by publishing a new version, which is a new URL. SRI over that URL stays valid. A cache purge is not part of the publish path.
 
-A major alias is not immutable. `public, max-age=300` is the freshness window for the redirect. After a release, the alias points at the new version once the deploy that contains it is live. A cache may still serve the previous `Location` until those 300 seconds end. No purge is required for the alias to move. The exact URL of the new version does not wait on the alias cache.
+`/loader@2`, `/loader@2.x`, `/loader`, and `/loader@latest` are not immutable. `public, max-age=300` is the freshness window for those redirects. After a release, the alias points at the new version once the deploy that contains it is live. A cache may still serve the previous `Location` until those 300 seconds end. No purge is required for the alias to move. The exact URL of the new version, including the short form `/loader@2.5.0`, does not wait on the alias cache. Use that exact URL in production so the embed stays immutable and can be pinned with SRI.
 
 `If-None-Match` is forwarded to the asset binding. A 304 from the asset server is returned as 304 with the same header set and an empty body.
 
@@ -119,11 +122,13 @@ Once this worker's 200 is cached, the bytes at that exact version stay. Shipping
 
 1. `npm view <pkg> versions --json`
 2. Keep every exact version, including 1.x and prereleases. Duplicate strings are dropped. A value that is not exact semver is dropped. Versions listed in `exclude` are dropped.
-3. For each kept version, `npm view <pkg>@<ver> dist.integrity dist.tarball --json`, then `npm pack`.
-4. The tarball's sha512 SRI must equal `dist.integrity`. A mismatch fails the build.
-5. Extract only `package/dist/**` into `<out>/<name>@<version>/`. A missing `dist/` fails the build. Tar members that escape that directory fail the build. Published 1.x tarballs include `dist/` (`loader@1.0.0` has `dist/loader.js` and `dist/loader.min.js`; `modules@1.0.0` has `dist/all.min.js` and `dist/inject.min.js`).
-6. Write `<out>/manifest.json` (sorted, no timestamp).
-7. Refuse the result if it exceeds the Workers Free static asset limits: 20,000 files per version, 25 MiB per file (Cloudflare Workers limits, checked 2026-11-20). Paid allows 100,000 files and the same 25 MiB file cap. This config targets Free, so the check uses 20,000.
+3. `npm view <pkg> dist-tags --json`. The object is stored as `distTags.<package>` on the manifest.
+4. For each kept version, `npm view <pkg>@<ver> dist.integrity dist.tarball --json`, then `npm pack`.
+5. The tarball's sha512 SRI must equal `dist.integrity`. A mismatch fails the build.
+6. Read `package/package.json` and extract `package/dist/**` into `<out>/<name>@<version>/`. A missing `dist/` or `package.json` fails the build. Tar members that escape that directory fail the build. Published 1.x tarballs include `dist/` (`loader@1.0.0` has `dist/loader.js` and `dist/loader.min.js`; `modules@1.0.0` has `dist/all.min.js` and `dist/inject.min.js`).
+7. Choose `entry` from `jsdelivr`, `unpkg`, `browser` (string only), then `main`, normalised under `dist/`. If none of those files exist, use `loader.min.js` or `all.min.js`. If that file is missing too, the build fails.
+8. Write `<out>/manifest.json` (sorted, no timestamp) with `distTags` and an `entry` on every version.
+9. Refuse the result if it exceeds the Workers Free static asset limits: 20,000 files per version, 25 MiB per file (Cloudflare Workers limits, checked 2026-11-20). Paid allows 100,000 files and the same 25 MiB file cap. This config targets Free, so the check uses 20,000.
 
 `exclude` lists exact versions that must not be copied. Leave it empty. `verify-live --registry` (the staging and production verify steps) runs `npm view <pkg> versions --json` and fails when the deployed manifest is missing any of those versions. A version listed in `exclude` is the only one that may be absent, and only because it was omitted on purpose. A non-empty exclude does not allow any other gap. Do not add a version there to hide a failed pack.
 
@@ -138,7 +143,7 @@ npm versions become public when a maintainer approves the stage (`npm stage appr
 - `workflow_dispatch` with target `staging` deploys staging.
 - `workflow_dispatch` with target `production` deploys staging, runs `verify-live` against staging, then waits for the `cdn-production` environment and deploys `cdn.stagepass.one`.
 
-Each verify step runs `cdn/scripts/verify-live.mjs` with `--all` and `--registry`. `--registry` fails the job when the deployed manifest is missing a version from `npm view`, other than a version listed in `exclude`.
+Each verify step runs `cdn/scripts/verify-live.mjs` with `--all` and `--registry`. `--registry` fails the job when the deployed manifest is missing a version from `npm view`, other than a version listed in `exclude`. The same command checks every `/<pkg>@<version>` for 200 and the entry sha256, and checks `/<pkg>`, `/<pkg>@latest`, and `/<pkg>@<major>` for 302, the expected `Location`, and `max-age=300`.
 
 The workflow runs on the self-hosted runner `cerebro-stagepass` (`runs-on: [self-hosted, cerebro]`), same as the other workflows. Forks are skipped (`github.repository == 'stagepass-one/os'`). `permissions` is `contents: read`. One concurrency group covers the workflow so two deploys do not run at once. A production approval holds that lock.
 
@@ -209,4 +214,4 @@ Do this once, before the first production dispatch:
 
 ## Tests
 
-`node --test cdn/test` covers routing (both spellings, hex case, traversal, major aliases, other aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307, and major-alias redirects resolved from a fake manifest), the build-script helpers (full registry selection, exclude, SRI), and the registry-coverage comparison with a mocked version list. `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.
+`node --test cdn/test` covers routing (both spellings, hex case, traversal, short URLs, major aliases, `@latest`, other aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307, short entry responses, and alias redirects), the build-script helpers (full registry selection, entry selection, exclude, SRI), the registry-coverage comparison, and the short-URL plan with a mocked manifest. `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.

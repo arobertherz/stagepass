@@ -151,16 +151,22 @@ The gate treats these as exact pins: the `SNIPPET_*` literals, `data-stagepass-v
 
 `cdn/` is a Cloudflare Worker with static assets that serves the published `dist/` files of `@stagepass/loader` and `@stagepass/modules`, including 1.x. The asset build takes every version from `npm view <pkg> versions --json`. There is no version floor. `exclude` in `cdn/versions.config.json` is an emergency switch and stays empty. Each entry is an exact version. A non-empty exclude drops those versions from the manifest. The staging and production verify steps run `cdn/scripts/verify-live.mjs --registry`, which fails when the live manifest is missing any registry version that `exclude` does not list. Listing a version there is the only way to omit it, and it has to be on purpose.
 
-Exact URLs:
+Prefer an exact version in production. It is immutable and can be pinned with SRI. The short form serves that version's default file:
 
 ```text
-https://cdn.stagepass.one/loader@2.5.0/loader.min.js
-https://cdn.stagepass.one/loader@1.2.0/loader.min.js
-https://cdn.stagepass.one/modules@2.2.2/cookies.min.js
+https://cdn.stagepass.one/loader@2.5.0
+https://cdn.stagepass.one/modules@2.2.2
+https://cdn.stagepass.one/loader@1.0.0
 https://staging-cdn.stagepass.one/manifest.json
 ```
 
-`@1` and `@1.x` (any major, `@` or `%40`) answer 302 to the highest stable release of that major in the manifest. Stable means no prerelease. Examples, for the versions published when this was written: `/loader@1/loader.min.js` redirects to `/loader@1.2.0/loader.min.js`, `/modules@1/inject.min.js` to `/modules@1.1.0/inject.min.js`, and `/loader@2/loader.min.js` to `/loader@2.5.0/loader.min.js`. The redirect uses `cache-control: public, max-age=300` and an empty body. After a publish, the alias moves once the CDN deploy includes the new version. A cache may keep the previous `Location` for at most 300 seconds. No purge is required. Exact version URLs stay immutable. `@latest`, `@next`, and ranges such as `@2.5` stay 404.
+`loader@1.0.0` serves `loader.js` because that version's `main` is `dist/loader.js`. Other current versions serve `loader.min.js` or `all.min.js`. The full file form is `/loader@2.5.0/loader.min.js` and `/modules@2.2.2/cookies.min.js`.
+
+The build stores `entry` on each version and `distTags` per package. `entry` comes from `package.json` in this order: `jsdelivr`, `unpkg`, `browser` when it is a string, then `main`. The path is relative to `dist/`. If none of those files exist, loader falls back to `loader.min.js` and modules to `all.min.js`. The build fails when the fallback is missing too.
+
+`/loader@2` and `/loader@2.x` answer 302 to `/loader@<highest stable 2.x>/<entry>`. `/loader` and `/loader@latest` answer 302 to `/loader@<distTags.latest>/<entry>`, or to the highest stable version when that tag is missing or not in the manifest. `/loader@latest/loader.min.js` is the same kind of 302, keeping the requested file. The redirect uses `cache-control: public, max-age=300` and an empty body. After a publish, the alias moves once the CDN deploy includes the new version. A cache may keep the previous `Location` for at most 300 seconds. No purge is required. Exact version URLs stay immutable. `@next` and ranges such as `@2.5` stay 404.
+
+`verify-live` checks every `/<pkg>@<version>` for 200 and the entry sha256, and checks `/<pkg>`, `/<pkg>@latest`, and `/<pkg>@<major>` for 302 with the expected `Location` and `max-age=300`.
 
 The CLI default stays jsDelivr (`https://cdn.jsdelivr.net/npm/@stagepass/...`). This CDN does not replace those snippet pins. Do not point `packages/cli` at `cdn.stagepass.one` as part of a loader or modules release.
 
