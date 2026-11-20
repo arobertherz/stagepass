@@ -8,7 +8,14 @@ import {
   ROOT_BODY,
   SHORT_CACHE,
 } from './policy.js';
-import { highestStableInMajor, isExactSemver, majorAliasNumber } from './semver.js';
+import {
+  aliasLocation,
+  fileSet,
+  recordFor,
+  resolveLatestVersion,
+  resolveMajorVersion,
+} from './catalog.js';
+import { isExactSemver, majorAliasNumber } from './semver.js';
 
 const PACKAGES = new Set(['loader', 'modules']);
 const ASSET_ORIGIN = 'https://assets.local';
@@ -107,8 +114,12 @@ export function classifyPath(rawPath) {
 
   const parts = rawPath.split('/');
   if (parts[0] !== '') return { kind: 'invalid' };
-  const segments = parts.slice(1);
+  let segments = parts.slice(1);
   if (segments.length === 0 || segments.length > 32) return { kind: 'invalid' };
+  // /loader@2.5.0/ is the short URL. /loader@2.5.0/loader.min.js/ stays invalid.
+  if (segments.length === 2 && segments[1] === '' && segments[0] !== '') {
+    segments = [segments[0]];
+  }
   if (segments.some((segment) => segment.length === 0 || segment === '.')) {
     return { kind: 'invalid' };
   }
@@ -121,8 +132,27 @@ export function classifyPath(rawPath) {
   }
 
   const parsed = parsePackageSegment(segments[0]);
-  if (!parsed || !PACKAGES.has(parsed.packageName) || parsed.version.length === 0) {
+  if (!parsed) {
+    if (segments.length === 1 && PACKAGES.has(segments[0])) {
+      return { kind: 'latest', packageName: segments[0], file: null };
+    }
     return { kind: 'invalid' };
+  }
+  if (!PACKAGES.has(parsed.packageName) || parsed.version.length === 0) {
+    return { kind: 'invalid' };
+  }
+  if (parsed.version === 'latest') {
+    if (segments.length === 1) {
+      return { kind: 'latest', packageName: parsed.packageName, file: null };
+    }
+    for (const segment of segments.slice(1)) {
+      if (!FILE_SEGMENT.test(segment)) return { kind: 'invalid' };
+    }
+    return {
+      kind: 'latest',
+      packageName: parsed.packageName,
+      file: segments.slice(1).join('/'),
+    };
   }
   const major = isExactSemver(parsed.version) ? null : majorAliasNumber(parsed.version);
   if (!isExactSemver(parsed.version) && major === null) {
@@ -132,16 +162,20 @@ export function classifyPath(rawPath) {
       version: parsed.version,
     };
   }
-  // A major with no file is the same hint as @latest. There is nothing to redirect to.
   if (segments.length < 2) {
     if (major !== null) {
       return {
-        kind: 'alias',
+        kind: 'major',
         packageName: parsed.packageName,
-        version: parsed.version,
+        major,
+        file: null,
       };
     }
-    return { kind: 'invalid' };
+    return {
+      kind: 'entry',
+      packageName: parsed.packageName,
+      version: parsed.version,
+    };
   }
   for (const segment of segments.slice(1)) {
     if (!FILE_SEGMENT.test(segment)) return { kind: 'invalid' };
@@ -410,27 +444,13 @@ function loadManifest(env) {
   return pending;
 }
 
-// Null when the major has no stable version, or the file is not in that version.
-function resolveMajorRedirect(manifest, packageName, major, file) {
-  const versions = [];
-  const filesByVersion = new Map();
-  const packages = manifest && Array.isArray(manifest.packages) ? manifest.packages : [];
-  for (const pkg of packages) {
-    if (!pkg || pkg.package !== packageName || typeof pkg.version !== 'string') continue;
-    versions.push(pkg.version);
-    if (filesByVersion.has(pkg.version)) continue;
-    const files = new Set();
-    const list = Array.isArray(pkg.files) ? pkg.files : [];
-    for (const entry of list) {
-      if (entry && typeof entry.path === 'string') files.add(entry.path);
-    }
-    filesByVersion.set(pkg.version, files);
-  }
-  const version = highestStableInMajor(versions, major);
-  if (!version) return null;
-  const files = filesByVersion.get(version);
-  if (!files || !files.has(file)) return null;
-  return `/${packageName}@${version}/${file}`;
+function assetSpec(packageName, version, file) {
+  const literalPath = `/${packageName}@${version}/${file}`;
+  return {
+    literalPath,
+    encodedPath: encodedFromLiteral(literalPath),
+    file,
+  };
 }
 
 function redirectResponse(location) {
@@ -444,9 +464,40 @@ async function serveMajor(env, route, method) {
   const loaded = await loadManifest(env);
   if (loaded.error === 502) return badGateway(method);
   if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
-  const location = resolveMajorRedirect(loaded.manifest, route.packageName, route.major, route.file);
+  const version = resolveMajorVersion(loaded.manifest, route.packageName, route.major);
+  if (!version) return notFound(method, NOT_FOUND_BODY);
+  const location = aliasLocation(loaded.manifest, route.packageName, version, route.file);
   if (!location) return notFound(method, NOT_FOUND_BODY);
   return redirectResponse(location);
+}
+
+async function serveLatest(env, route, method) {
+  const loaded = await loadManifest(env);
+  if (loaded.error === 502) return badGateway(method);
+  if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
+  const version = resolveLatestVersion(loaded.manifest, route.packageName);
+  if (!version) return notFound(method, NOT_FOUND_BODY);
+  const location = aliasLocation(loaded.manifest, route.packageName, version, route.file);
+  if (!location) return notFound(method, NOT_FOUND_BODY);
+  return redirectResponse(location);
+}
+
+async function serveEntry(env, request, route, method) {
+  const loaded = await loadManifest(env);
+  if (loaded.error === 502) return badGateway(method);
+  if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
+  const record = recordFor(loaded.manifest, route.packageName, route.version);
+  if (!record || typeof record.entry !== 'string' || !fileSet(record).has(record.entry)) {
+    return notFound(method, NOT_FOUND_BODY);
+  }
+  return serveSpec(
+    env,
+    request,
+    assetSpec(route.packageName, route.version, record.entry),
+    method,
+    contentTypeFor(record.entry),
+    IMMUTABLE_CACHE,
+  );
 }
 
 function assetHttpResponse(assetResponse, method, contentType, cacheControl) {
@@ -491,6 +542,8 @@ export async function handleRequest(request, env) {
     return textResponse(200, ROOT_BODY, SHORT_CACHE, 'text/plain; charset=utf-8', method);
   }
   if (route.kind === 'major') return serveMajor(env, route, method);
+  if (route.kind === 'latest') return serveLatest(env, route, method);
+  if (route.kind === 'entry') return serveEntry(env, request, route, method);
   if (route.kind === 'alias') return notFound(method, ALIAS_BODY);
   if (route.kind === 'invalid') return notFound(method, NOT_FOUND_BODY);
   if (route.kind === 'manifest') {

@@ -75,7 +75,7 @@ test('404 and 405 responses from the worker carry CORS and a short cache', async
   ]);
   for (const name of FORBIDDEN_HEADERS) assert.equal(missing.headers.get(name), null);
 
-  const alias = await handleRequest(new Request('https://cdn.example/loader@latest/loader.min.js'), {});
+  const alias = await handleRequest(new Request('https://cdn.example/loader@next/loader.min.js'), {});
   assert.equal(alias.status, 404);
   assert.equal(await alias.text(), ALIAS_BODY);
   assert.match(alias.headers.get('cache-control'), /max-age=60/);

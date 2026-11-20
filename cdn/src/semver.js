@@ -64,17 +64,25 @@ export function majorAliasNumber(value) {
   return Number(match[1]);
 }
 
-// Highest stable release in `major`, or null when that major has no stable version.
-// A prerelease never wins, including when it is the only published version.
-export function highestStableInMajor(versions, major) {
-  if (!Number.isInteger(major) || major < 0) return null;
+// Highest stable release, or null when every version is a prerelease.
+export function highestStable(versions) {
   let best = null;
   const list = Array.isArray(versions) ? versions : [];
   for (const version of list) {
     const parsed = parseSemver(version);
     if (!parsed || parsed.prerelease) continue;
-    if (parsed.major !== major) continue;
     if (!best || compareSemver(version, best) > 0) best = version;
   }
   return best;
+}
+
+// Highest stable release in `major`, or null when that major has no stable version.
+// A prerelease never wins, including when it is the only published version.
+export function highestStableInMajor(versions, major) {
+  if (!Number.isInteger(major) || major < 0) return null;
+  const list = Array.isArray(versions) ? versions : [];
+  return highestStable(list.filter((version) => {
+    const parsed = parseSemver(version);
+    return parsed && parsed.major === major;
+  }));
 }

@@ -60,14 +60,44 @@ test('major aliases classify @N and @N.x for both spellings', () => {
   }
 });
 
+test('short URLs classify exact versions, majors, latest, and the package root', () => {
+  assert.equal(classifyPath('/loader@2.5.0').kind, 'entry');
+  assert.equal(classifyPath('/loader@2.5.0').version, '2.5.0');
+  assert.equal(classifyPath('/loader@2.5.0/').kind, 'entry');
+  assert.equal(classifyPath('/loader%402.5.0/').kind, 'entry');
+  assert.equal(classifyPath('/loader%402.5.0').version, '2.5.0');
+  assert.equal(classifyPath('/modules@1.1.0').packageName, 'modules');
+
+  const major = classifyPath('/loader@2/');
+  assert.equal(major.kind, 'major');
+  assert.equal(major.major, 2);
+  assert.equal(major.file, null);
+  assert.equal(classifyPath('/loader@2.x').kind, 'major');
+  assert.equal(classifyPath('/loader@2.x').file, null);
+  assert.equal(classifyPath('/loader%402').kind, 'major');
+  assert.equal(classifyPath('/loader%402').file, null);
+  assert.equal(classifyPath('/modules@1').kind, 'major');
+
+  assert.equal(classifyPath('/loader@latest').kind, 'latest');
+  assert.equal(classifyPath('/loader@latest').file, null);
+  assert.equal(classifyPath('/loader@latest/').kind, 'latest');
+  assert.equal(classifyPath('/loader%40latest/loader.min.js').kind, 'latest');
+  assert.equal(classifyPath('/loader%40latest/loader.min.js').file, 'loader.min.js');
+  assert.equal(classifyPath('/loader').kind, 'latest');
+  assert.equal(classifyPath('/loader/').packageName, 'loader');
+  assert.equal(classifyPath('/modules').kind, 'latest');
+  assert.equal(classifyPath('/modules').file, null);
+
+  assert.equal(classifyPath('/loader@next').kind, 'alias');
+  assert.equal(classifyPath('/loader@2.5/loader.min.js').kind, 'alias');
+  assert.equal(classifyPath('/loader@2.5.0/loader.min.js/').kind, 'invalid');
+});
+
 test('floating aliases of known packages are marked alias', () => {
   for (const path of [
-    '/loader@latest/loader.min.js',
     '/loader@2.5/loader.min.js',
     '/loader@next/cookies.min.js',
-    '/modules@2',
-    '/loader@1.x',
-    '/loader@2.x',
+    '/modules@next',
   ]) {
     const route = classifyPath(path);
     assert.equal(route.kind, 'alias', path);
@@ -78,7 +108,7 @@ test('floating aliases of known packages are marked alias', () => {
 test('unknown packages and broken versions are invalid, not aliases', () => {
   assert.equal(classifyPath('/cli@2.5.0/stagepass.js').kind, 'invalid');
   assert.equal(classifyPath('/Loader@2.5.0/loader.min.js').kind, 'invalid');
-  assert.equal(classifyPath('/loader@2.5.0').kind, 'invalid');
+  assert.equal(classifyPath('/loader@').kind, 'invalid');
 });
 
 test('traversal, encoded separators, empty segments, and NUL are invalid', () => {
