@@ -179,7 +179,7 @@ Do this once, before the first production dispatch:
 4. DNS. `staging-cdn.stagepass.one` is already a custom domain on `stagepass-cdn-staging`. The first production deploy attaches `cdn.stagepass.one` to `stagepass-cdn`. Both names must be on the Cloudflare zone. Remove a conflicting A or CNAME that is not the worker custom domain. The website origin behind the zone is netcup/Apache. The worker is not that origin.
 5. Decide whether the zone header transform should skip these two hostnames. `verify-live` warns and continues when it sees CSP, COOP, or `X-Frame-Options`.
 6. Run the CDN workflow with `workflow_dispatch` and target `production`. It deploys and verifies staging first. Approve `cdn-production`. It then deploys `stagepass-cdn` and runs `verify-live` against `https://cdn.stagepass.one`.
-7. Leave the CLI on jsDelivr. An exact `cdn.stagepass.one` URL is opt-in for a site that wants this host.
+7. Leave the CLI on jsDelivr in this change. Making this CDN the default everywhere is tracked in stagepass-one/os#150. Until then an exact `cdn.stagepass.one` URL is opt-in for a site that wants this host.
 
 `workers_dev` and `preview_urls` are false on the top-level config and on both environments, so a deploy does not publish a `workers.dev` hostname or a preview URL.
 
