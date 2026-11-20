@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadPackageConfig, missingVersions, readRegistryVersions, selectVersions } from './build-assets.mjs';
 import { contentTypeFor } from '../src/worker.js';
 
 const ZONE_WARNING_HEADERS = [
@@ -29,7 +30,7 @@ export function normalizeBase(base) {
 
 export function parseVerifyArgs(argv) {
   if (argv.length === 0) {
-    throw new Error('usage: verify-live.mjs <base-url> [--sample N|--all] [--local path|none]');
+    throw new Error('usage: verify-live.mjs <base-url> [--sample N|--all] [--local path|none] [--registry]');
   }
   const base = argv[0];
   let sample = 5;
@@ -37,6 +38,7 @@ export function parseVerifyArgs(argv) {
   let sawSample = false;
   let local;
   let localMode = 'auto';
+  let registry = false;
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--all') {
@@ -53,12 +55,42 @@ export function parseVerifyArgs(argv) {
       i += 1;
       if (!local) throw new Error('--local needs a path or "none"');
       localMode = local === 'none' ? 'none' : 'path';
+    } else if (arg === '--registry') {
+      registry = true;
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
   if (all && sawSample) throw new Error('pass either --all or --sample');
-  return { base, all, sample, local, localMode };
+  return { base, all, sample, local, localMode, registry };
+}
+
+// Registry versions that the manifest does not list. `exclude` is the only
+// omission that is allowed, and only for versions named there on purpose.
+// A non-empty exclude does not excuse any other missing version.
+export function missingRegistryVersions(registryVersions, manifest, options = {}) {
+  const packageName = options.package;
+  const exclude = Array.isArray(options.exclude) ? options.exclude : [];
+  const wanted = selectVersions(registryVersions, { exclude }).map((version) => ({
+    package: packageName,
+    version,
+  }));
+  return missingVersions(wanted, manifest);
+}
+
+export async function checkRegistryCoverage({ manifest, packages, readVersions }) {
+  const missing = [];
+  let required = 0;
+  for (const pkg of packages) {
+    const versions = await readVersions(pkg.npm);
+    const gaps = missingRegistryVersions(versions, manifest, {
+      package: pkg.package,
+      exclude: pkg.exclude,
+    });
+    required += selectVersions(versions, { exclude: pkg.exclude || [] }).length;
+    missing.push(...gaps);
+  }
+  return { missing, required };
 }
 
 export function listManifestFiles(manifest) {
@@ -314,6 +346,23 @@ async function main() {
   let localFile = null;
   if (args.localMode === 'path') localFile = path.resolve(args.local);
   if (args.localMode === 'auto') localFile = defaultLocalManifest();
+  if (args.registry) {
+    const config = await loadPackageConfig();
+    const coverage = await checkRegistryCoverage({
+      manifest: remote,
+      packages: config.packages,
+      readVersions: readRegistryVersions,
+    });
+    if (coverage.missing.length > 0) {
+      console.error('deployed manifest is missing registry versions:');
+      for (const item of coverage.missing) {
+        console.error(`  ${item.package}@${item.version}`);
+      }
+      console.error('A version may be absent only when exclude lists that exact version on purpose.');
+      process.exit(1);
+    }
+    process.stdout.write(`registry coverage ok: ${coverage.required} versions\n`);
+  }
   if (localFile && args.localMode !== 'none') {
     const local = await readOptionalJson(localFile);
     if (!local && args.localMode === 'path') {

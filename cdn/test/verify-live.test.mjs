@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  checkRegistryCoverage,
   encodedUrlPath,
   evaluateAssetHeaders,
   listManifestFiles,
   manifestDrift,
+  missingRegistryVersions,
   normalizeBase,
   parseVerifyArgs,
   sampleEntries,
@@ -94,5 +96,79 @@ test('verify args', () => {
   const all = parseVerifyArgs(['https://cdn.stagepass.one', '--all', '--local', 'none']);
   assert.equal(all.all, true);
   assert.equal(all.localMode, 'none');
+  assert.equal(all.registry, false);
+  const flagged = parseVerifyArgs(['https://cdn.stagepass.one', '--registry', '--sample', '1']);
+  assert.equal(flagged.registry, true);
+  assert.equal(flagged.sample, 1);
   assert.throws(() => parseVerifyArgs(['https://cdn.stagepass.one', '--all', '--sample', '2']));
+});
+
+test('registry coverage requires every published version except an explicit exclude', () => {
+  const registry = [
+    '1.0.0',
+    '1.2.0',
+    '2.0.0-beta.1',
+    '2.0.0',
+    '2.5.0',
+    '2.6.0-rc.1',
+  ];
+  const manifest = {
+    packages: [
+      { package: 'loader', version: '1.0.0' },
+      { package: 'loader', version: '1.2.0' },
+      { package: 'loader', version: '2.0.0-beta.1' },
+      { package: 'loader', version: '2.0.0' },
+      { package: 'loader', version: '2.5.0' },
+      { package: 'loader', version: '2.6.0-rc.1' },
+      { package: 'modules', version: '1.1.0' },
+    ],
+  };
+  assert.deepEqual(
+    missingRegistryVersions(registry, manifest, { package: 'loader', exclude: [] }),
+    [],
+  );
+  const partial = {
+    packages: manifest.packages.filter((pkg) => pkg.version !== '1.0.0' && pkg.version !== '2.0.0-beta.1'),
+  };
+  assert.deepEqual(
+    missingRegistryVersions(registry, partial, { package: 'loader', exclude: [] }),
+    [
+      { package: 'loader', version: '1.0.0' },
+      { package: 'loader', version: '2.0.0-beta.1' },
+    ],
+  );
+  assert.deepEqual(
+    missingRegistryVersions(registry, partial, { package: 'loader', exclude: ['1.0.0'] }),
+    [{ package: 'loader', version: '2.0.0-beta.1' }],
+  );
+  assert.deepEqual(
+    missingRegistryVersions(['1.0.0', '1.1.0'], manifest, { package: 'modules', exclude: [] }),
+    [{ package: 'modules', version: '1.0.0' }],
+  );
+});
+
+test('checkRegistryCoverage uses the injected version list', async () => {
+  const coverage = await checkRegistryCoverage({
+    manifest: {
+      packages: [
+        { package: 'loader', version: '1.2.0' },
+        { package: 'modules', version: '1.1.0' },
+      ],
+    },
+    packages: [
+      { package: 'loader', npm: '@stagepass/loader', exclude: [] },
+      { package: 'modules', npm: '@stagepass/modules', exclude: ['1.0.0'] },
+    ],
+    readVersions: async (npmName) => {
+      if (npmName === '@stagepass/loader') return ['1.0.0', '1.2.0', '2.0.0-rc.1', '2.5.0'];
+      if (npmName === '@stagepass/modules') return ['1.0.0', '1.1.0'];
+      throw new Error(`unexpected ${npmName}`);
+    },
+  });
+  assert.equal(coverage.required, 5);
+  assert.deepEqual(coverage.missing, [
+    { package: 'loader', version: '1.0.0' },
+    { package: 'loader', version: '2.0.0-rc.1' },
+    { package: 'loader', version: '2.5.0' },
+  ]);
 });

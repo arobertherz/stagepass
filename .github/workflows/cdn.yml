@@ -142,7 +142,7 @@ jobs:
 
       - name: Verify staging
         if: steps.creds.outputs.present == 'true'
-        run: node cdn/scripts/verify-live.mjs https://staging-cdn.stagepass.one --all --local cdn/dist/manifest.json
+        run: node cdn/scripts/verify-live.mjs https://staging-cdn.stagepass.one --all --local cdn/dist/manifest.json --registry
 
   deploy-production:
     needs: deploy-staging
@@ -182,4 +182,4 @@ jobs:
         run: npx --yes wrangler@4.165.0 deploy --env production
 
       - name: Verify production
-        run: node cdn/scripts/verify-live.mjs https://cdn.stagepass.one --all --local cdn/dist/manifest.json
+        run: node cdn/scripts/verify-live.mjs https://cdn.stagepass.one --all --local cdn/dist/manifest.json --registry
