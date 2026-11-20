@@ -155,6 +155,8 @@ Wrangler is `npx --yes wrangler@4.165.0`. That version is `npm view wrangler ver
 
 Each request writes one Workers Analytics Engine point on the `USAGE` binding. Staging uses the dataset `stagepass_cdn_usage_staging`. Production uses `stagepass_cdn_usage`. The write is `ctx.waitUntil` after the response is built. A missing binding or a failed write does not change the response.
 
+Analytics Engine has to be enabled once on the account before either environment can deploy this binding. An account admin opens `https://dash.cloudflare.com/<account>/workers/analytics-engine` and enables it. The click is free. Until then `wrangler deploy --env staging` and `wrangler deploy --env production` fail with Cloudflare API error 10089 (`You need to enable Analytics Engine`) at the versions upload. The deploy stops there, and the worker version that is already live stays in place.
+
 The point is the embedding site, not the visitor. `indexes` is the hostname. Blobs are fixed:
 
 | SQL | Field | Value |
@@ -244,11 +246,12 @@ Do this once, before the first production dispatch:
 
 1. In the GitHub repo settings, create the environment `cdn-production` with required reviewers. The production job uses `environment: cdn-production` and will not deploy until that approval exists. Create the environment before the first production run so the job waits instead of deploying with no reviewer.
 2. Set the repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `account_id` is not in `wrangler.jsonc`.
-3. Create the token from the "Edit Cloudflare Workers" template, scoped to this account and the `stagepass.one` zone. Custom domains also need the token to create the hostname on that zone. If the first deploy cannot attach the domain, add Zone DNS Edit for `stagepass.one` only.
-4. DNS. `staging-cdn.stagepass.one` is already a custom domain on `stagepass-cdn-staging`. The first production deploy attaches `cdn.stagepass.one` to `stagepass-cdn`. Both names must be on the Cloudflare zone. Remove a conflicting A or CNAME that is not the worker custom domain. The website origin behind the zone is netcup/Apache. The worker is not that origin.
-5. Decide whether the zone header transform should skip these two hostnames. `verify-live` warns and continues when it sees CSP, COOP, or `X-Frame-Options`.
-6. Run the CDN workflow with `workflow_dispatch` and target `production`. It deploys and verifies staging first. Approve `cdn-production`. It then deploys `stagepass-cdn` and runs `verify-live` against `https://cdn.stagepass.one`.
-7. Leave the CLI on jsDelivr in this change. Making this CDN the default everywhere is tracked in stagepass-one/os#150. Until then an exact `cdn.stagepass.one` URL is opt-in for a site that wants this host.
+3. Enable Workers Analytics Engine once. An account admin opens `https://dash.cloudflare.com/<account>/workers/analytics-engine` and enables it. The click is free. Until then every deploy of staging and of production fails at the versions upload with Cloudflare API error 10089 (`You need to enable Analytics Engine`), and the worker version that is already live stays in place. The `cdn-production` approval and the repo secrets do not replace this dashboard step.
+4. Create the token from the "Edit Cloudflare Workers" template, scoped to this account and the `stagepass.one` zone. Custom domains also need the token to create the hostname on that zone. If the first deploy cannot attach the domain, add Zone DNS Edit for `stagepass.one` only.
+5. DNS. `staging-cdn.stagepass.one` is already a custom domain on `stagepass-cdn-staging`. The first production deploy attaches `cdn.stagepass.one` to `stagepass-cdn`. Both names must be on the Cloudflare zone. Remove a conflicting A or CNAME that is not the worker custom domain. The website origin behind the zone is netcup/Apache. The worker is not that origin.
+6. Decide whether the zone header transform should skip these two hostnames. `verify-live` warns and continues when it sees CSP, COOP, or `X-Frame-Options`.
+7. Run the CDN workflow with `workflow_dispatch` and target `production`. It deploys and verifies staging first. Approve `cdn-production`. It then deploys `stagepass-cdn` and runs `verify-live` against `https://cdn.stagepass.one`.
+8. Leave the CLI on jsDelivr in this change. Making this CDN the default everywhere is tracked in stagepass-one/os#150. Until then an exact `cdn.stagepass.one` URL is opt-in for a site that wants this host.
 
 `workers_dev` and `preview_urls` are false on the top-level config and on both environments, so a deploy does not publish a `workers.dev` hostname or a preview URL.
 
