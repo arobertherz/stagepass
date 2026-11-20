@@ -5,3 +5,4 @@ import './worker.test.mjs';
 import './build-assets.test.mjs';
 import './verify-live.test.mjs';
 import './usage.test.mjs';
+import './usage-report.test.mjs';
