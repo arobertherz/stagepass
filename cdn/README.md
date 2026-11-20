@@ -151,6 +151,46 @@ If `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` is missing, scheduled and p
 
 Wrangler is `npx --yes wrangler@4.165.0`. That version is `npm view wrangler version` from `node:22` on 2026-11-20. Change the pin only after a fresh `npm view`.
 
+## Usage analytics
+
+Each request writes one Workers Analytics Engine point on the `USAGE` binding. Staging uses the dataset `stagepass_cdn_usage_staging`. Production uses `stagepass_cdn_usage`. The write is `ctx.waitUntil` after the response is built. A missing binding or a failed write does not change the response.
+
+The point is the embedding site, not the visitor. `indexes` is the hostname. Blobs are fixed:
+
+| SQL | Field | Value |
+| --- | --- | --- |
+| `blob1` | env | `staging` or `production` (`CDN_ENV`) |
+| `blob2` | host | hostname from `Origin`, otherwise the `Referer` hostname, otherwise `none` |
+| `blob3` | internal | `1` or `0` |
+| `blob4` | package | `loader`, `modules`, `unknown`, or empty |
+| `blob5` | resolved version | version served or redirected to, or empty |
+| `blob6` | spec kind | `exact`, `range`, `latest`, or `none` |
+| `blob7` | spec | version token only: `2`, `2.x`, `latest`, `2.5.0`, or empty |
+| `blob8` | file | file name under that version's `dist/`, or empty |
+| `blob9` | country | `request.cf.country`, or `XX` |
+| `blob10` | status | HTTP status |
+
+`doubles` is `[1, status]`. `SUM(_sample_interval)` is the request count. Analytics Engine can sample a point and stores the rate in `_sample_interval`, so do not use `COUNT(*)` or `SUM(double1)` as the count.
+
+The hostname is lowercase, without a port, a trailing dot, a path, or a query. An opaque `Origin: null` is `none`. A value that is not a URL, is longer than 96 bytes, or is outside `[a-z0-9.-]` is `invalid`. An IPv6 literal is `invalid` because the hostname contains `:`. An IPv4 literal such as `127.0.0.1` is kept. An IDN is stored as the punycode hostname the URL parser returns. `spec` is never a path. `file` is the manifest-relative name only (`loader.min.js`, `vendor/cookies.min.js`).
+
+`INTERNAL_HOSTS` defaults to `stagepass.one,*.stagepass.one,localhost,127.0.0.1`. Those hosts are still written. `internal` is `1`, and the report script omits them unless `--include-internal` is set. `*.stagepass.one` matches `www.stagepass.one` and does not match the apex; the apex is listed on its own.
+
+Nothing else from the request is stored. The point has no IP (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`), no user agent, no cookie, no page URL, no `Origin` or `Referer` path or query, no request query string, and no visitor identifier. The worker does not read those headers. It reads `Origin` and, only when `Origin` is absent, `Referer`, and it keeps the hostname.
+
+Workers Free includes Analytics Engine at no charge, with 100,000 data points written per day, 10,000 SQL reads per day, and 3 months of retention. A point allows at most 20 blobs, 20 doubles, and one index of at most 96 bytes. Workers Free also caps Worker invocations at 100,000 per day. `run_worker_first` is on, so a request over that cap is a Worker 429. It does not fall through to the static asset.
+
+Query with `cdn/scripts/usage-report.mjs` (Node 22, no dependencies). The token needs **Account Analytics Read**. The existing "Edit Cloudflare Workers" token does not have that right. Create a separate token for queries. Do not add the right to the deploy token unless you mean to.
+
+```bash
+node cdn/scripts/usage-report.mjs --env staging --report all --print-sql
+node cdn/scripts/usage-report.mjs --env production --from 2026-11-13 --to 2026-11-20 --report top-hosts --limit 20
+```
+
+`--env` is `staging` or `production`. `--from` and `--to` are `YYYY-MM-DD` in UTC. The default is seven days back through today, from `00:00` UTC on `--from` through the end of `--to`. `--report` is `top-hosts`, `versions`, `last-seen`, or `all`. `top-hosts` is `SUM(_sample_interval)` by hostname. `versions` is host, package, and resolved version. `last-seen` is `MAX(timestamp)` per host. `--print-sql` prints the query and does not call the API. The script rejects a date, env, report, or limit it cannot prove is safe, and it only interpolates those checked values.
+
+This is not personal data. There is no IP, no user agent, no page URL, no cookie, and no identifier of a person. The stored fields are the embedding site's hostname, a coarse country, and request metadata (package, version, file name, status). Cloudflare keeps the dataset for 3 months.
+
 ## Local checks (Docker)
 
 Do not run `node`, `npm`, or `wrangler` on the host for this package. Mount the repo read-only and copy it into the container so `node_modules` and `.wrangler` stay off the worktree. Container names use the prefix `sp-cdn-`.
@@ -214,4 +254,4 @@ Do this once, before the first production dispatch:
 
 ## Tests
 
-`node --test cdn/test` covers routing (both spellings, hex case, traversal, short URLs, major aliases, `@latest`, other aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307, short entry responses, and alias redirects), the build-script helpers (full registry selection, entry selection, exclude, SRI), the registry-coverage comparison, and the short-URL plan with a mocked manifest. `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.
+`node --test cdn/test` covers routing (both spellings, hex case, traversal, short URLs, major aliases, `@latest`, other aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307, short entry responses, and alias redirects), usage points (hostname, internal flag, and a check that the written point has no IP, user agent, cookie, path, or query), the usage-report SQL builder, the build-script helpers (full registry selection, entry selection, exclude, SRI), the registry-coverage comparison, and the short-URL plan with a mocked manifest. `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.

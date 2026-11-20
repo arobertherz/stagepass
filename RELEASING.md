@@ -168,6 +168,8 @@ The build stores `entry` on each version and `distTags` per package. `entry` com
 
 `verify-live` checks every `/<pkg>@<version>` for 200 and the entry sha256, and checks `/<pkg>`, `/<pkg>@latest`, and `/<pkg>@<major>` for 302 with the expected `Location` and `max-age=300`.
 
+The worker writes one Workers Analytics Engine point per request (`stagepass_cdn_usage_staging` / `stagepass_cdn_usage`). The point is the embedding hostname, a coarse country, and request metadata. It does not store an IP, a user agent, a page URL, a cookie, or a visitor identifier. `cdn/scripts/usage-report.mjs` queries it. The token right is Account Analytics Read, which the deploy token does not have. Details are in `cdn/README.md`.
+
 The CLI default stays jsDelivr (`https://cdn.jsdelivr.net/npm/@stagepass/...`). This CDN does not replace those snippet pins. Do not point `packages/cli` at `cdn.stagepass.one` as part of a loader or modules release.
 
 npm does not publish at tag time. CI runs `npm stage publish`. The package becomes a public version only after a maintainer runs `npm stage approve` (or approves it on the npm website). The CDN workflow therefore does not deploy from the release tag. `.github/workflows/cdn.yml` rebuilds staging on a schedule (every 30 minutes) when `npm view` lists a published version that `https://staging-cdn.stagepass.one/manifest.json` does not have yet (versions in `exclude` are not required). A push to `master` that changes `cdn/**` also deploys staging. Both of those runs skip the deploy and stay green when `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` is missing.
