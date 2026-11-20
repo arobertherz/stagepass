@@ -16,6 +16,13 @@ import {
   resolveMajorVersion,
 } from './catalog.js';
 import { isExactSemver, majorAliasNumber } from './semver.js';
+import {
+  countryCode,
+  embeddingHost,
+  isInternal,
+  parseInternalHosts,
+  usagePoint,
+} from './usage.js';
 
 const PACKAGES = new Set(['loader', 'modules']);
 const ASSET_ORIGIN = 'https://assets.local';
@@ -134,7 +141,7 @@ export function classifyPath(rawPath) {
   const parsed = parsePackageSegment(segments[0]);
   if (!parsed) {
     if (segments.length === 1 && PACKAGES.has(segments[0])) {
-      return { kind: 'latest', packageName: segments[0], file: null };
+      return { kind: 'latest', packageName: segments[0], spec: '', file: null };
     }
     return { kind: 'invalid' };
   }
@@ -143,7 +150,7 @@ export function classifyPath(rawPath) {
   }
   if (parsed.version === 'latest') {
     if (segments.length === 1) {
-      return { kind: 'latest', packageName: parsed.packageName, file: null };
+      return { kind: 'latest', packageName: parsed.packageName, spec: 'latest', file: null };
     }
     for (const segment of segments.slice(1)) {
       if (!FILE_SEGMENT.test(segment)) return { kind: 'invalid' };
@@ -151,26 +158,34 @@ export function classifyPath(rawPath) {
     return {
       kind: 'latest',
       packageName: parsed.packageName,
+      spec: 'latest',
       file: segments.slice(1).join('/'),
     };
   }
   const major = isExactSemver(parsed.version) ? null : majorAliasNumber(parsed.version);
   if (!isExactSemver(parsed.version) && major === null) {
+    let file = '';
+    if (segments.length > 1 && segments.slice(1).every((segment) => FILE_SEGMENT.test(segment))) {
+      file = segments.slice(1).join('/');
+    }
     return {
       kind: 'alias',
       packageName: parsed.packageName,
       version: parsed.version,
+      spec: parsed.version,
+      file,
     };
   }
-  if (segments.length < 2) {
-    if (major !== null) {
-      return {
-        kind: 'major',
-        packageName: parsed.packageName,
-        major,
-        file: null,
-      };
-    }
+    if (segments.length < 2) {
+      if (major !== null) {
+        return {
+          kind: 'major',
+          packageName: parsed.packageName,
+          major,
+          spec: parsed.version,
+          file: null,
+        };
+      }
     return {
       kind: 'entry',
       packageName: parsed.packageName,
@@ -186,6 +201,7 @@ export function classifyPath(rawPath) {
       kind: 'major',
       packageName: parsed.packageName,
       major,
+      spec: parsed.version,
       file,
     };
   }
@@ -460,7 +476,20 @@ function redirectResponse(location) {
   return new Response(null, { status: 302, headers });
 }
 
-async function serveMajor(env, route, method) {
+// Location is `/pkg@version/file`. Keep the version and the file name only.
+function noteRedirect(usage, location) {
+  if (!usage || typeof location !== 'string' || !location.startsWith('/')) return;
+  const slash = location.indexOf('/', 1);
+  const at = location.indexOf('@');
+  if (slash === -1 || at < 1 || at > slash) return;
+  const version = location.slice(at + 1, slash);
+  const file = location.slice(slash + 1);
+  if (!version || !file || file.includes('?') || file.includes('#') || file.includes('\\')) return;
+  usage.resolvedVersion = version;
+  usage.file = file;
+}
+
+async function serveMajor(env, route, method, usage) {
   const loaded = await loadManifest(env);
   if (loaded.error === 502) return badGateway(method);
   if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
@@ -468,10 +497,11 @@ async function serveMajor(env, route, method) {
   if (!version) return notFound(method, NOT_FOUND_BODY);
   const location = aliasLocation(loaded.manifest, route.packageName, version, route.file);
   if (!location) return notFound(method, NOT_FOUND_BODY);
+  noteRedirect(usage, location);
   return redirectResponse(location);
 }
 
-async function serveLatest(env, route, method) {
+async function serveLatest(env, route, method, usage) {
   const loaded = await loadManifest(env);
   if (loaded.error === 502) return badGateway(method);
   if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
@@ -479,10 +509,11 @@ async function serveLatest(env, route, method) {
   if (!version) return notFound(method, NOT_FOUND_BODY);
   const location = aliasLocation(loaded.manifest, route.packageName, version, route.file);
   if (!location) return notFound(method, NOT_FOUND_BODY);
+  noteRedirect(usage, location);
   return redirectResponse(location);
 }
 
-async function serveEntry(env, request, route, method) {
+async function serveEntry(env, request, route, method, usage) {
   const loaded = await loadManifest(env);
   if (loaded.error === 502) return badGateway(method);
   if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
@@ -490,6 +521,7 @@ async function serveEntry(env, request, route, method) {
   if (!record || typeof record.entry !== 'string' || !fileSet(record).has(record.entry)) {
     return notFound(method, NOT_FOUND_BODY);
   }
+  if (usage) usage.file = record.entry;
   return serveSpec(
     env,
     request,
@@ -532,22 +564,83 @@ async function serveSpec(env, request, spec, method, contentType, cacheControl) 
   return assetHttpResponse(assetResponse, method, contentType, cacheControl);
 }
 
-export async function handleRequest(request, env) {
-  const method = String(request.method || 'GET').toUpperCase();
-  if (method === 'OPTIONS') return preflight();
-  if (method !== 'GET' && method !== 'HEAD') return methodNotAllowed(method);
+function emptyUsage(pkg) {
+  return {
+    pkg,
+    resolvedVersion: '',
+    specKind: 'none',
+    spec: '',
+    file: '',
+  };
+}
 
-  const route = classifyPath(rawPathname(request.url));
-  if (route.kind === 'root') {
-    return textResponse(200, ROOT_BODY, SHORT_CACHE, 'text/plain; charset=utf-8', method);
+function usageForRoute(route) {
+  if (!route || route.kind === 'invalid') return emptyUsage('unknown');
+  if (route.kind === 'root' || route.kind === 'manifest') return emptyUsage('');
+  if (route.kind === 'asset' || route.kind === 'entry') {
+    return {
+      pkg: route.packageName,
+      resolvedVersion: '',
+      specKind: 'exact',
+      spec: route.version,
+      file: route.kind === 'asset' ? route.file : '',
+    };
   }
-  if (route.kind === 'major') return serveMajor(env, route, method);
-  if (route.kind === 'latest') return serveLatest(env, route, method);
-  if (route.kind === 'entry') return serveEntry(env, request, route, method);
-  if (route.kind === 'alias') return notFound(method, ALIAS_BODY);
-  if (route.kind === 'invalid') return notFound(method, NOT_FOUND_BODY);
-  if (route.kind === 'manifest') {
-    return serveSpec(
+  if (route.kind === 'major') {
+    return {
+      pkg: route.packageName,
+      resolvedVersion: '',
+      specKind: 'range',
+      spec: route.spec || '',
+      file: route.file || '',
+    };
+  }
+  if (route.kind === 'latest') {
+    return {
+      pkg: route.packageName,
+      resolvedVersion: '',
+      specKind: 'latest',
+      spec: route.spec || '',
+      file: route.file || '',
+    };
+  }
+  if (route.kind === 'alias') {
+    return {
+      pkg: route.packageName,
+      resolvedVersion: '',
+      specKind: 'none',
+      spec: route.spec || route.version || '',
+      file: route.file || '',
+    };
+  }
+  return emptyUsage('unknown');
+}
+
+// Response plus the usage fields for that request. `handleRequest` returns
+// only the response so existing callers stay unchanged.
+export async function describeRequest(request, env) {
+  const method = String(request.method || 'GET').toUpperCase();
+  const route = classifyPath(rawPathname(request.url));
+  const usage = usageForRoute(route);
+  let response;
+  if (method === 'OPTIONS') {
+    response = preflight();
+  } else if (method !== 'GET' && method !== 'HEAD') {
+    response = methodNotAllowed(method);
+  } else if (route.kind === 'root') {
+    response = textResponse(200, ROOT_BODY, SHORT_CACHE, 'text/plain; charset=utf-8', method);
+  } else if (route.kind === 'major') {
+    response = await serveMajor(env, route, method, usage);
+  } else if (route.kind === 'latest') {
+    response = await serveLatest(env, route, method, usage);
+  } else if (route.kind === 'entry') {
+    response = await serveEntry(env, request, route, method, usage);
+  } else if (route.kind === 'alias') {
+    response = notFound(method, ALIAS_BODY);
+  } else if (route.kind === 'invalid') {
+    response = notFound(method, NOT_FOUND_BODY);
+  } else if (route.kind === 'manifest') {
+    response = await serveSpec(
       env,
       request,
       route,
@@ -555,19 +648,63 @@ export async function handleRequest(request, env) {
       'application/json; charset=utf-8',
       SHORT_CACHE,
     );
+  } else {
+    response = await serveSpec(
+      env,
+      request,
+      route,
+      method,
+      contentTypeFor(route.file),
+      IMMUTABLE_CACHE,
+    );
   }
-  return serveSpec(
-    env,
-    request,
-    route,
-    method,
-    contentTypeFor(route.file),
-    IMMUTABLE_CACHE,
-  );
+  if (
+    (route.kind === 'asset' || route.kind === 'entry') &&
+    response &&
+    (response.status === 200 || response.status === 304)
+  ) {
+    usage.resolvedVersion = route.version;
+  }
+  return { response, usage };
+}
+
+export async function handleRequest(request, env) {
+  const described = await describeRequest(request, env);
+  return described.response;
+}
+
+// Recording is best-effort. A missing binding, a missing ctx, or a throwing
+// writeDataPoint must not change the response.
+export function recordUsage(request, env, ctx, usage, status) {
+  try {
+    if (!env || !env.USAGE || typeof env.USAGE.writeDataPoint !== 'function') return;
+    if (!ctx || typeof ctx.waitUntil !== 'function') return;
+    const host = embeddingHost(request);
+    const point = usagePoint({
+      host,
+      internal: isInternal(host, parseInternalHosts(env.INTERNAL_HOSTS)),
+      env: typeof env.CDN_ENV === 'string' ? env.CDN_ENV : '',
+      pkg: usage && usage.pkg,
+      resolvedVersion: usage && usage.resolvedVersion,
+      specKind: usage && usage.specKind,
+      spec: usage && usage.spec,
+      file: usage && usage.file,
+      country: countryCode(request),
+      status,
+    });
+    const dataset = env.USAGE;
+    ctx.waitUntil(Promise.resolve().then(() => {
+      dataset.writeDataPoint(point);
+    }).catch(() => {}));
+  } catch {
+    // Never fail the response because a usage write failed.
+  }
 }
 
 export default {
-  fetch(request, env) {
-    return handleRequest(request, env);
+  async fetch(request, env, ctx) {
+    const described = await describeRequest(request, env);
+    recordUsage(request, env, ctx, described.usage, described.response.status);
+    return described.response;
   },
 };

@@ -36,6 +36,16 @@
           "pattern": "staging-cdn.stagepass.one",
           "custom_domain": true
         }
+      ],
+      "vars": {
+        "CDN_ENV": "staging",
+        "INTERNAL_HOSTS": "stagepass.one,*.stagepass.one,localhost,127.0.0.1"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "USAGE",
+          "dataset": "stagepass_cdn_usage_staging"
+        }
       ]
     },
     "production": {
@@ -46,6 +56,16 @@
         {
           "pattern": "cdn.stagepass.one",
           "custom_domain": true
+        }
+      ],
+      "vars": {
+        "CDN_ENV": "production",
+        "INTERNAL_HOSTS": "stagepass.one,*.stagepass.one,localhost,127.0.0.1"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "USAGE",
+          "dataset": "stagepass_cdn_usage"
         }
       ]
     }

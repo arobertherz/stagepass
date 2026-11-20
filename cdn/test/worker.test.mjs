@@ -16,7 +16,7 @@ function fakeRequest(url, method = 'GET', headers) {
 }
 
 test('worker source stays free of Node imports', async () => {
-  for (const file of ['../src/worker.js', '../src/semver.js', '../src/policy.js', '../src/catalog.js']) {
+  for (const file of ['../src/worker.js', '../src/semver.js', '../src/policy.js', '../src/catalog.js', '../src/usage.js']) {
     const source = await readFile(new URL(file, import.meta.url), 'utf8');
     assert.equal(source.includes('node:'), false, file);
   }
