@@ -109,3 +109,24 @@ jobs:
           tar -xzf "$RUNNER_TEMP/php.tar.gz" -C "$RUNNER_TEMP/php"
           "$RUNNER_TEMP/php/php" -v
           "$RUNNER_TEMP/php/php" packages/cli/src/lib/__tests__/php-security-behaviour.php
+
+  cdn:
+    # Fork PRs must not run on the self-hosted runner.
+    # Same runner labels as the other jobs. Runner name: cerebro-stagepass
+    # (labels include self-hosted, linux, arm64, cerebro).
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, cerebro]
+    strategy:
+      matrix:
+        node-version: [22.x, 24.x]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: CDN worker tests
+        run: node --test cdn/test
