@@ -7,6 +7,7 @@ import {
   ASSET_LIMITS,
   assertSafeOutDir,
   checkAssetLimits,
+  chooseEntry,
   classifyTarEntry,
   integrityMatches,
   loadPackageConfig,
@@ -134,11 +135,38 @@ test('sha512 integrity must match the tarball bytes', () => {
   assert.equal(integrityMatches('hello', ''), false);
 });
 
+test('chooseEntry walks jsdelivr, unpkg, a browser string, then main', () => {
+  const files = ['loader.js', 'loader.min.js', 'all.min.js'];
+  assert.equal(chooseEntry({
+    jsdelivr: 'dist/loader.js',
+    unpkg: 'dist/loader.min.js',
+    main: 'dist/loader.min.js',
+  }, files, 'loader'), 'loader.js');
+  assert.equal(chooseEntry({
+    jsdelivr: 'dist/missing.js',
+    unpkg: './dist/loader.min.js',
+    browser: { '.': './dist/loader.js' },
+    main: 'dist/loader.js',
+  }, files, 'loader'), 'loader.min.js');
+  assert.equal(chooseEntry({
+    browser: 'dist/loader.js',
+    main: 'dist/loader.min.js',
+  }, files, 'loader'), 'loader.js');
+  assert.equal(chooseEntry({ main: 'dist/loader.js' }, files, 'loader'), 'loader.js');
+  assert.equal(chooseEntry({ main: './dist/loader.min.js' }, files, 'loader'), 'loader.min.js');
+  assert.equal(chooseEntry({ main: 'src/index.js' }, files, 'loader'), 'loader.min.js');
+  assert.equal(chooseEntry({}, files, 'modules'), 'all.min.js');
+  assert.throws(
+    () => chooseEntry({ main: 'src/missing.js' }, ['other.js'], 'loader', 'loader@0.0.0'),
+    /no entry file for loader@0.0.0/,
+  );
+});
+
 test('tar entries outside package/dist are skipped or rejected', () => {
   assert.equal(classifyTarEntry('package/dist/loader.min.js'), 'dist');
   assert.equal(classifyTarEntry('package/dist/vendor/cookies.min.js'), 'dist');
   assert.equal(classifyTarEntry('package/dist/'), 'dist');
-  assert.equal(classifyTarEntry('package/package.json'), 'skip');
+  assert.equal(classifyTarEntry('package/package.json'), 'package-json');
   assert.equal(classifyTarEntry('package/README.md'), 'skip');
   assert.equal(classifyTarEntry('package/dist/../../package.json'), 'reject');
   assert.equal(classifyTarEntry('package/../../etc/passwd'), 'reject');

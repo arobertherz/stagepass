@@ -66,7 +66,8 @@ export function integrityMatches(bytes, expected) {
   return timingSafeEqual(left, right);
 }
 
-// 'dist' entries are extracted. 'skip' entries are ignored. 'reject' fails the build.
+// 'dist' entries are extracted. 'package-json' is the version's package.json.
+// 'skip' entries are ignored. 'reject' fails the build.
 export function classifyTarEntry(name) {
   if (typeof name !== 'string' || name.length === 0) return 'reject';
   if (name.includes('\\') || name.includes('\0')) return 'reject';
@@ -75,9 +76,48 @@ export function classifyTarEntry(name) {
   if (parts.some((part) => part === '..')) return 'reject';
   const segments = name.endsWith('/') ? parts.slice(0, -1) : parts;
   if (segments.some((part) => part === '')) return 'reject';
-  if (segments.length < 2 || segments[0] !== 'package' || segments[1] !== 'dist') return 'skip';
+  if (segments.length < 2 || segments[0] !== 'package') return 'skip';
+  if (segments.length === 2 && segments[1] === 'package.json' && !name.endsWith('/')) {
+    return 'package-json';
+  }
+  if (segments[1] !== 'dist') return 'skip';
   if (segments.slice(2).some((part) => part === '.')) return 'reject';
   return 'dist';
+}
+
+const ENTRY_FIELDS = ['jsdelivr', 'unpkg', 'browser', 'main'];
+const FALLBACK_ENTRY = {
+  loader: 'loader.min.js',
+  modules: 'all.min.js',
+};
+
+// Path relative to dist/. Strips a leading ./ and a leading dist/.
+export function normalizePackageEntry(value) {
+  if (typeof value !== 'string') return null;
+  let entry = value.trim();
+  if (entry.length === 0 || entry.includes('\\') || entry.includes('\0')) return null;
+  while (entry.startsWith('./')) entry = entry.slice(2);
+  if (entry.startsWith('dist/')) entry = entry.slice('dist/'.length);
+  while (entry.startsWith('./')) entry = entry.slice(2);
+  if (entry.length === 0 || entry.startsWith('/')) return null;
+  const parts = entry.split('/');
+  if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) return null;
+  return entry;
+}
+
+// First field in jsdelivr, unpkg, browser (string only), main whose file is in
+// `files`. Otherwise the package fallback. Throws when that file is absent too.
+export function chooseEntry(packageJson, files, packageName, label = packageName) {
+  const have = new Set(files);
+  const meta = packageJson && typeof packageJson === 'object' ? packageJson : {};
+  for (const field of ENTRY_FIELDS) {
+    const normalized = normalizePackageEntry(meta[field]);
+    if (!normalized || !have.has(normalized)) continue;
+    return normalized;
+  }
+  const fallback = FALLBACK_ENTRY[packageName];
+  if (fallback && have.has(fallback)) return fallback;
+  throw new Error(`no entry file for ${label}`);
 }
 
 export function assertSafeOutDir(out, anchors = []) {
@@ -225,6 +265,22 @@ export async function readRegistryVersions(npmName) {
   return normalizeVersionList(await npmJson(['view', npmName, 'versions']));
 }
 
+export async function readDistTags(npmName) {
+  const data = await npmJson(['view', npmName, 'dist-tags']);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error(`dist-tags for ${npmName} must be an object`);
+  }
+  const tags = {};
+  for (const name of Object.keys(data).sort()) {
+    const version = data[name];
+    if (typeof version !== 'string' || !parseSemver(version)) {
+      throw new Error(`dist-tag ${name} for ${npmName} must be an exact version`);
+    }
+    tags[name] = version;
+  }
+  return tags;
+}
+
 export async function readDistMetadata(npmName, version) {
   const data = await npmJson(['view', `${npmName}@${version}`, 'dist.integrity', 'dist.tarball']);
   if (!data || typeof data !== 'object') {
@@ -297,18 +353,45 @@ async function packAndExtract(pkg, version, tmp) {
 
   const names = await listTar(tarballPath);
   const distEntries = [];
+  let packageJsonEntry = null;
   for (const name of names) {
     const kind = classifyTarEntry(name);
     if (kind === 'reject') throw new Error(`unsafe tar entry in ${spec}: ${name}`);
     if (kind === 'dist') distEntries.push(name);
+    if (kind === 'package-json') packageJsonEntry = name;
   }
+  if (!packageJsonEntry) throw new Error(`package.json missing in ${spec}`);
   if (!distEntries.some((name) => !name.endsWith('/'))) {
     throw new Error(`no dist/ files in ${spec}`);
   }
 
   const extractDir = path.join(tmp, `extract-${pkg.package}-${version}`);
   await mkdir(extractDir, { recursive: true });
-  await execFileAsync('tar', ['-xzf', tarballPath, '-C', extractDir, '--', ...distEntries]);
+  await execFileAsync('tar', [
+    '-xzf',
+    tarballPath,
+    '-C',
+    extractDir,
+    '--',
+    packageJsonEntry,
+    ...distEntries,
+  ]);
+  const packageJsonPath = path.join(extractDir, 'package', 'package.json');
+  let packageJsonStat;
+  try {
+    packageJsonStat = await lstat(packageJsonPath);
+  } catch {
+    throw new Error(`package.json missing after extract for ${spec}`);
+  }
+  if (!packageJsonStat.isFile() || packageJsonStat.isSymbolicLink()) {
+    throw new Error(`package.json is not a file for ${spec}`);
+  }
+  let packageJson;
+  try {
+    packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+  } catch {
+    throw new Error(`package.json is not JSON for ${spec}`);
+  }
   const distDir = path.join(extractDir, 'package', 'dist');
   let distStat;
   try {
@@ -336,14 +419,15 @@ async function packAndExtract(pkg, version, tmp) {
   }
   files.sort((a, b) => a.path.localeCompare(b.path));
   if (files.length === 0) throw new Error(`no dist/ files in ${spec}`);
-  return { integrity: meta.integrity, tarball: meta.tarball, files };
+  const entry = chooseEntry(packageJson, files.map((file) => file.path), pkg.package, spec);
+  return { integrity: meta.integrity, tarball: meta.tarball, files, entry };
 }
 
 function requireTool(name) {
   return execFileAsync(name, ['--version']);
 }
 
-export function manifestFromPackages(packages) {
+export function manifestFromPackages(packages, distTags = {}) {
   const manifestPackages = [];
   for (const pkg of packages) {
     for (const version of pkg.versions) {
@@ -351,28 +435,30 @@ export function manifestFromPackages(packages) {
       for (const file of version.files) {
         files.push({ path: file.path, bytes: file.bytes, sha256: file.sha256 });
       }
-      manifestPackages.push({
+      const record = {
         package: pkg.package,
         npm: pkg.npm,
         version: version.version,
         integrity: version.integrity,
         tarball: version.tarball,
         files,
-      });
+      };
+      if (typeof version.entry === 'string') record.entry = version.entry;
+      manifestPackages.push(record);
     }
   }
   manifestPackages.sort((a, b) => {
     if (a.package !== b.package) return a.package.localeCompare(b.package);
     return compareSemver(a.version, b.version);
   });
-  return { packages: manifestPackages };
+  return { distTags, packages: manifestPackages };
 }
 
 export function serializeManifest(manifest) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-async function writeTree(out, packages) {
+async function writeTree(out, packages, distTags) {
   let fileCount = 0;
   let byteCount = 0;
   for (const pkg of packages) {
@@ -391,7 +477,7 @@ async function writeTree(out, packages) {
       }
     }
   }
-  const manifest = manifestFromPackages(packages);
+  const manifest = manifestFromPackages(packages, distTags);
   const json = serializeManifest(manifest);
   const manifestPath = path.join(out, 'manifest.json');
   await writeFile(manifestPath, json);
@@ -408,7 +494,7 @@ function printSummary(built) {
     }
     const row = byPackage.get(pkg.package);
     row.versions += 1;
-    row.names.push(`${pkg.package}@${pkg.version}`);
+    row.names.push(`${pkg.package}@${pkg.version} entry=${pkg.entry}`);
     for (const file of pkg.files) {
       row.files += 1;
       row.bytes += file.bytes;
@@ -420,6 +506,7 @@ function printSummary(built) {
   }
   const totalFiles = built.fileCount + 1;
   const totalBytes = built.byteCount + built.manifestBytes;
+  lines.push(`  dist-tags: ${JSON.stringify(built.manifest.distTags)}`);
   lines.push(`  manifest.json: ${built.manifestBytes} bytes`);
   lines.push(`  total files: ${totalFiles}`);
   lines.push(`  total bytes: ${totalBytes}`);
@@ -436,7 +523,9 @@ export async function buildAssets({ out, configPath } = {}) {
   const tmp = await mkdtemp(path.join(tmpdir(), 'sp-cdn-pack-'));
   try {
     const builtPackages = [];
+    const distTags = {};
     for (const pkg of config.packages) {
+      distTags[pkg.package] = await readDistTags(pkg.npm);
       const available = await readRegistryVersions(pkg.npm);
       const selected = selectVersions(available, pkg);
       const versions = [];
@@ -445,6 +534,7 @@ export async function buildAssets({ out, configPath } = {}) {
         const extracted = await packAndExtract(pkg, version, tmp);
         versions.push({
           version,
+          entry: extracted.entry,
           integrity: extracted.integrity,
           tarball: extracted.tarball,
           files: extracted.files,
@@ -452,7 +542,7 @@ export async function buildAssets({ out, configPath } = {}) {
       }
       builtPackages.push({ ...pkg, versions });
     }
-    const built = await writeTree(resolvedOut, builtPackages);
+    const built = await writeTree(resolvedOut, builtPackages, distTags);
     const limitFiles = [{ path: 'manifest.json', bytes: built.manifestBytes }];
     for (const pkg of built.manifest.packages) {
       for (const file of pkg.files) {
