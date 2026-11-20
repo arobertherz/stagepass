@@ -149,16 +149,21 @@ The gate treats these as exact pins: the `SNIPPET_*` literals, `data-stagepass-v
 
 ## CDN (cdn.stagepass.one)
 
-`cdn/` is a Cloudflare Worker with static assets that serves the published `dist/` files of `@stagepass/loader` and `@stagepass/modules`. URLs are exact versions only:
+`cdn/` is a Cloudflare Worker with static assets that serves the published `dist/` files of `@stagepass/loader` and `@stagepass/modules`, including 1.x. The asset build takes every version from `npm view <pkg> versions --json`. There is no version floor. `exclude` in `cdn/versions.config.json` is an emergency switch and stays empty. Each entry is an exact version. A non-empty exclude drops those versions from the manifest. The staging and production verify steps run `cdn/scripts/verify-live.mjs --registry`, which fails when the live manifest is missing any registry version that `exclude` does not list. Listing a version there is the only way to omit it, and it has to be on purpose.
+
+Exact URLs:
 
 ```text
 https://cdn.stagepass.one/loader@2.5.0/loader.min.js
+https://cdn.stagepass.one/loader@1.2.0/loader.min.js
 https://cdn.stagepass.one/modules@2.2.2/cookies.min.js
 https://staging-cdn.stagepass.one/manifest.json
 ```
 
+`@1` and `@1.x` (any major, `@` or `%40`) answer 302 to the highest stable release of that major in the manifest. Stable means no prerelease. Examples, for the versions published when this was written: `/loader@1/loader.min.js` redirects to `/loader@1.2.0/loader.min.js`, `/modules@1/inject.min.js` to `/modules@1.1.0/inject.min.js`, and `/loader@2/loader.min.js` to `/loader@2.5.0/loader.min.js`. The redirect uses `cache-control: public, max-age=300` and an empty body. After a publish, the alias moves once the CDN deploy includes the new version. A cache may keep the previous `Location` for at most 300 seconds. No purge is required. Exact version URLs stay immutable. `@latest`, `@next`, and ranges such as `@2.5` stay 404.
+
 The CLI default stays jsDelivr (`https://cdn.jsdelivr.net/npm/@stagepass/...`). This CDN does not replace those snippet pins. Do not point `packages/cli` at `cdn.stagepass.one` as part of a loader or modules release.
 
-npm does not publish at tag time. CI runs `npm stage publish`. The package becomes a public version only after a maintainer runs `npm stage approve` (or approves it on the npm website). The CDN workflow therefore does not deploy from the release tag. `.github/workflows/cdn.yml` rebuilds staging on a schedule (every 30 minutes) when `npm view` lists a selected version that `https://staging-cdn.stagepass.one/manifest.json` does not have yet. A push to `master` that changes `cdn/**` also deploys staging. Both of those runs skip the deploy and stay green when `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` is missing.
+npm does not publish at tag time. CI runs `npm stage publish`. The package becomes a public version only after a maintainer runs `npm stage approve` (or approves it on the npm website). The CDN workflow therefore does not deploy from the release tag. `.github/workflows/cdn.yml` rebuilds staging on a schedule (every 30 minutes) when `npm view` lists a published version that `https://staging-cdn.stagepass.one/manifest.json` does not have yet (versions in `exclude` are not required). A push to `master` that changes `cdn/**` also deploys staging. Both of those runs skip the deploy and stay green when `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` is missing.
 
 Production (`stagepass-cdn` on `cdn.stagepass.one`) runs only from a manual `workflow_dispatch` with target `production`, after the staging verify in that same run, and only after the GitHub environment `cdn-production` is approved. Create that environment with required reviewers before the first production run. Details, headers, and the local Docker commands are in `cdn/README.md`.

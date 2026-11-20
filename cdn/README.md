@@ -14,6 +14,10 @@ Worker plus static assets for the published `dist/` files of `@stagepass/loader`
 ```text
 /loader@<exact-version>/<file>
 /modules@<exact-version>/<file>
+/loader@<major>/<file>
+/modules@<major>/<file>
+/loader@<major>.x/<file>
+/modules@<major>.x/<file>
 /manifest.json
 /
 ```
@@ -27,7 +31,21 @@ Worker plus static assets for the published `dist/` files of `@stagepass/loader`
 
 `%40` is accepted in any hex case. Encoded slashes (`%2F`, `%2f`), encoded backslashes, encoded dots, `..`, empty segments, and NUL are 404.
 
-`@latest`, `@2`, and `@2.5` are 404. The body names the rule: exact versions only. v1 has no floating alias because a versioned URL is immutable and safe to pin with SRI. An alias would be a mutable pointer. Publishing it would depend on a cache purge, and a purge is not a reliable switch on this zone (see below). A later version can add an alias as a short-cached 302 to the exact file. The bytes on the exact URL would not change.
+`@1` and `@1.x` are the same major alias. The same rule applies to every major (`@2` and `@2.x` are the same pointer). Both the `@` and `%40` spellings are accepted. The worker reads `manifest.json` from the asset binding once per isolate and answers 302 to the highest stable version of that major in the manifest. A stable version has no prerelease. With the versions published when this was written, the targets are:
+
+```text
+/loader@1/loader.min.js   ->  /loader@1.2.0/loader.min.js
+/modules@1/inject.min.js  ->  /modules@1.1.0/inject.min.js
+/loader@2/loader.min.js   ->  /loader@2.5.0/loader.min.js
+```
+
+`Location` is an absolute path with a literal `@`. The body is empty. HEAD is the same response with an empty body. `Cache-Control` is `public, max-age=300`, together with `Access-Control-Allow-Origin: *`, `Cross-Origin-Resource-Policy: cross-origin`, `X-Content-Type-Options: nosniff`, and `Timing-Allow-Origin: *`.
+
+A major with no stable version, or a file that is not listed on that resolved version, is 404 with `public, max-age=60`. `@9` is that case while no 9.x release is published. A major that contains only prereleases is also 404.
+
+`@latest`, `@next`, `@2.5`, and any other range stay 404 with `public, max-age=60`. The body names the rule and points at an exact URL.
+
+Exact version responses stay byte-identical and `immutable`. The alias does not change the bytes at an exact URL. Those URLs remain safe to pin with SRI.
 
 `/` is a one-line `text/plain` description. `/manifest.json` is the build manifest: package, version, npm tarball integrity, and each file's path, byte length, and sha256.
 
@@ -39,7 +57,7 @@ That redirect is the asset server, not the zone URL normalization. Zone normaliz
 
 Measured with wrangler 4.165.0 in Docker (`node:22`) on 2026-11-20, using assets built from the published npm tarballs. With the worker bypassed (no `main`, `run_worker_first` omitted), `GET /loader@2.5.0/loader.min.js` returned `307 Temporary Redirect`, `Location: /loader%402.5.0/loader.min.js`, and an empty body. The same 307 happened with `html_handling` set to `none`. `GET /loader%402.5.0/loader.min.js` returned 200 and 15065 bytes. With `wrangler dev --env staging`, both URLs returned 200, no `Location`, the header set below, and sha256 `ac5ff425e4010147752a45b18fad8d6cb2b981cb17019d9edd414712bb1fa43c`, matching `manifest.json` for `loader@2.5.0/loader.min.js`. The worker kept the incoming `%40` path and fetched the encoded asset path once.
 
-`assets.run_worker_first` is true, so every request hits `cdn/src/worker.js` before the asset server. The worker accepts either spelling, calls `env.ASSETS.fetch` with the `%40` path (the form the asset server serves without a redirect), and if that response is still a 3xx, follows the `Location` once internally. A second redirect, or a `Location` that is not the same file, becomes 502. The client never receives a 3xx.
+`assets.run_worker_first` is true, so every request hits `cdn/src/worker.js` before the asset server. The worker accepts either spelling of an exact version, calls `env.ASSETS.fetch` with the `%40` path (the form the asset server serves without a redirect), and if that response is still a 3xx, follows the `Location` once internally. A second redirect, or a `Location` that is not the same file, becomes 502. An exact version request never receives a 3xx. A major alias is a separate 302 from the worker. It is not the asset server's encoding redirect.
 
 `html_handling` and `not_found_handling` are `none`, so the asset server does not add trailing-slash or `index.html` redirects on top of the encoding redirect. There is no `_headers` and no `_redirects` file. The worker builds the response headers itself.
 
@@ -70,6 +88,8 @@ The worker does not set `Content-Security-Policy`, `Cross-Origin-Opener-Policy`,
 
 Versioned files stay `immutable` for a year. The URL is the version. A published file is replaced by publishing a new version, which is a new URL. SRI over that URL stays valid. A cache purge is not part of the publish path.
 
+A major alias is not immutable. `public, max-age=300` is the freshness window for the redirect. After a release, the alias points at the new version once the deploy that contains it is live. A cache may still serve the previous `Location` until those 300 seconds end. No purge is required for the alias to move. The exact URL of the new version does not wait on the alias cache.
+
 `If-None-Match` is forwarded to the asset binding. A 304 from the asset server is returned as 304 with the same header set and an empty body.
 
 ## Zone security headers
@@ -95,15 +115,17 @@ Once this worker's 200 is cached, the bytes at that exact version stay. Shipping
 
 ## What gets built
 
-`cdn/versions.config.json` sets the floor (`2.0.0` for loader and modules) and an exclude list. `cdn/scripts/build-assets.mjs` (Node 22, no dependencies):
+`cdn/versions.config.json` names `@stagepass/loader` and `@stagepass/modules`. The version list comes only from the registry. There is no version floor. `exclude` is an emergency switch and stays empty. `cdn/scripts/build-assets.mjs` (Node 22, no dependencies):
 
 1. `npm view <pkg> versions --json`
-2. Keep exact versions whose semver precedence is greater than or equal to the floor. Prereleases that sort after the floor are included (`2.3.0-beta.1` with floor `2.0.0`). A prerelease of the floor itself is not (`2.0.0-beta.1` precedes `2.0.0`). Excluded versions are dropped.
-3. For each version, `npm view <pkg>@<ver> dist.integrity dist.tarball --json`, then `npm pack`.
+2. Keep every exact version, including 1.x and prereleases. Duplicate strings are dropped. A value that is not exact semver is dropped. Versions listed in `exclude` are dropped.
+3. For each kept version, `npm view <pkg>@<ver> dist.integrity dist.tarball --json`, then `npm pack`.
 4. The tarball's sha512 SRI must equal `dist.integrity`. A mismatch fails the build.
-5. Extract only `package/dist/**` into `<out>/<name>@<version>/`. A missing `dist/` fails the build. Tar members that escape that directory fail the build.
+5. Extract only `package/dist/**` into `<out>/<name>@<version>/`. A missing `dist/` fails the build. Tar members that escape that directory fail the build. Published 1.x tarballs include `dist/` (`loader@1.0.0` has `dist/loader.js` and `dist/loader.min.js`; `modules@1.0.0` has `dist/all.min.js` and `dist/inject.min.js`).
 6. Write `<out>/manifest.json` (sorted, no timestamp).
 7. Refuse the result if it exceeds the Workers Free static asset limits: 20,000 files per version, 25 MiB per file (Cloudflare Workers limits, checked 2026-11-20). Paid allows 100,000 files and the same 25 MiB file cap. This config targets Free, so the check uses 20,000.
+
+`exclude` lists exact versions that must not be copied. Leave it empty. `verify-live --registry` (the staging and production verify steps) runs `npm view <pkg> versions --json` and fails when the deployed manifest is missing any of those versions. A version listed in `exclude` is the only one that may be absent, and only because it was omitted on purpose. A non-empty exclude does not allow any other gap. Do not add a version there to hide a failed pack.
 
 The output directory is deleted at the start of every build. The default is `cdn/dist/`, which is gitignored, along with `.wrangler/`.
 
@@ -115,6 +137,8 @@ npm versions become public when a maintainer approves the stage (`npm stage appr
 - A push to `master` that touches `cdn/**` deploys staging even when the version set is unchanged (the worker or the build changed).
 - `workflow_dispatch` with target `staging` deploys staging.
 - `workflow_dispatch` with target `production` deploys staging, runs `verify-live` against staging, then waits for the `cdn-production` environment and deploys `cdn.stagepass.one`.
+
+Each verify step runs `cdn/scripts/verify-live.mjs` with `--all` and `--registry`. `--registry` fails the job when the deployed manifest is missing a version from `npm view`, other than a version listed in `exclude`.
 
 The workflow runs on the self-hosted runner `cerebro-stagepass` (`runs-on: [self-hosted, cerebro]`), same as the other workflows. Forks are skipped (`github.repository == 'stagepass-one/os'`). `permissions` is `contents: read`. One concurrency group covers the workflow so two deploys do not run at once. A production approval holds that lock.
 
@@ -164,7 +188,7 @@ docker run --rm --name sp-cdn-deploy \
   sh -c 'cp -a /src/. /work && node /work/cdn/scripts/build-assets.mjs /work/cdn/dist \
     && cd /work/cdn \
     && npx --yes wrangler@4.165.0 deploy --env staging \
-    && node /work/cdn/scripts/verify-live.mjs https://staging-cdn.stagepass.one --all --local /work/cdn/dist/manifest.json'
+    && node /work/cdn/scripts/verify-live.mjs https://staging-cdn.stagepass.one --all --local /work/cdn/dist/manifest.json --registry'
 ```
 
 `-e CLOUDFLARE_API_TOKEN` without a value forwards the host environment variable. Do not put the token in the command line or in `wrangler.jsonc`.
@@ -185,4 +209,4 @@ Do this once, before the first production dispatch:
 
 ## Tests
 
-`node --test cdn/test` covers routing (both spellings, hex case, traversal, aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307), and the build-script helpers (floor, prerelease filter, SRI). `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.
+`node --test cdn/test` covers routing (both spellings, hex case, traversal, major aliases, other aliases, bad package names, methods), the header builder, `handleRequest` with a fake `ASSETS` binding (including a binding that returns 307, and major-alias redirects resolved from a fake manifest), the build-script helpers (full registry selection, exclude, SRI), and the registry-coverage comparison with a mocked version list. `.github/workflows/test.yml` runs that suite on Node 22 and 24 on the same runner as the other jobs. No extra npm dependencies.
