@@ -36,7 +36,8 @@ export async function pendingVersions({ manifestUrl, config } = {}) {
   const wanted = [];
   for (const pkg of loaded.packages) {
     const versions = await readRegistryVersions(pkg.npm);
-    for (const version of selectVersions(versions, pkg)) {
+    // Every published version except the emergency exclude list.
+    for (const version of selectVersions(versions, { exclude: pkg.exclude })) {
       wanted.push({ package: pkg.package, version });
     }
   }

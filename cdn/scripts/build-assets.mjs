@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseSemver, versionAtLeast, compareSemver } from '../src/semver.js';
+import { parseSemver, compareSemver } from '../src/semver.js';
 
 const execFileAsync = promisify(execFile);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,11 @@ export function normalizeVersionList(value) {
   return [];
 }
 
-export function selectVersions(versions, { floor, exclude = [] }) {
+// Every exact version from `npm view <pkg> versions`, including 1.x and prereleases.
+// `exclude` is an emergency list of exact versions to omit. The live coverage
+// check fails for any registry version that is not in the manifest, unless that
+// version is listed in `exclude` on purpose.
+export function selectVersions(versions, { exclude = [] } = {}) {
   const skipped = new Set(exclude);
   const seen = new Set();
   const kept = [];
@@ -33,7 +37,6 @@ export function selectVersions(versions, { floor, exclude = [] }) {
     seen.add(version);
     if (!parseSemver(version)) continue;
     if (skipped.has(version)) continue;
-    if (!versionAtLeast(version, floor)) continue;
     kept.push(version);
   }
   kept.sort(compareSemver);
@@ -140,17 +143,18 @@ export async function loadPackageConfig(configPath = defaultConfigPath()) {
     if (pkg.package !== 'loader' && pkg.package !== 'modules') {
       throw new Error(`unsupported package name ${pkg.package}`);
     }
-    if (!parseSemver(pkg.floor)) {
-      throw new Error(`floor for ${pkg.package} must be an exact version`);
+    if (Object.prototype.hasOwnProperty.call(pkg, 'floor')) {
+      throw new Error(`remove floor from ${pkg.package}; versions come from the npm registry`);
     }
     const exclude = Array.isArray(pkg.exclude) ? pkg.exclude.slice() : [];
     for (const version of exclude) {
-      if (typeof version !== 'string') throw new Error(`exclude entry for ${pkg.package} must be a string`);
+      if (typeof version !== 'string' || !parseSemver(version)) {
+        throw new Error(`exclude entry for ${pkg.package} must be an exact version`);
+      }
     }
     return {
       package: pkg.package,
       npm: pkg.npm,
-      floor: pkg.floor,
       exclude,
     };
   });
@@ -339,25 +343,13 @@ function requireTool(name) {
   return execFileAsync(name, ['--version']);
 }
 
-async function writeTree(out, packages) {
-  let fileCount = 0;
-  let byteCount = 0;
+export function manifestFromPackages(packages) {
   const manifestPackages = [];
   for (const pkg of packages) {
     for (const version of pkg.versions) {
-      const destRoot = path.join(out, `${pkg.package}@${version.version}`);
       const files = [];
       for (const file of version.files) {
-        const dest = path.join(destRoot, ...file.path.split('/'));
-        const relative = path.relative(destRoot, dest);
-        if (relative.startsWith('..') || path.isAbsolute(relative)) {
-          throw new Error(`refusing to write outside ${destRoot}: ${file.path}`);
-        }
-        await mkdir(path.dirname(dest), { recursive: true });
-        await writeFile(dest, file.body);
         files.push({ path: file.path, bytes: file.bytes, sha256: file.sha256 });
-        fileCount += 1;
-        byteCount += file.bytes;
       }
       manifestPackages.push({
         package: pkg.package,
@@ -373,8 +365,34 @@ async function writeTree(out, packages) {
     if (a.package !== b.package) return a.package.localeCompare(b.package);
     return compareSemver(a.version, b.version);
   });
-  const manifest = { packages: manifestPackages };
-  const json = `${JSON.stringify(manifest, null, 2)}\n`;
+  return { packages: manifestPackages };
+}
+
+export function serializeManifest(manifest) {
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+async function writeTree(out, packages) {
+  let fileCount = 0;
+  let byteCount = 0;
+  for (const pkg of packages) {
+    for (const version of pkg.versions) {
+      const destRoot = path.join(out, `${pkg.package}@${version.version}`);
+      for (const file of version.files) {
+        const dest = path.join(destRoot, ...file.path.split('/'));
+        const relative = path.relative(destRoot, dest);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          throw new Error(`refusing to write outside ${destRoot}: ${file.path}`);
+        }
+        await mkdir(path.dirname(dest), { recursive: true });
+        await writeFile(dest, file.body);
+        fileCount += 1;
+        byteCount += file.bytes;
+      }
+    }
+  }
+  const manifest = manifestFromPackages(packages);
+  const json = serializeManifest(manifest);
   const manifestPath = path.join(out, 'manifest.json');
   await writeFile(manifestPath, json);
   const manifestBytes = Buffer.byteLength(json);

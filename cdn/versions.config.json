@@ -3,13 +3,11 @@
     {
       "package": "loader",
       "npm": "@stagepass/loader",
-      "floor": "2.0.0",
       "exclude": []
     },
     {
       "package": "modules",
       "npm": "@stagepass/modules",
-      "floor": "2.0.0",
       "exclude": []
     }
   ]
