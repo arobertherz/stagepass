@@ -146,3 +146,19 @@ Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr
 10. After every published `@stagepass/loader` or `@stagepass/modules` release, update `SNIPPET_LOADER_VERSION` and/or `SNIPPET_MODULES_VERSION` in `packages/cli/src/lib/cdn-base.js`, and the tests that assert those literals, so CLI snippet exact pins match the newly published versions. Then run `npm run check:published-versions` (same command as `node scripts/check-published-versions.mjs`). The release workflow runs that gate before `npm stage publish` and fails if an exact pin is missing from `npm view <pkg> versions`. A published exact pin that is not the `latest` dist-tag prints a warning and does not fail the gate. Major pins `@2` and `@2.x` do not warn. Do not use `package-versions.js` / `LOADER_VERSION` for those pins. That file tracks the monorepo and can be ahead of npm.
 
 The gate treats these as exact pins: the `SNIPPET_*` literals, `data-stagepass-version` when the value is `x.y.z` or `x.y.z-prerelease`, `@stagepass/loader@x.y.z` and `@stagepass/modules@x.y.z` in docs and templates, and `loader @x.y.z` / `modules @x.y.z` on a line that says "exact pin". Major pins `@2` and `@2.x` are allowed. Prose that is not a pin (for example "ships since 2.4.0") is ignored. `CHANGELOG.md`, tests, `dist/`, and `node_modules/` are not scanned. Offline runs set `STAGEPASS_PUBLISHED_VERSIONS` to a JSON file `{ "loader": ["2.4.0", "2.5.0"], "modules": ["2.2.2"], "latest": { "loader": "2.5.0", "modules": "2.2.2" } }` and do not call the registry. PR Tests do not run the live registry check, so a registry blip does not fail a pull request. The CLI test suite covers the gate with that mock.
+
+## CDN (cdn.stagepass.one)
+
+`cdn/` is a Cloudflare Worker with static assets that serves the published `dist/` files of `@stagepass/loader` and `@stagepass/modules`. URLs are exact versions only:
+
+```text
+https://cdn.stagepass.one/loader@2.5.0/loader.min.js
+https://cdn.stagepass.one/modules@2.2.2/cookies.min.js
+https://staging-cdn.stagepass.one/manifest.json
+```
+
+The CLI default stays jsDelivr (`https://cdn.jsdelivr.net/npm/@stagepass/...`). This CDN does not replace those snippet pins. Do not point `packages/cli` at `cdn.stagepass.one` as part of a loader or modules release.
+
+npm does not publish at tag time. CI runs `npm stage publish`. The package becomes a public version only after a maintainer runs `npm stage approve` (or approves it on the npm website). The CDN workflow therefore does not deploy from the release tag. `.github/workflows/cdn.yml` rebuilds staging on a schedule (every 30 minutes) when `npm view` lists a selected version that `https://staging-cdn.stagepass.one/manifest.json` does not have yet. A push to `master` that changes `cdn/**` also deploys staging. Both of those runs skip the deploy and stay green when `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID` is missing.
+
+Production (`stagepass-cdn` on `cdn.stagepass.one`) runs only from a manual `workflow_dispatch` with target `production`, after the staging verify in that same run, and only after the GitHub environment `cdn-production` is approved. Create that environment with required reviewers before the first production run. Details, headers, and the local Docker commands are in `cdn/README.md`.
