@@ -2,12 +2,13 @@ import {
   ALIAS_BODY,
   BAD_GATEWAY_BODY,
   IMMUTABLE_CACHE,
+  MAJOR_ALIAS_CACHE,
   METHOD_BODY,
   NOT_FOUND_BODY,
   ROOT_BODY,
   SHORT_CACHE,
 } from './policy.js';
-import { isExactSemver } from './semver.js';
+import { highestStableInMajor, isExactSemver, majorAliasNumber } from './semver.js';
 
 const PACKAGES = new Set(['loader', 'modules']);
 const ASSET_ORIGIN = 'https://assets.local';
@@ -123,16 +124,36 @@ export function classifyPath(rawPath) {
   if (!parsed || !PACKAGES.has(parsed.packageName) || parsed.version.length === 0) {
     return { kind: 'invalid' };
   }
-  if (!isExactSemver(parsed.version)) {
+  const major = isExactSemver(parsed.version) ? null : majorAliasNumber(parsed.version);
+  if (!isExactSemver(parsed.version) && major === null) {
     return {
       kind: 'alias',
       packageName: parsed.packageName,
       version: parsed.version,
     };
   }
-  if (segments.length < 2) return { kind: 'invalid' };
+  // A major with no file is the same hint as @latest. There is nothing to redirect to.
+  if (segments.length < 2) {
+    if (major !== null) {
+      return {
+        kind: 'alias',
+        packageName: parsed.packageName,
+        version: parsed.version,
+      };
+    }
+    return { kind: 'invalid' };
+  }
   for (const segment of segments.slice(1)) {
     if (!FILE_SEGMENT.test(segment)) return { kind: 'invalid' };
+  }
+  const file = segments.slice(1).join('/');
+  if (major !== null) {
+    return {
+      kind: 'major',
+      packageName: parsed.packageName,
+      major,
+      file,
+    };
   }
 
   const literalSegments = [`${parsed.packageName}@${parsed.version}`, ...segments.slice(1)];
@@ -141,7 +162,7 @@ export function classifyPath(rawPath) {
     kind: 'asset',
     packageName: parsed.packageName,
     version: parsed.version,
-    file: segments.slice(1).join('/'),
+    file,
     literalPath,
     encodedPath: encodedFromLiteral(literalPath),
   };
@@ -280,7 +301,8 @@ async function fetchAsset(env, request, pathname, method) {
 // pathname is the encodeURIComponent form (`loader%402.5.0/...`). A literal `@`
 // pathname is a 307 to that form. Ask for the encoded form first. If the
 // binding still returns a redirect, follow that Location once inside the
-// worker. A second redirect becomes 502. The client never sees a 3xx.
+// worker. A second redirect becomes 502. An exact-version client response is
+// never a 3xx. Major aliases are a separate 302 built in serveMajor.
 async function loadAsset(env, request, spec, method) {
   if (!env || !env.ASSETS || typeof env.ASSETS.fetch !== 'function') {
     return { error: 502 };
@@ -329,6 +351,104 @@ async function loadAsset(env, request, spec, method) {
   return { response };
 }
 
+// One parsed manifest per ASSETS binding. A deploy starts a new isolate, so
+// this cache does not outlive the asset set it describes. Failures are not
+// cached. The value is the parsed object, not the Response.
+const manifestCache = new WeakMap();
+
+function manifestFailure(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+async function readManifest(binding) {
+  let response;
+  try {
+    response = await binding.fetch(new Request(`${ASSET_ORIGIN}/manifest.json`, { method: 'GET' }));
+  } catch (error) {
+    console.error(JSON.stringify({
+      message: 'manifest fetch failed',
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    throw manifestFailure(502, 'manifest fetch failed');
+  }
+  if (response.status !== 200) {
+    await discardBody(response);
+    console.error(JSON.stringify({
+      message: 'manifest status',
+      status: response.status,
+    }));
+    throw manifestFailure(response.status === 404 ? 404 : 502, 'manifest status');
+  }
+  try {
+    return await response.json();
+  } catch (error) {
+    console.error(JSON.stringify({
+      message: 'manifest json',
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    throw manifestFailure(502, 'manifest json');
+  }
+}
+
+function loadManifest(env) {
+  const binding = env && env.ASSETS;
+  if (!binding || typeof binding.fetch !== 'function') {
+    return Promise.resolve({ error: 502 });
+  }
+  const existing = manifestCache.get(binding);
+  if (existing) return existing;
+  const pending = readManifest(binding).then(
+    (manifest) => ({ manifest }),
+    (error) => {
+      if (manifestCache.get(binding) === pending) manifestCache.delete(binding);
+      return { error: error && error.status === 404 ? 404 : 502 };
+    },
+  );
+  manifestCache.set(binding, pending);
+  return pending;
+}
+
+// Null when the major has no stable version, or the file is not in that version.
+function resolveMajorRedirect(manifest, packageName, major, file) {
+  const versions = [];
+  const filesByVersion = new Map();
+  const packages = manifest && Array.isArray(manifest.packages) ? manifest.packages : [];
+  for (const pkg of packages) {
+    if (!pkg || pkg.package !== packageName || typeof pkg.version !== 'string') continue;
+    versions.push(pkg.version);
+    if (filesByVersion.has(pkg.version)) continue;
+    const files = new Set();
+    const list = Array.isArray(pkg.files) ? pkg.files : [];
+    for (const entry of list) {
+      if (entry && typeof entry.path === 'string') files.add(entry.path);
+    }
+    filesByVersion.set(pkg.version, files);
+  }
+  const version = highestStableInMajor(versions, major);
+  if (!version) return null;
+  const files = filesByVersion.get(version);
+  if (!files || !files.has(file)) return null;
+  return `/${packageName}@${version}/${file}`;
+}
+
+function redirectResponse(location) {
+  const headers = buildHeaders({ cacheControl: MAJOR_ALIAS_CACHE });
+  headers.set('location', location);
+  headers.set('content-length', '0');
+  return new Response(null, { status: 302, headers });
+}
+
+async function serveMajor(env, route, method) {
+  const loaded = await loadManifest(env);
+  if (loaded.error === 502) return badGateway(method);
+  if (!loaded.manifest) return notFound(method, NOT_FOUND_BODY);
+  const location = resolveMajorRedirect(loaded.manifest, route.packageName, route.major, route.file);
+  if (!location) return notFound(method, NOT_FOUND_BODY);
+  return redirectResponse(location);
+}
+
 function assetHttpResponse(assetResponse, method, contentType, cacheControl) {
   const headers = buildHeaders({
     contentType,
@@ -370,6 +490,7 @@ export async function handleRequest(request, env) {
   if (route.kind === 'root') {
     return textResponse(200, ROOT_BODY, SHORT_CACHE, 'text/plain; charset=utf-8', method);
   }
+  if (route.kind === 'major') return serveMajor(env, route, method);
   if (route.kind === 'alias') return notFound(method, ALIAS_BODY);
   if (route.kind === 'invalid') return notFound(method, NOT_FOUND_BODY);
   if (route.kind === 'manifest') {

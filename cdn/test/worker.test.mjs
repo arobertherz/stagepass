@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { IMMUTABLE_CACHE, ROOT_BODY, SHORT_CACHE } from '../src/policy.js';
+import {
+  ALIAS_BODY,
+  IMMUTABLE_CACHE,
+  MAJOR_ALIAS_CACHE,
+  NOT_FOUND_BODY,
+  ROOT_BODY,
+  SHORT_CACHE,
+} from '../src/policy.js';
 import { handleRequest } from '../src/worker.js';
 
 function fakeRequest(url, method = 'GET', headers) {
@@ -254,4 +261,125 @@ test('root, manifest cache, OPTIONS, and rejected methods', async () => {
   assert.equal(post.status, 405);
   assert.equal(post.headers.get('allow'), 'GET, HEAD, OPTIONS');
   assert.equal(calls, 1);
+});
+
+test('major aliases 302 to the highest stable version and 404 otherwise', async () => {
+  const calls = [];
+  const manifest = {
+    packages: [
+      { package: 'loader', version: '2.6.0-rc.1', files: [{ path: 'loader.min.js' }] },
+      { package: 'loader', version: '1.3.0-beta.1', files: [{ path: 'loader.min.js' }] },
+      {
+        package: 'loader',
+        version: '1.0.0',
+        files: [{ path: 'loader.min.js' }, { path: 'legacy.js' }],
+      },
+      {
+        package: 'loader',
+        version: '2.5.0',
+        files: [{ path: 'loader.min.js' }, { path: 'loader.js' }],
+      },
+      { package: 'loader', version: '1.2.0', files: [{ path: 'loader.min.js' }] },
+      { package: 'loader', version: '3.0.0-alpha.1', files: [{ path: 'loader.min.js' }] },
+      { package: 'loader', version: '3.0.0-beta.2', files: [{ path: 'loader.min.js' }] },
+      { package: 'modules', version: '1.0.0', files: [{ path: 'inject.min.js' }] },
+      { package: 'modules', version: '1.1.0', files: [{ path: 'inject.min.js' }] },
+    ],
+  };
+  const env = {
+    ASSETS: {
+      async fetch(request) {
+        calls.push(new URL(request.url).pathname);
+        if (new URL(request.url).pathname === '/manifest.json') {
+          return new Response(JSON.stringify(manifest), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('should-not-serve', { status: 200 });
+      },
+    },
+  };
+
+  async function assertRedirect(url, location) {
+    const response = await handleRequest(new Request(url), env);
+    assert.equal(response.status, 302, url);
+    assert.equal(response.headers.get('location'), location, url);
+    assert.equal(response.headers.get('cache-control'), MAJOR_ALIAS_CACHE, url);
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    assert.equal(response.headers.get('cross-origin-resource-policy'), 'cross-origin');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(response.headers.get('timing-allow-origin'), '*');
+    assert.equal(response.headers.get('content-type'), null);
+    assert.equal(await response.text(), '');
+  }
+
+  async function assertMiss(url) {
+    const response = await handleRequest(new Request(url), env);
+    assert.equal(response.status, 404, url);
+    assert.equal(response.headers.get('location'), null, url);
+    assert.equal(response.headers.get('cache-control'), SHORT_CACHE, url);
+    assert.equal(await response.text(), NOT_FOUND_BODY);
+  }
+
+  const latest = await handleRequest(
+    new Request('https://cdn.example/loader@latest/loader.min.js'),
+    env,
+  );
+  assert.equal(latest.status, 404);
+  assert.equal(await latest.text(), ALIAS_BODY);
+  const range = await handleRequest(
+    new Request('https://cdn.example/loader@2.5/loader.min.js'),
+    env,
+  );
+  assert.equal(range.status, 404);
+  assert.equal(await range.text(), ALIAS_BODY);
+  const next = await handleRequest(
+    new Request('https://cdn.example/loader@next/loader.min.js'),
+    env,
+  );
+  assert.equal(next.status, 404);
+  assert.equal(await next.text(), ALIAS_BODY);
+  assert.deepEqual(calls, []);
+
+  await assertRedirect(
+    'https://cdn.example/loader@1/loader.min.js',
+    '/loader@1.2.0/loader.min.js',
+  );
+  await assertRedirect(
+    'https://cdn.example/loader%401/loader.min.js',
+    '/loader@1.2.0/loader.min.js',
+  );
+  await assertRedirect(
+    'https://cdn.example/loader@1.x/loader.min.js',
+    '/loader@1.2.0/loader.min.js',
+  );
+  await assertRedirect(
+    'https://cdn.example/loader%401.x/loader.min.js',
+    '/loader@1.2.0/loader.min.js',
+  );
+  await assertRedirect(
+    'https://cdn.example/loader@2/loader.min.js',
+    '/loader@2.5.0/loader.min.js',
+  );
+  await assertRedirect(
+    'https://cdn.example/modules@1/inject.min.js',
+    '/modules@1.1.0/inject.min.js',
+  );
+
+  const head = await handleRequest(
+    new Request('https://cdn.example/loader@1/loader.min.js', { method: 'HEAD' }),
+    env,
+  );
+  assert.equal(head.status, 302);
+  assert.equal(head.headers.get('location'), '/loader@1.2.0/loader.min.js');
+  assert.equal(head.headers.get('cache-control'), MAJOR_ALIAS_CACHE);
+  assert.equal(await head.text(), '');
+
+  await assertMiss('https://cdn.example/loader@9/loader.min.js');
+  await assertMiss('https://cdn.example/loader@2/missing.js');
+  await assertMiss('https://cdn.example/loader@1/legacy.js');
+  await assertMiss('https://cdn.example/loader@3/loader.min.js');
+
+  assert.deepEqual(calls, ['/manifest.json']);
 });

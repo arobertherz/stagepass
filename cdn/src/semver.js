@@ -54,9 +54,27 @@ export function compareSemver(left, right) {
   return 0;
 }
 
-// True when `version` is greater than or equal to `floor` in semver precedence.
-// 2.3.0-beta.1 is included for floor 2.0.0. 2.0.0-beta.1 is not, because it precedes 2.0.0.
-export function versionAtLeast(version, floor) {
-  if (!parseSemver(version) || !parseSemver(floor)) return false;
-  return compareSemver(version, floor) >= 0;
+// `@1` and `@1.x` name one major. Any other range returns null.
+const MAJOR_ALIAS = /^(0|[1-9]\d*)(?:\.x)?$/;
+
+export function majorAliasNumber(value) {
+  if (typeof value !== 'string') return null;
+  const match = MAJOR_ALIAS.exec(value);
+  if (!match) return null;
+  return Number(match[1]);
+}
+
+// Highest stable release in `major`, or null when that major has no stable version.
+// A prerelease never wins, including when it is the only published version.
+export function highestStableInMajor(versions, major) {
+  if (!Number.isInteger(major) || major < 0) return null;
+  let best = null;
+  const list = Array.isArray(versions) ? versions : [];
+  for (const version of list) {
+    const parsed = parseSemver(version);
+    if (!parsed || parsed.prerelease) continue;
+    if (parsed.major !== major) continue;
+    if (!best || compareSemver(version, best) > 0) best = version;
+  }
+  return best;
 }

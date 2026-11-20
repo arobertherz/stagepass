@@ -38,13 +38,36 @@ test('manifest and root are not package paths', () => {
   assert.equal(classifyPath('/manifest.json/extra').kind, 'invalid');
 });
 
+test('major aliases classify @N and @N.x for both spellings', () => {
+  const cases = [
+    ['/loader@1/loader.min.js', 'loader', 1, 'loader.min.js'],
+    ['/loader%401/loader.min.js', 'loader', 1, 'loader.min.js'],
+    [`/loader${'%40'.toUpperCase()}1/loader.min.js`, 'loader', 1, 'loader.min.js'],
+    ['/loader@1.x/loader.min.js', 'loader', 1, 'loader.min.js'],
+    ['/loader%401.x/loader.min.js', 'loader', 1, 'loader.min.js'],
+    ['/loader@2/loader.min.js', 'loader', 2, 'loader.min.js'],
+    ['/modules@2/inject.min.js', 'modules', 2, 'inject.min.js'],
+    ['/modules@2.x/vendor/cookies.min.js', 'modules', 2, 'vendor/cookies.min.js'],
+    ['/loader@9/missing.js', 'loader', 9, 'missing.js'],
+    ['/loader@3/loader.min.js', 'loader', 3, 'loader.min.js'],
+  ];
+  for (const [path, packageName, major, file] of cases) {
+    const route = classifyPath(path);
+    assert.equal(route.kind, 'major', path);
+    assert.equal(route.packageName, packageName, path);
+    assert.equal(route.major, major, path);
+    assert.equal(route.file, file, path);
+  }
+});
+
 test('floating aliases of known packages are marked alias', () => {
   for (const path of [
     '/loader@latest/loader.min.js',
-    '/loader@2/loader.min.js',
     '/loader@2.5/loader.min.js',
-    '/modules@2',
     '/loader@next/cookies.min.js',
+    '/modules@2',
+    '/loader@1.x',
+    '/loader@2.x',
   ]) {
     const route = classifyPath(path);
     assert.equal(route.kind, 'alias', path);
