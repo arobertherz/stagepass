@@ -18,10 +18,13 @@ import { fileURLToPath } from 'url';
  * data-stagepass-nocache replaces an existing `_cb` in the query string only.
  * Measured loader.min.js 15065 / 6664 / 5958 (min / gzip / brotli); 2.4.0 was
  * 14852 / 6562 / 5856. The previous nocache freeze was 15006 / 6621 / 5910.
+ * 2.5.1 lazy storage probe: 15135 / 6690 / 5971. Raw +70 and gzip +26 (getters
+ * plus a one-shot memo) do not fit the 2.5.0 ceilings (15070 / 6685). Brotli
+ * +13 still fits 5974. Raw and gzip ceilings are the new measured sizes.
  * flag.min.js / flag-card.min.js / live.min.js are unchanged.
  */
 const BUDGET = {
-  'loader.min.js': { min: 15070, gzip: 6685, br: 5974 },
+  'loader.min.js': { min: 15135, gzip: 6690, br: 5974 },
   // Dev-only chunks, fetched only while a Stagepass session is active
   'flag.min.js': { min: 7468, gzip: 3280, br: 2866 },
   // Fetched by the flag on the first expand

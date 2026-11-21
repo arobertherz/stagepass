@@ -211,8 +211,8 @@ describe('dev flag v2', () => {
     for (const t of ['error', 'unhandledrejection', 'keydown', 'pointerdown']) expect(types).not.toContain(t);
     expect(console.warn).toBe(warn);
     expect(console.error).toBe(error);
-    // Only the capability probe of sp.client() (unchanged since 2.0), removed right away
-    expect(setItem.mock.calls.map((c) => c[0]).filter((k) => k !== '__stagepass_test__')).toEqual([]);
+    // No storage writes without a session. The capability probe is lazy (#155).
+    expect(setItem).not.toHaveBeenCalled();
     expect(localStorage.length + sessionStorage.length).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect((window as any).stagepass[FLAG]).toBeUndefined();
