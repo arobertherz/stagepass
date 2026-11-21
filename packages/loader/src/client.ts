@@ -35,6 +35,7 @@ export type StagepassClientInfo = {
 
 type BrowserFamily = StagepassClientInfo['browser']['family'];
 type OsFamily = StagepassClientInfo['os']['family'];
+type ProbeCache = { localStorage?: boolean; sessionStorage?: boolean };
 
 // Order matters: Edge/Opera UAs also contain "Chrome", Chrome UAs contain "Safari".
 const BROWSERS: [BrowserFamily, RegExp][] = [
@@ -88,19 +89,23 @@ export function getThemeInfo(): StagepassClientTheme {
 }
 
 /**
- * Probe storage availability.
+ * Probe storage availability. The boolean is cached on this function so each
+ * kind is written at most once. Ordinary loads do not call it; a preview
+ * session read or write does not either (that path is separate and try/caught).
  *
  * @param type - Storage kind
  */
 export function hasStorage(type: 'localStorage' | 'sessionStorage'): boolean {
+  const cache = hasStorage as unknown as ProbeCache;
+  if (type in cache) return cache[type] as boolean;
   try {
     const storage = window[type];
     const key = '__stagepass_test__';
     storage.setItem(key, '1');
     storage.removeItem(key);
-    return true;
+    return (cache[type] = true);
   } catch (_) {
-    return false;
+    return (cache[type] = false);
   }
 }
 
@@ -140,8 +145,13 @@ export function getClientInfo(): StagepassClientInfo {
     },
     capabilities: {
       cookiesEnabled: navigator.cookieEnabled === true,
-      localStorage: hasStorage('localStorage'),
-      sessionStorage: hasStorage('sessionStorage'),
+      // First read probes. `can()` hits the same getter, so the result is shared.
+      get localStorage() {
+        return hasStorage('localStorage');
+      },
+      get sessionStorage() {
+        return hasStorage('sessionStorage');
+      },
     },
   };
 }

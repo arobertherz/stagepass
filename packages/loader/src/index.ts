@@ -274,9 +274,8 @@ declare const __STAGEPASS_VERSION__: string;
       } catch (_) {}
     });
 
-  // Eager client detection (2.0.0 behaviour: available at boot with live theme/viewport).
-  // Lazy init was considered and rejected: theme/viewport listeners must run from boot anyway,
-  // and deferring UA parsing would not shrink the core or stay trivially behaviour-identical.
+  // Eager client snapshot (2.0.0): theme and viewport listeners run from boot.
+  // Storage capabilities are lazy getters (see hasStorage); boot does not probe them.
   const clientInfo = getClientInfo();
 
   try {

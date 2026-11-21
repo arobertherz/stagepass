@@ -102,11 +102,11 @@ describe('check-release-version', () => {
     expect(() => releasePlan('modules-v0.0.0-never', ROOT)).toThrow(/does not match tag version/);
   });
 
-  it('stages exactly @stagepass/loader@2.5.0 for loader-v2.5.0 and nothing else (AC-10)', () => {
+  it('stages exactly @stagepass/loader@2.5.1 for loader-v2.5.1 and nothing else (AC-10)', () => {
     const packages = readPackageVersions(ROOT);
     const loader = packages.find((pkg) => pkg.dir === 'loader');
-    expect(loader).toEqual({ dir: 'loader', name: '@stagepass/loader', version: '2.5.0' });
-    const plan = releasePlan('loader-v2.5.0', ROOT);
+    expect(loader).toEqual({ dir: 'loader', name: '@stagepass/loader', version: '2.5.1' });
+    const plan = releasePlan('loader-v2.5.1', ROOT);
     expect(plan.stage).toEqual([loader]);
     expect(plan.skip).toEqual([]);
     expect(plan.stage.map((pkg) => pkg.name)).toEqual(['@stagepass/loader']);
@@ -195,17 +195,17 @@ describe('check-release-version process (main)', () => {
     assertFailedWithoutSelection(runMain(['', modulesRef]));
   });
 
-  it('stages loader-v2.5.0 on latest and fails closed when extra arguments are passed (AC-10)', () => {
-    const result = runMain(['loader-v2.5.0']);
+  it('stages loader-v2.5.1 on latest and fails closed when extra arguments are passed (AC-10)', () => {
+    const result = runMain(['loader-v2.5.1']);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(
-      '✅ Stage @stagepass/loader@2.5.0\n   dist_tag: latest (stable)\n'
+      '✅ Stage @stagepass/loader@2.5.1\n   dist_tag: latest (stable)\n'
     );
     expect(result.fileOut).toBe('stage_dir=loader\ndist_tag=latest\n');
     expect(result.stdout).not.toContain('@stagepass/cli');
     expect(result.stdout).not.toContain('@stagepass/modules');
-    assertFailedWithoutSelection(runMain(['loader-v2.5.0', 'extra']));
-    assertFailedWithoutSelection(runMain(['loader-v2.5.0', 'cli-v2.3.0']));
+    assertFailedWithoutSelection(runMain(['loader-v2.5.1', 'extra']));
+    assertFailedWithoutSelection(runMain(['loader-v2.5.1', 'cli-v2.3.0']));
   });
 
   it('uses RELEASE_REF when the CLI argument is omitted', () => {
