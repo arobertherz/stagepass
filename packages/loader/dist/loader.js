@@ -190,14 +190,16 @@ var Stagepass = (() => {
     return { preferred: v || "no-preference", current: v || "unknown" };
   }
   function hasStorage(type) {
+    const cache = hasStorage;
+    if (type in cache) return cache[type];
     try {
       const storage = window[type];
       const key = "__stagepass_test__";
       storage.setItem(key, "1");
       storage.removeItem(key);
-      return true;
+      return cache[type] = true;
     } catch (_) {
-      return false;
+      return cache[type] = false;
     }
   }
   function hasServiceWorker() {
@@ -230,8 +232,13 @@ var Stagepass = (() => {
       },
       capabilities: {
         cookiesEnabled: navigator.cookieEnabled === true,
-        localStorage: hasStorage("localStorage"),
-        sessionStorage: hasStorage("sessionStorage")
+        // First read probes. `can()` hits the same getter, so the result is shared.
+        get localStorage() {
+          return hasStorage("localStorage");
+        },
+        get sessionStorage() {
+          return hasStorage("sessionStorage");
+        }
       }
     };
   }
@@ -297,7 +304,7 @@ var Stagepass = (() => {
     const W = window;
     const d = document;
     const loc = location;
-    const PKG_VERSION = true ? "2.5.0" : "0.0.0";
+    const PKG_VERSION = true ? "2.5.1" : "0.0.0";
     const LOADER_RE = /loader(?:\.min)?\.js/i;
     function flagBase(v, file) {
       if (typeof v !== "string" || !(v = v.trim())) return null;
