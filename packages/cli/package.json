@@ -21,7 +21,7 @@
     "start": "node bin/index.js",
     "build": "echo 'No build step required for CLI package'",
     "prepack": "node ../../scripts/sync-cli-versions.mjs --check",
-    "test": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run",
+    "test": "NODE_OPTIONS=--max-old-space-size=4096 vitest run",
     "test:watch": "vitest"
   },
   "keywords": [
