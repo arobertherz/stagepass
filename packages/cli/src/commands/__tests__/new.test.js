@@ -251,7 +251,7 @@ describe('createNew', () => {
     expect(pkg.devDependencies.esbuild).toBeTruthy();
 
     const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
-    expect(readme).toContain('@stagepass/loader@2');
+    expect(readme).toContain('cdn.stagepass.one/loader@2.5.0/loader.min.js');
     // Resolved loader version (fetchPublished stub: latest 2.2.0), not the CLI version 2.0.0 (AC-14).
     expect(readme).toContain('data-stagepass-version="2.2.0"');
     expect(readme).not.toContain('data-stagepass-version="2.0.0"');
@@ -263,14 +263,16 @@ describe('createNew', () => {
     expect(agents).not.toContain('sp.cookies.bake');
     expect(agents).not.toContain('## Stagepass feature set');
     const guide = await fs.readFile(path.join(target, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('cdn.stagepass.one/loader@2.5.0/loader.min.js');
     expect(guide).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
-    expect(guide).toMatch(/unpkg serves the same paths/i);
+    expect(guide).not.toMatch(/unpkg serves the same paths/i);
+    expect(guide).not.toContain('unpkg.com');
     expect(guide).toContain('stagepass:managed');
     expect(guide).toContain('sp.cookies.bake');
     expect(guide).toContain('`sp.inject`: not available');
     expect(guide).toMatch(/Never call `sp\.<module>`/);
     expect(guide).not.toContain('\n## PHP\n');
-    expect(readme).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(readme).toContain('cdn.stagepass.one/modules@2.2.2/cookies.min.js');
     expect(readme).not.toContain('inject.min.js');
 
     expect(exec).toHaveBeenCalledWith('git', ['init'], expect.objectContaining({ cwd: target }));
@@ -891,8 +893,8 @@ describe('new: declared modules', () => {
   });
 
   it('wizard: asks for staging/production, confirms detected modules', async () => {
-    // name, dir, author, lang, styles, staging, production, use detected?, php, git, install
-    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', '', 'y', 'n', 'n', 'y'];
+    // name, dir, author, lang, styles, staging, production, use detected?, cdn, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', '', 'y', 'stagepass', 'n', 'n', 'y'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const r = await resolveNewOptions(undefined, {}, {
       isTTY: true,
@@ -910,12 +912,13 @@ describe('new: declared modules', () => {
       install: true,
       php: false,
       productionSkipped: true,
+      cdn: 'stagepass',
     });
   });
 
   it('wizard: unreachable site falls back to asking for the list', async () => {
-    // name, dir, author, lang, styles, staging, production, modules, php, git, install
-    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', '', 'cookies', 'n', 'n', 'n'];
+    // name, dir, author, lang, styles, staging, production, modules, cdn, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', '', 'cookies', 'stagepass', 'n', 'n', 'n'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
     const r = await resolveNewOptions(undefined, {}, {
@@ -927,6 +930,44 @@ describe('new: declared modules', () => {
       log: () => {},
     });
     expect(r.config.siteModules).toEqual(['cookies']);
+  });
+
+  it('wizard: invalid CDN answers fail closed instead of looping', async () => {
+    let calls = 0;
+    const rl = {
+      question: vi.fn(async () => {
+        calls += 1;
+        if (calls > 20) throw new Error('CDN prompt looped');
+        return 'nope';
+      }),
+      close: vi.fn(),
+    };
+    const r = await resolveNewOptions(
+      'shop',
+      {
+        dir: 'shop',
+        author: 'Ada',
+        lang: 'ts',
+        styles: 'scss',
+        staging: 'shop.webflow.io',
+        production: 'www.example.com',
+        siteModules: 'none',
+        git: false,
+        install: false,
+        php: false,
+      },
+      {
+        isTTY: true,
+        argv: ['--no-git', '--no-install', '--no-php'],
+        exec: async () => ({ stdout: '' }),
+        createReadline: () => rl,
+        log: () => {},
+      }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Invalid --cdn/i);
+    expect(calls).toBeLessThanOrEqual(5);
+    expect(rl.close).toHaveBeenCalled();
   });
 });
 
@@ -1290,7 +1331,8 @@ describe('new: origins, php, preflight', () => {
       hints: [],
     }));
     const setup = vi.fn();
-    const wizardAnswers = ['ok.webflow.io', '', 'n', 'n'];
+    // staging, production, cdn, php, link?
+    const wizardAnswers = ['ok.webflow.io', '', '', 'n', 'n'];
     try {
       const code = await createNew(
         'ok-pre',
@@ -1341,8 +1383,8 @@ describe('new: origins, php, preflight', () => {
       exitCode: 1,
       hints: [],
     }));
-    // setup?, staging, production, php, link?
-    const wizardAnswers = ['n', 'doc.webflow.io', '', 'n', 'n'];
+    // setup?, staging, production, cdn, php, link?
+    const wizardAnswers = ['n', 'doc.webflow.io', '', '', 'n', 'n'];
     const rl = {
       question: vi.fn(async () => wizardAnswers.shift() ?? ''),
       close: vi.fn(),
@@ -1550,6 +1592,7 @@ describe('new: origins, php, preflight', () => {
           createReadline: () => ({
             question: vi.fn(async (q) => {
               questions.push(String(q));
+              if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
               return 'n';
             }),
             close: vi.fn(),
@@ -1614,6 +1657,7 @@ describe('new: origins, php, preflight', () => {
           createReadline: () => ({
             question: vi.fn(async (q) => {
               questions.push(String(q));
+              if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
               return 'n';
             }),
             close: vi.fn(),

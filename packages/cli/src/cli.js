@@ -401,6 +401,7 @@ export function createProgram(deps = {}) {
     .option('--cursor-rule', 'Write .cursor/rules/stagepass.mdc even when .cursor/ is absent')
     .option('--install', 'Run npm install after scaffolding')
     .option('--no-install', 'Do not run npm install (default)')
+    .option('--cdn <host>', 'CDN for Webflow snippets: stagepass (default) or jsdelivr')
     .option('-y, --yes', 'Non-interactive; accept defaults for omitted flags')
     .option('--dry-run', 'Print the file plan without writing')
     .option('-v, --verbose', 'Show detailed output')

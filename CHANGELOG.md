@@ -13,7 +13,11 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ### Repo
 
-- Docs: recommended embeds list the Stagepass CDN first (`https://cdn.stagepass.one/loader@2.5.0/loader.min.js` and the matching `/modules@2.2.2/` file paths). jsDelivr remains the documented alternative. unpkg is no longer recommended. Use the full file path on the Stagepass CDN (no `/dist/` segment) so session chunks resolve next to the loader. Published CLI snippets and live-site detection are unchanged until a CLI release.
+- Docs: recommended embeds list the Stagepass CDN first (`https://cdn.stagepass.one/loader@2.5.0/loader.min.js` and the matching `/modules@2.2.2/` file paths). jsDelivr remains the documented alternative. unpkg is no longer recommended. Use the full file path on the Stagepass CDN (no `/dist/` segment) so session chunks resolve next to the loader.
+
+### `@stagepass/cli`
+
+- Generated Webflow snippets, `stagepass new` (`--yes` and the wizard), `stagepass start`, and `stagepass upgrade` default to the Stagepass CDN with exact pins and full file paths. `stagepass new --cdn jsdelivr` still prints the jsDelivr major pin `@2` alternative. Live-site detection recognises `cdn.stagepass.one` and still recognises jsDelivr and existing unpkg tags. `AGENTS.stagepass.md` lists the Stagepass CDN first. Not on npm until a CLI release (no tag or publish in this change).
 
 ### `@stagepass/modules`
 

@@ -164,6 +164,37 @@ describe('parseStagepassScripts (package-root CDN)', () => {
   });
 });
 
+describe('parseStagepassScripts (Stagepass CDN)', () => {
+  it('detects exact file paths', () => {
+    const r = parseStagepassScripts(`
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/cookies.min.js"></script>`);
+    expect(r.loader).toEqual({ version: '2.5.0', cdn: 'stagepass' });
+    expect(r.modules).toEqual([{ id: 'cookies', version: '2.2.2', cdn: 'stagepass' }]);
+  });
+
+  it('detects short aliases and protocol-relative URLs', () => {
+    const r = parseStagepassScripts(`
+<script src="//cdn.stagepass.one/loader@2.5.0"></script>
+<script src="https://cdn.stagepass.one/modules@2"></script>`);
+    expect(r.loader).toEqual({ version: '2.5.0', cdn: 'stagepass' });
+    expect(detectedModulesList(r)).toEqual(['all']);
+    expect(r.modules).toEqual([{ id: 'all', version: '2', cdn: 'stagepass' }]);
+  });
+
+  it('still recognises jsDelivr and unpkg alongside the Stagepass CDN', () => {
+    const r = parseStagepassScripts(`
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
+<script src="https://unpkg.com/@stagepass/modules@2/dist/cookies.min.js"></script>`);
+    expect(r.loader).toEqual({ version: '2.5.0', cdn: 'stagepass' });
+    expect(r.modules).toEqual([
+      { id: 'inject', version: '2', cdn: 'jsdelivr' },
+      { id: 'cookies', version: '2', cdn: 'unpkg' },
+    ]);
+  });
+});
+
 describe('parseStagepassScripts (self-hosted)', () => {
   it('matches loader with data-stagepass-* attribute', () => {
     const r = parseStagepassScripts(

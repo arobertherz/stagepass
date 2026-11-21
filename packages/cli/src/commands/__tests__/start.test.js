@@ -286,12 +286,12 @@ describe('start autostart / certs integration', () => {
     expect(joined).toMatch(/kickstart/);
     expect(joined).toContain('Webflow Custom Code (Head):');
     expect(joined).toContain(
-      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+      `cdn.stagepass.one/loader@${SNIPPET_LOADER_VERSION}/loader.min.js`
     );
     expect(joined).toContain('No modules are declared in stagepass.json.');
     expect(joined).not.toContain('@stagepass/modules');
     expect(joined).not.toContain('Webflow Custom Code (Footer):');
-    expect(joined).not.toContain('cdn.stagepass.one');
+    expect(joined).not.toContain('unpkg.com');
   });
 
   it('prints head snippets after a direct caddy start', async () => {
@@ -317,7 +317,7 @@ describe('start autostart / certs integration', () => {
     expect(joined).toMatch(/Stagepass is active/);
     expect(joined).toContain('Webflow Custom Code (Head):');
     expect(joined).toContain(
-      'cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js'
+      `cdn.stagepass.one/loader@${SNIPPET_LOADER_VERSION}/loader.min.js`
     );
     expect(joined).toContain('No modules are declared in stagepass.json.');
     expect(joined).not.toContain('@stagepass/modules');
@@ -381,16 +381,15 @@ describe('start autostart / certs integration', () => {
     try {
       expect(await startOk(cwd)).toBe(0);
       const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
-      expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js');
+      expect(joined).toContain(`cdn.stagepass.one/loader@${SNIPPET_LOADER_VERSION}/loader.min.js`);
+      expect(joined).toContain(`cdn.stagepass.one/modules@${SNIPPET_MODULES_VERSION}/cookies.min.js`);
       expect(joined).toContain(`data-stagepass-version="${SNIPPET_LOADER_VERSION}"`);
-      expect(joined).toContain(`loader @${SNIPPET_LOADER_VERSION}`);
-      expect(joined).toContain(`modules @${SNIPPET_MODULES_VERSION}`);
+      expect(joined).toContain('jsDelivr alternative (major pin @2)');
       expect(joined).not.toContain('inject.min.js');
       expect(joined).not.toContain('maintenance.min.js');
       expect(joined).not.toContain('No modules are declared');
       expect(joined).not.toContain('Webflow Custom Code (Footer):');
-      expect(joined).not.toContain('cdn.stagepass.one');
+      expect(joined).not.toContain('unpkg.com');
     } finally {
       await fs.remove(cwd);
     }
@@ -422,7 +421,7 @@ describe('start autostart / certs integration', () => {
         logSpy.mockClear();
         expect(await startOk(cwd)).toBe(0);
         const joined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-        expect(joined).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
+        expect(joined).toContain(`cdn.stagepass.one/loader@${SNIPPET_LOADER_VERSION}/loader.min.js`);
         expect(joined).toContain('No modules are declared in stagepass.json.');
         expect(joined).not.toContain('@stagepass/modules');
         expect(joined).not.toContain('Webflow Custom Code (Footer):');

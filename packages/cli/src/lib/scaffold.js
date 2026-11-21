@@ -203,6 +203,7 @@ export async function planScaffoldFiles(options, deps = {}) {
     gitRemote: options.git ? options.remote || '' : '',
     gitBranch: options.git ? 'main' : '',
     projectName: options.name,
+    cdn: options.cdn,
   });
   const types = typesForModules(siteModules, {
     modulesDependency: options.modules === true,
