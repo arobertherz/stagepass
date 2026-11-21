@@ -12,16 +12,18 @@ npm install @stagepass/loader@2
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.5.0`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. See [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs.
+Prefer an exact pin on the Stagepass CDN in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Use the full file path (this host has no `/dist/` segment). See [Version pinning](https://github.com/stagepass-one/os/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-version="2.5.0"
 ></script>
 ```
 
-unpkg serves the same paths if you need an alternative CDN. Always embed the full `/dist/loader.min.js` path (not a short package URL that redirects); otherwise session chunks resolve from the wrong folder. Or set `data-stagepass-flag-base`.
+Always embed the full file path; the short form `https://cdn.stagepass.one/loader@2.5.0` serves the same loader bytes, but a script tag at that URL resolves session chunks from the CDN root and they 404. Or set `data-stagepass-flag-base`.
+
+jsDelivr is the documented alternative: `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. That host may cache `@2` for a while; purge with `https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`.
 
 ## Known limits (scoped acceptance)
 

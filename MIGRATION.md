@@ -6,12 +6,12 @@ Prefer the major pin `@2` (strict semver within v2; breaking changes only in a n
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-version="2.2.0"
 ></script>
 ```
 
-unpkg serves the same paths if you need an alternative CDN.
+jsDelivr is the documented alternative: `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js`. Use the full file path on each host. The Stagepass CDN has no `/dist/` segment.
 
 ---
 
@@ -82,7 +82,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-mute-console="true"
 ></script>
 ```
@@ -99,7 +99,7 @@ An explicit `--origin *.webflow.io` is still accepted but prints a warning (any 
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-session-hours="24"
 ></script>
 ```
@@ -121,7 +121,7 @@ Both append `?v=<version>` (URL-encoded; existing query/hash preserved). Per-req
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-version="2026-11-01"
 ></script>
 <script
@@ -178,10 +178,10 @@ npm install -g @stagepass/cli@2
 ## Modules
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/cookies.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"></script>
 ```
 
 Injector option `cacheBust: true` no longer appends timestamps in production; use `version: '…'` instead.

@@ -82,9 +82,9 @@ Pin the **exact** published version (ranges like `@2` will not pick up a prerele
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.5.0/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2.2.2/dist/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
 ```
 
 Test on a generic Webflow staging host such as `my-project.webflow.io` (never a real customer domain). Confirm loader/modules behaviour before promoting to stable.
@@ -128,7 +128,7 @@ npm dist-tag add @stagepass/cli@2.2.0 latest
 
 One-shot GitHub Actions workflows that called `npm dist-tag add` for fixed loader/modules versions (`promote-loader-2.4.0-latest.yml`, `promote-modules-2.2.2-latest.yml`) were removed after they had already run successfully. History remains in git. Stable releases no longer need that promotion. If a dist-tag is wrong, repair it with `npm dist-tag add` and verify with `npm view <pkg> dist-tags`.
 
-Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr or unpkg resolve a 2.x range on the CDN; that alias is not the npm `latest` dist-tag and can lag after a publish, so only approve stable stages that are ready for live sites. Prefer an exact pin when a specific build must load immediately.
+Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr resolve a 2.x range on that CDN; that alias is not the npm `latest` dist-tag and can lag after a publish. Existing unpkg pins still resolve the same way. On the Stagepass CDN, `@2` is a short-lived redirect. Only approve stable stages that are ready for live sites. Prefer an exact pin on `https://cdn.stagepass.one` when a specific build must load immediately.
 
 ## Required human checklist (not automated)
 
@@ -140,7 +140,7 @@ Sites that pin `@1` stay on 1.x. Sites that pin a major such as `@2` on jsDelivr
 4. After registry publication: record npm `gitHead` / integrity and check the jsDelivr CDN hash for the exact file that was published.
 5. Known limits and any documented reviewer exception (for example an individual size-ceiling exception) are written in the public notes. Human-verified facts stay human-verified; CI green is not a substitute.
 6. Verify dist-tags with `npm view <pkg> dist-tags`. After a stable approval, `latest` should already point at that version (staged directly; no promotion step). A prerelease stays on `next` and does not move `latest`. Use `npm dist-tag add` only to repair a wrong tag. Confirm before updating website badges (`LOADER_V`, latest-on-npm) or docs that say what `latest` is.
-7. jsDelivr/unpkg `@2` is a major-range alias and is not the npm `latest` tag. CDN aliases can keep serving an older 2.x build until they refresh. Document an exact pin when a specific build is required, and do not write that `@2` is `latest`.
+7. jsDelivr `@2` is a major-range alias and is not the npm `latest` tag. Those aliases can keep serving an older 2.x build until they refresh. On the Stagepass CDN, `@2` is a short-lived redirect (`max-age=300`) and exact file URLs are immutable. Document an exact pin when a specific build is required, and do not write that `@2` is `latest`.
 8. After the latest publish: Run scripts/mac-update-check.sh latest on a Mac with the previous version installed and attach the protocol.
 9. For a CLI release, check `packages/cli/src/lib/ai-guide.js` (the generated `AGENTS.stagepass.md`) against the published loader, modules, and CLI: new or changed APIs, flags, and PHP helpers. Do this alongside the README and `docs/`.
 10. After every published `@stagepass/loader` or `@stagepass/modules` release, update `SNIPPET_LOADER_VERSION` and/or `SNIPPET_MODULES_VERSION` in `packages/cli/src/lib/cdn-base.js`, and the tests that assert those literals, so CLI snippet exact pins match the newly published versions. Then run `npm run check:published-versions` (same command as `node scripts/check-published-versions.mjs`). The release workflow runs that gate before `npm stage publish` and fails if an exact pin is missing from `npm view <pkg> versions`. A published exact pin that is not the `latest` dist-tag prints a warning and does not fail the gate. Major pins `@2` and `@2.x` do not warn. Do not use `package-versions.js` / `LOADER_VERSION` for those pins. That file tracks the monorepo and can be ahead of npm.

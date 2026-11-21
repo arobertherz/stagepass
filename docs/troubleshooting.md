@@ -71,7 +71,9 @@ When a **public** `https://` page (for example a Webflow staging site) fetches `
 
 ## CDN still serves an old `@2` build
 
-Prefer an exact pin in production. To refresh the major alias after a release, purge:
+Prefer an exact pin on the Stagepass CDN in production, for example `https://cdn.stagepass.one/loader@2.5.0/loader.min.js`. Aliases on this host (`@2`, `@latest`) redirect with a 300 second cache and do not need a purge.
+
+jsDelivr is the documented alternative. To refresh its major alias after a release, purge:
 
 ```text
 https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js
