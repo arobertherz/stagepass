@@ -13,7 +13,7 @@ describe('canCapability', () => {
 });
 
 describe('getClientInfo shape', () => {
-  it('exposes the stable client shape', () => {
+  it('exposes the stable client shape without reading storage accessors', () => {
     const client = getClientInfo();
     expect(client).toHaveProperty('theme');
     expect(client).toHaveProperty('browser');
@@ -21,13 +21,25 @@ describe('getClientInfo shape', () => {
     expect(client).toHaveProperty('device');
     expect(client).toHaveProperty('viewport');
     expect(client).toHaveProperty('locale');
-    expect(client.capabilities).toEqual(
-      expect.objectContaining({
-        cookiesEnabled: expect.any(Boolean),
-        localStorage: expect.any(Boolean),
-        sessionStorage: expect.any(Boolean),
-      })
-    );
-    expect(client.capabilities).not.toHaveProperty('serviceWorker');
+
+    const caps = client.capabilities;
+    expect(Object.keys(caps).sort()).toEqual([
+      'cookiesEnabled',
+      'localStorage',
+      'sessionStorage',
+    ]);
+    expect(typeof caps.cookiesEnabled).toBe('boolean');
+    for (const key of ['localStorage', 'sessionStorage'] as const) {
+      const desc = Object.getOwnPropertyDescriptor(caps, key);
+      expect(typeof desc?.get).toBe('function');
+      expect(desc?.set).toBeUndefined();
+    }
+    expect(Object.prototype.hasOwnProperty.call(caps, 'serviceWorker')).toBe(false);
+  });
+
+  it('reports storage capabilities as booleans when the accessors are read', () => {
+    const caps = getClientInfo().capabilities;
+    expect(caps.localStorage).toEqual(expect.any(Boolean));
+    expect(caps.sessionStorage).toEqual(expect.any(Boolean));
   });
 });

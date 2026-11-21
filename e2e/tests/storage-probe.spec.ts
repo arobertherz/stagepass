@@ -2,11 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { gotoPage, installRoutes } from '../helpers/serve.js';
 
 const PROBE = '__stagepass_test__';
+const SESSION_KEY = 'stagepass_domain';
+
+type StoreOp = { op: string; key: string; area: string };
 
 async function arm(page: Page) {
   await installRoutes(page);
   await page.addInitScript(() => {
-    const log: { op: string; key: string; area: string }[] = [];
+    const log: StoreOp[] = [];
     (window as any).__spStoreLog = log;
     (['setItem', 'removeItem'] as const).forEach((op) => {
       const orig = Storage.prototype[op];
@@ -40,7 +43,7 @@ test.describe('lazy storage probe', () => {
       session: sessionStorage.length,
       flag: !!document.getElementById('stagepass-flag'),
       domain: (window as any).sp.vars.domain,
-      log: (window as any).__spStoreLog as { op: string; key: string; area: string }[],
+      log: (window as any).__spStoreLog as StoreOp[],
     }));
     expect(state.domain).toBe('site.test');
     expect(state.flag).toBe(false);
@@ -74,7 +77,7 @@ test.describe('lazy storage probe', () => {
       domain: (window as any).sp.vars.domain,
       env: (window as any).sp.env(),
       raw: localStorage.getItem('stagepass_domain'),
-      log: (window as any).__spStoreLog as { op: string; key: string }[],
+      log: (window as any).__spStoreLog as StoreOp[],
     }));
     expect(started.domain).toBe('demo.sp');
     expect(started.env).toBe('local');
@@ -92,11 +95,12 @@ test.describe('lazy storage probe', () => {
     const reloaded = await page.evaluate(() => ({
       domain: (window as any).sp.vars.domain,
       raw: localStorage.getItem('stagepass_domain'),
-      log: (window as any).__spStoreLog as { key: string }[],
+      log: (window as any).__spStoreLog as StoreOp[],
     }));
     expect(reloaded.domain).toBe('demo.sp');
     expect(JSON.parse(reloaded.raw as string).domain).toBe('demo.sp');
     expect(reloaded.log.filter((e) => e.key === PROBE)).toEqual([]);
+    expect(reloaded.log.filter((e) => e.op === 'setItem' && e.key === SESSION_KEY)).toEqual([]);
 
     await page.goto('https://site.test/live-src.html', { waitUntil: 'load' });
     await expect.poll(async () => page.evaluate(() => (window as any).__order)).toEqual([
@@ -106,11 +110,12 @@ test.describe('lazy storage probe', () => {
     const navigated = await page.evaluate(() => ({
       domain: (window as any).sp.vars.domain,
       search: location.search,
-      log: (window as any).__spStoreLog as { key: string }[],
+      log: (window as any).__spStoreLog as StoreOp[],
     }));
     expect(navigated.domain).toBe('demo.sp');
     expect(navigated.search).toBe('');
     expect(navigated.log.filter((e) => e.key === PROBE)).toEqual([]);
+    expect(navigated.log.filter((e) => e.op === 'setItem' && e.key === SESSION_KEY)).toEqual([]);
 
     await page.goto('https://site.test/legacy.html?stagepass=off', { waitUntil: 'load' });
     await expect.poll(async () => page.evaluate(() => (window as any).__order)).toEqual([
@@ -123,13 +128,45 @@ test.describe('lazy storage probe', () => {
       env: (window as any).sp.env(),
       raw: localStorage.getItem('stagepass_domain'),
       flag: !!document.getElementById('stagepass-flag'),
-      log: (window as any).__spStoreLog as { op: string; key: string }[],
+      log: (window as any).__spStoreLog as StoreOp[],
     }));
     expect(off.raw).toBeNull();
     expect(off.domain).toBe('site.test');
     expect(off.env).toBe('production');
     expect(off.flag).toBe(false);
     expect(off.log.filter((e) => e.key === PROBE)).toEqual([]);
-    expect(off.log.some((e) => e.op === 'removeItem' && e.key === 'stagepass_domain')).toBe(true);
+    expect(off.log.some((e) => e.op === 'removeItem' && e.key === SESSION_KEY)).toBe(true);
+  });
+
+  test('built loader probes localStorage once and memoizes the second sp.can call', async ({
+    page,
+  }) => {
+    await gotoPage(page, 'legacy.html');
+    await expect.poll(async () => page.evaluate(() => (window as any).__order)).toEqual([
+      'prod-a',
+      'prod-b',
+    ]);
+
+    const probed = await page.evaluate((probe) => {
+      const localProbe = () =>
+        ((window as any).__spStoreLog as StoreOp[]).filter(
+          (e) => e.key === probe && e.area === 'local'
+        );
+      const before = localProbe();
+      const first = (window as any).sp.can('localStorage');
+      const afterFirst = localProbe();
+      const second = (window as any).sp.can('localStorage');
+      const afterSecond = localProbe();
+      return { first, second, before, afterFirst, afterSecond };
+    }, PROBE);
+
+    expect(probed.before).toEqual([]);
+    expect(probed.first).toBe(true);
+    expect(probed.afterFirst).toEqual([
+      { op: 'setItem', key: PROBE, area: 'local' },
+      { op: 'removeItem', key: PROBE, area: 'local' },
+    ]);
+    expect(probed.second).toBe(true);
+    expect(probed.afterSecond).toEqual(probed.afterFirst);
   });
 });

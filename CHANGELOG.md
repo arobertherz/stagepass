@@ -443,7 +443,7 @@ Loader-only patch on top of 2.5.0. CLI and modules are not part of this release.
 
 #### Privacy
 
-- No cookies. No storage write on an ordinary visit. A preview session is written only when started via `?stagepass=`.
+- No cookies. An ordinary visit reads `stagepass_domain` once and writes nothing, except removing that key when it holds a stale or invalid value. A preview session is written only when started via `?stagepass=`.
 
 #### Notes
 
