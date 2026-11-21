@@ -34,6 +34,7 @@ describe('cli-php new', () => {
     const rl = {
       question: async (q) => {
         questions.push(String(q));
+        if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
         if (String(q).includes('Enable PHP')) return 'y';
         if (String(q).includes('detected')) return 'y';
         return 'n';
@@ -70,6 +71,7 @@ describe('cli-php new', () => {
     const flaggedRl = {
       question: async (q) => {
         flagged.push(String(q));
+        if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
         return 'n';
       },
       close() {},

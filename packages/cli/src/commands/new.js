@@ -342,6 +342,10 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
         }
       }
       if (!cdn) {
+        // Bound retries: an invalid answer (for example "n" after y/N prompts)
+        // must not spin forever and grow memory.
+        const maxAttempts = 5;
+        let attempts = 0;
         while (!cdn) {
           const raw = await ask(
             rl,
@@ -349,8 +353,18 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
             'stagepass'
           );
           const parsed = normalizeCdnChoice(raw);
-          if (parsed) cdn = parsed;
-          else log(chalk.yellow('  Use stagepass (cdn.stagepass.one) or jsdelivr.'));
+          if (parsed) {
+            cdn = parsed;
+            break;
+          }
+          attempts += 1;
+          log(chalk.yellow('  Use stagepass (cdn.stagepass.one) or jsdelivr.'));
+          if (attempts >= maxAttempts) {
+            return {
+              ok: false,
+              error: 'Invalid --cdn: use stagepass (default) or jsdelivr.',
+            };
+          }
         }
       }
       if (php === undefined) {

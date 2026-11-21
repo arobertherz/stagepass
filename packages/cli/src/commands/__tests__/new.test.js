@@ -931,6 +931,44 @@ describe('new: declared modules', () => {
     });
     expect(r.config.siteModules).toEqual(['cookies']);
   });
+
+  it('wizard: invalid CDN answers fail closed instead of looping', async () => {
+    let calls = 0;
+    const rl = {
+      question: vi.fn(async () => {
+        calls += 1;
+        if (calls > 20) throw new Error('CDN prompt looped');
+        return 'nope';
+      }),
+      close: vi.fn(),
+    };
+    const r = await resolveNewOptions(
+      'shop',
+      {
+        dir: 'shop',
+        author: 'Ada',
+        lang: 'ts',
+        styles: 'scss',
+        staging: 'shop.webflow.io',
+        production: 'www.example.com',
+        siteModules: 'none',
+        git: false,
+        install: false,
+        php: false,
+      },
+      {
+        isTTY: true,
+        argv: ['--no-git', '--no-install', '--no-php'],
+        exec: async () => ({ stdout: '' }),
+        createReadline: () => rl,
+        log: () => {},
+      }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Invalid --cdn/i);
+    expect(calls).toBeLessThanOrEqual(5);
+    expect(rl.close).toHaveBeenCalled();
+  });
 });
 
 describe('new: origins, php, preflight', () => {
@@ -1293,7 +1331,8 @@ describe('new: origins, php, preflight', () => {
       hints: [],
     }));
     const setup = vi.fn();
-    const wizardAnswers = ['ok.webflow.io', '', 'n', 'n'];
+    // staging, production, cdn, php, link?
+    const wizardAnswers = ['ok.webflow.io', '', '', 'n', 'n'];
     try {
       const code = await createNew(
         'ok-pre',
@@ -1344,8 +1383,8 @@ describe('new: origins, php, preflight', () => {
       exitCode: 1,
       hints: [],
     }));
-    // setup?, staging, production, php, link?
-    const wizardAnswers = ['n', 'doc.webflow.io', '', 'n', 'n'];
+    // setup?, staging, production, cdn, php, link?
+    const wizardAnswers = ['n', 'doc.webflow.io', '', '', 'n', 'n'];
     const rl = {
       question: vi.fn(async () => wizardAnswers.shift() ?? ''),
       close: vi.fn(),
@@ -1553,6 +1592,7 @@ describe('new: origins, php, preflight', () => {
           createReadline: () => ({
             question: vi.fn(async (q) => {
               questions.push(String(q));
+              if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
               return 'n';
             }),
             close: vi.fn(),
@@ -1617,6 +1657,7 @@ describe('new: origins, php, preflight', () => {
           createReadline: () => ({
             question: vi.fn(async (q) => {
               questions.push(String(q));
+              if (/CDN for Webflow|stagepass \| jsdelivr/i.test(String(q))) return '';
               return 'n';
             }),
             close: vi.fn(),
