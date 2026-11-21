@@ -11,6 +11,10 @@ Packages are versioned independently: `@stagepass/cli`, `@stagepass/loader`, `@s
 
 ## Unreleased
 
+### Repo
+
+- Docs: recommended embeds list the Stagepass CDN first (`https://cdn.stagepass.one/loader@2.5.0/loader.min.js` and the matching `/modules@2.2.2/` file paths). jsDelivr remains the documented alternative. unpkg is no longer recommended. Use the full file path on the Stagepass CDN (no `/dist/` segment) so session chunks resolve next to the loader. Published CLI snippets and live-site detection are unchanged until a CLI release.
+
 ### `@stagepass/modules`
 
 - Cookies: `sp.cookies.on('bake' | 'throw', fn)` (also on `sp.cookie`) returns an unsubscribe function. Fires after a successful write/delete (including queued bakes flushed by consent, and each cookie in `throwAll`). Listener errors do not break the operation.

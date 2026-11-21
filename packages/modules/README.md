@@ -16,17 +16,17 @@ Without the loader, `inject` and `cookies` still attach their APIs and warn; `ma
 
 ## CDN Usage
 
-Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Exact pins (e.g. `@2.2.2`) are optional for maximum control. jsDelivr may cache `@2` for a while; purge with the same pattern as the loader (see [Version pinning](https://github.com/arobertherz/stagepass/blob/master/docs/loader.md#version-pinning) in the docs).
+Prefer an exact pin on the Stagepass CDN in production. Stagepass follows strict semver: no breaking changes within v2; breaking changes only in a new major (v3). Use the full file path (this host has no `/dist/` segment). See [Version pinning](https://github.com/stagepass-one/os/blob/master/docs/loader.md#version-pinning) in the docs.
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-version="2.5.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/cookies.min.js"></script>
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"
   data-stagepass-maintenance="true"
   data-stagepass-maintenance-title="We will be back soon"
   data-stagepass-maintenance-text="Please check again shortly."
@@ -36,11 +36,11 @@ Prefer the major pin `@2` in production on jsDelivr. Stagepass follows strict se
 Or load all modules:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js"></script>
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/all.min.js"></script>
 ```
 
-unpkg serves the same paths if you need an alternative CDN.
+jsDelivr is the documented alternative, with full `/dist/` paths such as `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js` and `https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js`.
 
 Published files: `dist/inject.min.js`, `dist/cookies.min.js`, `dist/maintenance.min.js`, `dist/all.min.js`.
 
@@ -142,7 +142,7 @@ Off unless `data-stagepass-maintenance="true"` on the module script tag (or enab
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"
   data-stagepass-maintenance="true"
   data-stagepass-maintenance-title="We will be back soon"
   data-stagepass-maintenance-text="Please check again shortly."

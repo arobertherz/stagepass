@@ -112,19 +112,30 @@ stagepass link my-project --origin www.example.com --origin my-project.webflow.i
 
 ### 3. Integrate with Webflow
 
-Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). Prefer the major pin `@2` for docs and trials; prefer an exact pin in production (see [Version pinning](./loader.md#version-pinning)).
+Add the **Universal Loader** to your Webflow project settings (Project Settings > Custom Code > Head Code). Prefer an exact pin on the Stagepass CDN in production (see [Version pinning](./loader.md#version-pinning)).
 
-**Option 1: CDN (jsDelivr):**
+**Option 1: CDN (Stagepass first, jsDelivr as alternative):**
 
 ```html
-<!-- Core loader only (major pin @2) -->
+<!-- Core loader only (exact pin on the Stagepass CDN) -->
+<script
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
+  data-stagepass-version="2.5.0"
+></script>
+```
+
+Use the full file path so session chunks (`flag.min.js`, `flag-card.min.js`, `live.min.js`) load from the same folder. The short form `https://cdn.stagepass.one/loader@2.5.0` serves the same loader bytes, but a script tag at that URL resolves chunks from the CDN root and they 404. This host has no `/dist/` segment. Or set `data-stagepass-flag-base`.
+
+jsDelivr is the documented alternative:
+
+```html
 <script
   src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
   data-stagepass-version="2.5.0"
 ></script>
 ```
 
-Use the full `/dist/loader.min.js` path on unpkg and any CDN that redirects (short package URLs keep the pre-redirect location on the script element, so `flag.min.js` / `live.min.js` 404). Or set `data-stagepass-flag-base`.
+On jsDelivr always use the full `/dist/loader.min.js` path (short package URLs keep the pre-redirect location on the script element, so the chunks 404).
 
 **Option 2: Local** (to avoid cross-domain issues):
 
@@ -150,20 +161,22 @@ Modules extend the core loader with additional features (e.g., programmatic inje
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-version="2.5.0"
 ></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/cookies.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"></script>
 ```
 
 Or load the combined modules bundle:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js"></script>
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/all.min.js"></script>
 ```
+
+jsDelivr alternative (full `/dist/` paths): `https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js` and `https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js` (or `all.min.js`).
 
 Full module APIs: [modules.md](./modules.md).
 

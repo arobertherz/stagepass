@@ -5,13 +5,13 @@ Package: `@stagepass/modules`. Load modules as **separate script tags** after `l
 Modules depend on the **Loader** at runtime (they use `sp.vars` / `stagepass.vars`). Load the loader script before any module script. `inject` and `cookies` still attach their APIs without the loader (and warn); `maintenance` skips registration without the loader. For npm users, `@stagepass/modules` lists `@stagepass/loader` as a peer dependency: install the loader when you install modules.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"></script>
+<script src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/cookies.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"></script>
 ```
 
-Or the combined bundle: `all.min.js`. Prefer major pin `@2` or an exact version in production (see [loader.md](./loader.md#version-pinning)).
+Or the combined bundle: `https://cdn.stagepass.one/modules@2.2.2/all.min.js`. Prefer an exact pin on the Stagepass CDN in production (see [loader.md](./loader.md#version-pinning)). jsDelivr is the documented alternative, with full `/dist/` paths such as `https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js`.
 
 Published modules **2.2.2** declares peer `@stagepass/loader` `>=2.0.0`. The wider peer range `>=2.0.0 || >=2.3.0-beta.0` (so a 2.3 loader prerelease satisfies it; prereleases never match a plain `>=2.0.0`) is unreleased and ships with the next modules release.
 
@@ -164,7 +164,7 @@ Opt-in client-side overlay (`maintenance.min.js`). Not access protection; conten
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js"
+  src="https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js"
   data-stagepass-maintenance="true"
   data-stagepass-maintenance-title="We will be back soon"
   data-stagepass-maintenance-text="Please check again shortly."

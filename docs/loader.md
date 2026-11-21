@@ -1,14 +1,26 @@
 # Loader
 
-Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). CDN files live under `dist/` (`loader.min.js`, plus session-only chunks `flag.min.js`, `flag-card.min.js`, and when the publish includes it, `live.min.js`).
+Package: `@stagepass/loader`. Standalone browser script (no CLI dependency). In the npm package the files live under `dist/` (`loader.min.js`, plus session-only chunks `flag.min.js`, `flag-card.min.js`, and when the publish includes it, `live.min.js`). On the Stagepass CDN those same files are served as `/loader@<version>/loader.min.js` (no `/dist/` segment).
 
 ## Version pinning
 
-Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production CDN embeds, pin the **major** (`@2`), or an **exact** version when you want to freeze one publish and avoid alias caching.
+Stagepass follows strict semver: **no breaking changes within v2**; breaking changes only land in a new major (v3). For production embeds on the Stagepass CDN, pin an **exact** version. `@2`, `@2.x`, `/loader`, and `/loader@latest` on this host are short-lived redirects (`max-age=300`), not immutable files.
 
-**Published loader and live reload:** `@2` is a major range alias, not the npm `latest` tag; after a publish the CDN can briefly serve the previous 2.x build. Pin an exact version (e.g. `@2.5.0`) when a specific build must load. `live.min.js` ships since published loader **2.4.0** (`loader-v2.4.0` / `cddec72`). npm `latest` is **2.5.0**. Published **2.3.3** does **not** include it (CDN `/dist/live.min.js` on `@2.3.3` 404s; version scope, not a packaging bug). Do not assume a CDN `@2` embed ships live reload.
+**Published loader and live reload:** Pin an exact version (e.g. `@2.5.0`) when a specific build must load. `live.min.js` ships since published loader **2.4.0** (`loader-v2.4.0` / `cddec72`). npm `latest` is **2.5.0**. Published **2.3.3** does **not** include it (`https://cdn.stagepass.one/loader@2.3.3/live.min.js` 404s; version scope, not a packaging bug). Do not assume an alias embed ships live reload.
 
-### Recommended (`@2`)
+### Recommended (Stagepass CDN, exact pin)
+
+```html
+<script
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
+  data-stagepass-version="2.5.0"
+></script>
+<script src="https://cdn.stagepass.one/modules@2.2.2/inject.min.js"></script>
+```
+
+Always use the **full file path**. The short form `https://cdn.stagepass.one/loader@2.5.0` serves the same loader bytes, but a script tag at that URL resolves session chunks (`flag.min.js`, `flag-card.min.js`, `live.min.js`) from the CDN root and they 404. Alternatively set `data-stagepass-flag-base` to the folder that contains those chunks.
+
+jsDelivr is the documented alternative. Use the full `/dist/` path there:
 
 ```html
 <script
@@ -18,17 +30,9 @@ Stagepass follows strict semver: **no breaking changes within v2**; breaking cha
 <script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js"></script>
 ```
 
-unpkg serves the same paths if you need an alternative CDN. Always use the **full file path** ending in `/dist/loader.min.js` (as above). Short package URLs such as `https://unpkg.com/@stagepass/loader@2` redirect to the file, but the script element keeps the short URL, so session chunks (`flag.min.js`, `flag-card.min.js`, `live.min.js`) resolve from the wrong folder and 404. Same rule for any CDN that redirects. Alternatively set `data-stagepass-flag-base` to the folder that contains those chunks.
-
 See [MIGRATION.md](../MIGRATION.md) for breaking changes from 1.x. `stagepass doctor` warns on unpinned CDN URLs (`@latest`, bare major `@1`, or bare package with no version).
 
-### Optional exact pin
-
-For maximum control (freeze one publish), use an exact version such as `@2.5.0`:
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2.5.0/dist/loader.min.js"></script>
-```
+### jsDelivr alias cache
 
 jsDelivr may cache alias versions such as `@2` for a while after a new publish (often up to about 7 days). Exact pins are not affected the same way. To force a refresh of the major alias, purge:
 
@@ -36,15 +40,15 @@ jsDelivr may cache alias versions such as `@2` for a while after a new publish (
 https://purge.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js
 ```
 
-Use the same purge URL pattern for modules (replace the package path). Details: [jsDelivr purge](https://www.jsdelivr.com/documentation#purge).
+Use the same purge URL pattern for modules (replace the package path). Details: [jsDelivr purge](https://www.jsdelivr.com/documentation#purge). The Stagepass CDN does not need a purge: exact file URLs are immutable, and aliases move after at most 300 seconds.
 
 ### Legacy 1.x (still valid if you pin it)
 
 Sites that keep `@1` / exact `1.x` pins are unaffected by 2.x:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/loader@1.2.0/dist/loader.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@stagepass/modules@1.1.0/dist/inject.min.js"></script>
+<script src="https://cdn.stagepass.one/loader@1.2.0/loader.min.js"></script>
+<script src="https://cdn.stagepass.one/modules@1.1.0/inject.min.js"></script>
 ```
 
 Why `@2`:
@@ -115,9 +119,9 @@ While a session is active, a small pass-icon pill appears fixed in the top-right
 * Errors count `sp.error(...)`, `sp.log('error', ...)`, `console.error(...)`, uncaught errors, failed resource loads and unhandled promise rejections on the page. A missing local file shows "Local file not found (404)". When the local dev server cannot be reached, the card says "Local server not reachable", suggests `stagepass doctor` and, if Chrome blocks local network access, adds that hint.
 * Messages are always shown as plain text. Counters above 99 show `99+`.
 * The flag renders in a Shadow DOM, so site CSS cannot restyle it and it cannot restyle the site. It is keyboard accessible, and with `prefers-reduced-motion` all changes are instant.
-* The flag UI ships as two separate files, `dist/flag.min.js` and `dist/flag-card.min.js` (the card loads on first expand). Both are fetched only during a session, from the folder of the loader's own script URL, whatever the file is called (for example `…/@stagepass/loader@2/dist/flag.min.js`, or `/js/flag.min.js` next to a self-hosted `/js/stagepass.js`). When you self-host or copy the loader from `node_modules/@stagepass/loader/dist/`, copy both flag files (and `live.min.js`) into the same folder and everything stays on your server.
-* Inlined or bundled loader: set `data-stagepass-flag-base="/assets/stagepass/"` on the script tag (or `window.stagepassFlagBase` before the loader runs). Without a script URL and without the option, the flag files load from jsDelivr at the loader's exact version, and debug sessions show a warning.
-* With a strict Content Security Policy, `script-src` must allow the origin of the flag files (for jsDelivr: `https://cdn.jsdelivr.net`). If they are blocked, swapping still works and the console shows a warning.
+* The flag UI ships as two separate files, `dist/flag.min.js` and `dist/flag-card.min.js` (the card loads on first expand). Both are fetched only during a session, from the folder of the loader's own script URL, whatever the file is called (for example `https://cdn.stagepass.one/loader@2.5.0/flag.min.js`, or `/js/flag.min.js` next to a self-hosted `/js/stagepass.js`). When you self-host or copy the loader from `node_modules/@stagepass/loader/dist/`, copy both flag files (and `live.min.js`) into the same folder and everything stays on your server.
+* Inlined or bundled loader: set `data-stagepass-flag-base="/assets/stagepass/"` on the script tag (or `window.stagepassFlagBase` before the loader runs). Without a script URL and without the option, the flag files still load from jsDelivr at the loader's exact version, and debug sessions show a warning.
+* With a strict Content Security Policy, `script-src` must allow the origin of the flag files (`https://cdn.stagepass.one` when you embed the Stagepass CDN; `https://cdn.jsdelivr.net` when you use the jsDelivr alternative or the inlined-loader fallback). If they are blocked, swapping still works and the console shows a warning.
 
 ## Zero-cost production mode
 
@@ -131,7 +135,7 @@ Opt-in so production visitors load normal `src` / `href` tags (and optional SRI)
 
 ```html
 <script
-  src="https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js"
+  src="https://cdn.stagepass.one/loader@2.5.0/loader.min.js"
   data-stagepass-live-src="true"
 ></script>
 <script
