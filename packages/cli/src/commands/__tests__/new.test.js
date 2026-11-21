@@ -251,7 +251,7 @@ describe('createNew', () => {
     expect(pkg.devDependencies.esbuild).toBeTruthy();
 
     const readme = await fs.readFile(path.join(target, 'README.md'), 'utf8');
-    expect(readme).toContain('@stagepass/loader@2');
+    expect(readme).toContain('cdn.stagepass.one/loader@2.5.0/loader.min.js');
     // Resolved loader version (fetchPublished stub: latest 2.2.0), not the CLI version 2.0.0 (AC-14).
     expect(readme).toContain('data-stagepass-version="2.2.0"');
     expect(readme).not.toContain('data-stagepass-version="2.0.0"');
@@ -263,14 +263,16 @@ describe('createNew', () => {
     expect(agents).not.toContain('sp.cookies.bake');
     expect(agents).not.toContain('## Stagepass feature set');
     const guide = await fs.readFile(path.join(target, 'AGENTS.stagepass.md'), 'utf8');
+    expect(guide).toContain('cdn.stagepass.one/loader@2.5.0/loader.min.js');
     expect(guide).toContain('cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js');
-    expect(guide).toMatch(/unpkg serves the same paths/i);
+    expect(guide).not.toMatch(/unpkg serves the same paths/i);
+    expect(guide).not.toContain('unpkg.com');
     expect(guide).toContain('stagepass:managed');
     expect(guide).toContain('sp.cookies.bake');
     expect(guide).toContain('`sp.inject`: not available');
     expect(guide).toMatch(/Never call `sp\.<module>`/);
     expect(guide).not.toContain('\n## PHP\n');
-    expect(readme).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(readme).toContain('cdn.stagepass.one/modules@2.2.2/cookies.min.js');
     expect(readme).not.toContain('inject.min.js');
 
     expect(exec).toHaveBeenCalledWith('git', ['init'], expect.objectContaining({ cwd: target }));
@@ -891,8 +893,8 @@ describe('new: declared modules', () => {
   });
 
   it('wizard: asks for staging/production, confirms detected modules', async () => {
-    // name, dir, author, lang, styles, staging, production, use detected?, php, git, install
-    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', '', 'y', 'n', 'n', 'y'];
+    // name, dir, author, lang, styles, staging, production, use detected?, cdn, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'ts', 'scss', 'shop.webflow.io', '', 'y', 'stagepass', 'n', 'n', 'y'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const r = await resolveNewOptions(undefined, {}, {
       isTTY: true,
@@ -910,12 +912,13 @@ describe('new: declared modules', () => {
       install: true,
       php: false,
       productionSkipped: true,
+      cdn: 'stagepass',
     });
   });
 
   it('wizard: unreachable site falls back to asking for the list', async () => {
-    // name, dir, author, lang, styles, staging, production, modules, php, git, install
-    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', '', 'cookies', 'n', 'n', 'n'];
+    // name, dir, author, lang, styles, staging, production, modules, cdn, php, git, install
+    const answers = ['shop', 'shop', 'Ada', 'js', 'css', 'shop.webflow.io', '', 'cookies', 'stagepass', 'n', 'n', 'n'];
     const rl = { question: vi.fn(async () => answers.shift() ?? ''), close: vi.fn() };
     const detectSite = vi.fn(async () => ({ ok: false, error: 'Site did not answer within 5 s.' }));
     const r = await resolveNewOptions(undefined, {}, {

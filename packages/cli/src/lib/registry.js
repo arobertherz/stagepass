@@ -13,7 +13,7 @@ import { defaultExec } from './exec.js';
 import { MODULE_IDS } from './project-modules.js';
 import { SNIPPET_LOADER_VERSION } from './cdn-base.js';
 
-/** Major range used for new projects (matches the `@2` CDN embed policy). */
+/** Major range used for new npm dependencies (matches the 2.x line used in CDN pins). */
 export const PACKAGES_MAJOR_RANGE = '^2';
 
 /** First @stagepass/modules release with per-module type entry points. */

@@ -20,7 +20,7 @@ import {
   printWebflowSnippets,
 } from '../lib/snippets.js';
 
-import { SNIPPET_LOADER_VERSION } from '../lib/cdn-base.js';
+import { SNIPPET_LOADER_VERSION, normalizeCdnChoice } from '../lib/cdn-base.js';
 import { formatModules, normalizeModulesList } from '../lib/project-modules.js';
 import { cursorDirPresent } from '../lib/project-sync.js';
 import { describeDetection, detectSite, normalizeSiteUrl } from '../lib/site-detect.js';
@@ -182,6 +182,19 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   }
 
   /** @type {string} */
+  let cdn = '';
+  if (options.cdn != null && String(options.cdn).trim() !== '') {
+    const parsed = normalizeCdnChoice(options.cdn);
+    if (!parsed) {
+      return {
+        ok: false,
+        error: 'Invalid --cdn: use stagepass (default) or jsdelivr.',
+      };
+    }
+    cdn = parsed;
+  }
+
+  /** @type {string} */
   let origin = '';
   /** @type {string} */
   let production = '';
@@ -328,6 +341,18 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
           else log(chalk.yellow(`  ${parsed.error}`));
         }
       }
+      if (!cdn) {
+        while (!cdn) {
+          const raw = await ask(
+            rl,
+            'CDN for Webflow snippets (stagepass | jsdelivr)',
+            'stagepass'
+          );
+          const parsed = normalizeCdnChoice(raw);
+          if (parsed) cdn = parsed;
+          else log(chalk.yellow('  Use stagepass (cdn.stagepass.one) or jsdelivr.'));
+        }
+      }
       if (php === undefined) {
         php = await askYesNo(rl, 'Enable PHP for this project?', false);
       }
@@ -366,6 +391,8 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
   }
   // The npm package (types) follows the declared list; keep the legacy default (included).
   if (siteModules.length > 0) modules = true;
+
+  if (!cdn) cdn = 'stagepass';
 
   // Non-interactive / --yes defaults
   if (!name) {
@@ -441,6 +468,7 @@ export async function resolveNewOptions(nameArg, options = {}, deps = {}) {
       dryRun: options.dryRun === true,
       cursorRule: options.cursorRule === true,
       loaderVersion: deps.packagesVersion || SNIPPET_LOADER_VERSION,
+      cdn,
     },
   };
 }
@@ -854,6 +882,7 @@ export async function createNew(nameArg, options = {}, deps = {}) {
     gitRemote: config.git ? config.remote || '' : '',
     gitBranch: config.git ? 'main' : '',
     projectName: config.name,
+    cdn: config.cdn,
   });
   printWebflowSnippets(snippets, log);
 

@@ -19,9 +19,12 @@ export { HOST_WHITESPACE_ERROR };
 // Bounded attribute run keeps the scan linear on hostile input.
 const SCRIPT_TAG_RE = /<script\b[^<>]{0,4096}>/gi;
 const SRC_ATTR_RE = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
-// CDN /dist/<file>.js or package-root URLs (optional slash/query); root via package `main`.
+// jsDelivr / unpkg: /dist/<file>.js or package-root URLs (optional slash/query); root via package `main`.
 const STAGEPASS_CDN_RE =
   /^(?:https?:)?\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?(?:\/dist\/([a-z]+)(?:\.min)?\.js)?\/?(?:[?#].*)?$/i;
+// Stagepass CDN: /loader@2.5.0/loader.min.js (no /dist/, no @scope). Short /loader@2.5.0 also matches.
+const STAGEPASS_OWN_CDN_RE =
+  /^(?:https?:)?\/\/cdn\.stagepass\.one\/(loader|modules)(?:@([0-9A-Za-z.^~_-]+))?(?:\/([a-z]+)(?:\.min)?\.js)?\/?(?:[?#].*)?$/i;
 // Self-hosted build filenames (need Stagepass path or data-* hint).
 const STAGEPASS_FILE_RE = /(?:^|\/)(loader|inject|cookies|maintenance|all)(?:\.min)?\.js$/i;
 // `…/stagepass/…` always; `…/@stagepass/…` only for relative src (blocks foreign-host spoofs).
@@ -148,6 +151,15 @@ export function parseStagepassScripts(html) {
     if (!attr) continue;
     const src = q(attr);
 
+    const ownMatch = STAGEPASS_OWN_CDN_RE.exec(src);
+    if (ownMatch) {
+      const pkg = ownMatch[1].toLowerCase();
+      const file = (ownMatch[3] || (pkg === 'modules' ? 'all' : 'loader')).toLowerCase();
+      if (pkg === 'loader' ? file === 'loader' : file !== 'loader') {
+        take(file, ownMatch[2] || 'latest', 'stagepass');
+      }
+      continue;
+    }
     const cdnMatch = STAGEPASS_CDN_RE.exec(src);
     if (cdnMatch) {
       const pkg = cdnMatch[2].toLowerCase();

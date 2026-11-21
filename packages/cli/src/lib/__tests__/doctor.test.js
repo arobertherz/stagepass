@@ -79,21 +79,20 @@ broken.sp {
     ).toBe(false);
   });
 
-  it('recommended CDN snippets use jsDelivr @2 and real dist paths', () => {
+  it('recommended CDN snippets use the Stagepass CDN with exact pins', () => {
     expect(RECOMMENDED_CDN_SNIPPETS).toEqual([
-      'https://cdn.jsdelivr.net/npm/@stagepass/loader@2/dist/loader.min.js',
-      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/inject.min.js',
-      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/cookies.min.js',
-      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/maintenance.min.js',
-      'https://cdn.jsdelivr.net/npm/@stagepass/modules@2/dist/all.min.js',
+      'https://cdn.stagepass.one/loader@2.5.0/loader.min.js',
+      'https://cdn.stagepass.one/modules@2.2.2/inject.min.js',
+      'https://cdn.stagepass.one/modules@2.2.2/cookies.min.js',
+      'https://cdn.stagepass.one/modules@2.2.2/maintenance.min.js',
+      'https://cdn.stagepass.one/modules@2.2.2/all.min.js',
     ]);
     for (const url of RECOMMENDED_CDN_SNIPPETS) {
-      expect(url).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/@stagepass\//);
+      expect(url).toMatch(/^https:\/\/cdn\.stagepass\.one\//);
       expect(url).not.toMatch(/unpkg/i);
-      expect(url).toMatch(/@2\//);
+      expect(url).not.toMatch(/\/dist\//);
     }
   });
-
   it('runDoctor is read-only and uses execFile-style arrays', async () => {
     const calls = [];
     const files = new Map([

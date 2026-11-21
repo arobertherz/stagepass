@@ -1,18 +1,20 @@
 import fs from 'fs-extra';
 import path from 'node:path';
-import { stagepassPackageUrl } from './cdn-base.js';
+import { defaultSnippetPins, stagepassPackageUrl } from './cdn-base.js';
+
+const pins = defaultSnippetPins('stagepass');
 
 /**
  * Canonical CDN embed snippets recommended by Stagepass docs.
  * Doctor checks these so generated / documented snippets never drift to @latest.
- * Host comes from STAGEPASS_PACKAGE_CDN.
+ * Default host is the Stagepass CDN with exact pins.
  */
 export const RECOMMENDED_CDN_SNIPPETS = Object.freeze([
-  stagepassPackageUrl('loader', '@2', 'loader.min.js'),
-  stagepassPackageUrl('modules', '@2', 'inject.min.js'),
-  stagepassPackageUrl('modules', '@2', 'cookies.min.js'),
-  stagepassPackageUrl('modules', '@2', 'maintenance.min.js'),
-  stagepassPackageUrl('modules', '@2', 'all.min.js'),
+  stagepassPackageUrl('loader', pins.loaderPin, 'loader.min.js'),
+  stagepassPackageUrl('modules', pins.modulesPin, 'inject.min.js'),
+  stagepassPackageUrl('modules', pins.modulesPin, 'cookies.min.js'),
+  stagepassPackageUrl('modules', pins.modulesPin, 'maintenance.min.js'),
+  stagepassPackageUrl('modules', pins.modulesPin, 'all.min.js'),
 ]);
 
 /**
@@ -21,10 +23,10 @@ export const RECOMMENDED_CDN_SNIPPETS = Object.freeze([
  * - bare major `@1` (not `@1.2.0` exact pins)
  * - package URL with no `@version` at all
  *
- * Matches jsDelivr and unpkg-style paths.
+ * Matches the Stagepass CDN, jsDelivr, and existing unpkg paths.
  */
 export const UNPINNED_CDN_RE =
-  /(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(?:loader|modules)(?:@latest|@1(?![0-9.])|(?!@))(?=[/"'?\s]|$)/gi;
+  /(?:cdn\.stagepass\.one\/(?:loader|modules)|(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(?:loader|modules))(?:@latest|@1(?![0-9.])|(?!@))(?=[/"'?\s]|$)/gi;
 
 /**
  * Test whether a single URL/snippet string is an unpinned Stagepass CDN reference.
@@ -54,7 +56,7 @@ export function findUnpinnedCdnSnippets(snippets = RECOMMENDED_CDN_SNIPPETS) {
 export function findUnpinnedCdnMatchesInText(content) {
   const text = String(content || '');
   const candidateRe =
-    /(?:https?:\/\/)?(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(?:loader|modules)[^"'<\s]*/gi;
+    /(?:https?:\/\/)?(?:cdn\.stagepass\.one\/(?:loader|modules)|(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/@stagepass\/(?:loader|modules))[^"'<\s]*/gi;
   const matches = text.match(candidateRe);
   if (!matches) return [];
   const seen = new Set();

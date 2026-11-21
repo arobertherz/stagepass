@@ -140,7 +140,7 @@ describe('upgrade command', () => {
     expect(ts.include).toEqual(['src']);
     const out = logs.join('\n');
     expect(out).toContain('npm install');
-    expect(out).toContain('@stagepass/modules@2/dist/cookies.min.js');
+    expect(out).toContain('cdn.stagepass.one/modules@2.2.2/cookies.min.js');
     expect(out).not.toContain('inject.min.js');
     expect(out).toContain('https://YOUR-PRODUCTION-URL/js/main.js');
   });

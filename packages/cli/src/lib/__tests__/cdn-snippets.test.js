@@ -13,7 +13,7 @@ import {
 } from '../cdn-snippets.js';
 
 describe('cdn snippet pinning', () => {
-  it('accepts recommended @2 pins', () => {
+  it('accepts recommended exact pins', () => {
     expect(findUnpinnedCdnSnippets().ok).toBe(true);
     for (const url of RECOMMENDED_CDN_SNIPPETS) {
       expect(isUnpinnedCdnSnippet(url)).toBe(false);
@@ -41,6 +41,15 @@ describe('cdn snippet pinning', () => {
         'https://unpkg.com/@stagepass/modules@latest/dist/cookies.min.js'
       )
     ).toBe(true);
+    expect(
+      isUnpinnedCdnSnippet('https://cdn.stagepass.one/loader@latest/loader.min.js')
+    ).toBe(true);
+    expect(isUnpinnedCdnSnippet('https://cdn.stagepass.one/loader/loader.min.js')).toBe(
+      true
+    );
+    expect(
+      isUnpinnedCdnSnippet('https://cdn.stagepass.one/loader@2.5.0/loader.min.js')
+    ).toBe(false);
   });
 
   it('does not flag exact 1.x or @2 pins', () => {
@@ -58,6 +67,9 @@ describe('cdn snippet pinning', () => {
       isUnpinnedCdnSnippet(
         'https://cdn.jsdelivr.net/npm/@stagepass/loader@2.3.1/dist/loader.min.js'
       )
+    ).toBe(false);
+    expect(
+      isUnpinnedCdnSnippet('https://cdn.stagepass.one/modules@2.2.2/cookies.min.js')
     ).toBe(false);
   });
 
